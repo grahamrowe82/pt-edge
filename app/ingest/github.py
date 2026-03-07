@@ -111,6 +111,10 @@ async def collect_project_data(
         "contributors": contributors,
         "last_commit_at": last_commit_at,
         "license": (repo_data.get("license") or {}).get("spdx_id"),
+        # Underscore-prefixed: used for project enrichment, not snapshot INSERT
+        "_topics": repo_data.get("topics") or [],
+        "_description": (repo_data.get("description") or "")[:500],
+        "_language": repo_data.get("language"),
     }
 
 
@@ -139,12 +143,23 @@ async def ingest_github() -> dict:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     snapshots = []
+    enrichments = []  # (project_id, topics, description, language) for project updates
     error_count = 0
     for r in results:
         if isinstance(r, Exception):
             error_count += 1
             logger.error(f"GitHub fetch error: {r}")
         elif r is not None:
+            # Pop enrichment fields before snapshot INSERT
+            topics = r.pop("_topics", [])
+            description = r.pop("_description", None)
+            language = r.pop("_language", None)
+            enrichments.append({
+                "project_id": r["project_id"],
+                "topics": topics,
+                "description": description,
+                "language": language,
+            })
             snapshots.append(r)
         # None means skipped (no github info)
 
@@ -172,6 +187,10 @@ async def ingest_github() -> dict:
             conn.commit()
         logger.info(f"Batch wrote {len(snapshots)} GitHub snapshots")
 
+    # Phase 2b: update project enrichment (topics, description) and re-embed
+    if enrichments:
+        await _update_project_enrichment(enrichments, projects)
+
     # Log sync
     session = SessionLocal()
     try:
@@ -189,3 +208,57 @@ async def ingest_github() -> dict:
 
     logger.info(f"GitHub ingest complete: {len(snapshots)} success, {error_count} errors")
     return {"success": len(snapshots), "errors": error_count}
+
+
+async def _update_project_enrichment(enrichments: list[dict], projects: list[Project]) -> None:
+    """Update project topics/description from GitHub API and regenerate embeddings if changed."""
+    from app.embeddings import is_enabled, build_project_text, embed_batch
+
+    project_map = {p.id: p for p in projects}
+    changed = []
+
+    with engine.connect() as conn:
+        for e in enrichments:
+            pid = e["project_id"]
+            proj = project_map.get(pid)
+            if not proj:
+                continue
+
+            new_topics = e["topics"]
+            new_desc = e["description"]
+            old_topics = proj.topics or []
+            old_desc = proj.description or ""
+
+            # Only update if something changed
+            if sorted(new_topics) != sorted(old_topics) or new_desc != old_desc:
+                conn.execute(text("""
+                    UPDATE projects
+                    SET topics = :topics, description = :description, updated_at = NOW()
+                    WHERE id = :pid
+                """), {"topics": new_topics, "description": new_desc, "pid": pid})
+                changed.append({
+                    "project_id": pid,
+                    "name": proj.name,
+                    "description": new_desc,
+                    "topics": new_topics,
+                    "category": proj.category,
+                    "language": e.get("language"),
+                })
+
+        conn.commit()
+
+    if changed and is_enabled():
+        texts = [
+            build_project_text(c["name"], c["description"], c["topics"], c["category"], c["language"])
+            for c in changed
+        ]
+        vectors = await embed_batch(texts)
+        with engine.connect() as conn:
+            for c, vec in zip(changed, vectors):
+                if vec is not None:
+                    conn.execute(text("""
+                        UPDATE projects SET embedding = :vec WHERE id = :pid
+                    """), {"vec": str(vec), "pid": c["project_id"]})
+            conn.commit()
+        embedded_count = sum(1 for v in vectors if v is not None)
+        logger.info(f"Updated {len(changed)} project enrichments, embedded {embedded_count}")

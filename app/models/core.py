@@ -1,7 +1,8 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import ARRAY, Boolean, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from pgvector.sqlalchemy import Vector
 
 from app.models.base import Base
 
@@ -46,6 +47,8 @@ class Project(Base):
     tier_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
     distribution_type: Mapped[str | None] = mapped_column(String(20), nullable=True, default="package")
     hf_model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    topics: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+    embedding = mapped_column(Vector(1536), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
@@ -67,4 +70,5 @@ class ProjectCandidate(Base):
     source_detail: Mapped[str | None] = mapped_column(Text)
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    topics: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

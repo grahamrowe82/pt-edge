@@ -237,6 +237,7 @@ async def _extract_candidates(posts: list[dict]) -> int:
                         "description": (data.get("description") or "")[:500],
                         "stars": data.get("stargazers_count", 0),
                         "language": data.get("language"),
+                        "topics": data.get("topics") or [],
                         "source": "hn",
                         "source_detail": source_url,
                     })
@@ -250,9 +251,9 @@ async def _extract_candidates(posts: list[dict]) -> int:
             conn.execute(
                 text("""
                     INSERT INTO project_candidates
-                        (github_url, github_owner, github_repo, name, description, stars, language, source, source_detail)
+                        (github_url, github_owner, github_repo, name, description, stars, language, topics, source, source_detail)
                     VALUES
-                        (:github_url, :github_owner, :github_repo, :name, :description, :stars, :language, :source, :source_detail)
+                        (:github_url, :github_owner, :github_repo, :name, :description, :stars, :language, :topics, :source, :source_detail)
                     ON CONFLICT (github_url) DO NOTHING
                 """),
                 candidates,
