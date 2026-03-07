@@ -1049,7 +1049,7 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
 
 
 def mount_mcp(app):
-    """Mount the MCP server on a FastAPI app at /mcp."""
-    mcp_app = mcp.http_app(path="/")
+    """Mount the MCP server on a FastAPI app at /mcp/stream."""
+    mcp_app = mcp.http_app(path="/stream")
     mcp_app.add_middleware(TokenAuthMiddleware)
     app.mount("/mcp", mcp_app)
