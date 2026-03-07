@@ -23,3 +23,16 @@ class Correction(Base):
     status: Mapped[str] = mapped_column(String(20), default="active")  # active, superseded, rejected
     upvotes: Mapped[int] = mapped_column(Integer, default=0)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String))
+
+
+class ArticlePitch(Base):
+    __tablename__ = "article_pitches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    topic: Mapped[str] = mapped_column(String(300), nullable=False, index=True)
+    thesis: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence: Mapped[str | None] = mapped_column(Text)
+    audience_angle: Mapped[str | None] = mapped_column(Text)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, accepted, rejected
+    upvotes: Mapped[int] = mapped_column(Integer, default=0)

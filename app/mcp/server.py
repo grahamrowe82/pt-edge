@@ -14,7 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.db import SessionLocal, engine, readonly_engine
 from app.models import (
     Lab, Project, GitHubSnapshot, DownloadSnapshot,
-    Release, HNPost, Correction, SyncLog, Methodology,
+    Release, HNPost, Correction, ArticlePitch, SyncLog, Methodology,
 )
 from app.mcp.tracking import track_usage
 from app.settings import settings
@@ -395,6 +395,9 @@ async def about() -> str:
         "  submit_correction(topic, text)   -- flag something that's wrong",
         "  upvote_correction(id)            -- confirm someone else's correction",
         "  list_corrections(topic, status)  -- browse corrections",
+        "  propose_article(topic, thesis)   -- pitch an article for Phase Transitions",
+        "  list_pitches(status)             -- browse community article pitches",
+        "  upvote_pitch(id)                 -- support an article pitch",
         "",
         "Methodology:",
         "  explain(topic)                   -- how any tool/metric/algo works (deep)",
@@ -714,6 +717,7 @@ async def project_pulse(project: str) -> str:
                     f"  Tier:       {_fmt_tier(tier.get('tier'))}",
                     f"  Override:   {'Yes' if tier.get('is_override') else 'No'}",
                     f"  Lifecycle:  {lc.get('lifecycle_stage', 'n/a')}",
+                    f"             explain('tier_system') / explain('lifecycle_stages') for methodology",
                 ])
         except Exception:
             lines.append("  Tier/lifecycle data not yet available.")
@@ -890,6 +894,122 @@ async def project_pulse(project: str) -> str:
     return "\n".join(lines)
 
 
+def _lab_compare(session: Session, lab_names: list[str]) -> str:
+    """Compare multiple labs side-by-side."""
+    labs = []
+    for name in lab_names:
+        lab_obj, suggestions = _find_lab_or_suggest(session, name)
+        if not lab_obj:
+            return _not_found_msg("Lab", name, suggestions)
+        labs.append(lab_obj)
+
+    display_names = [l.name for l in labs]
+    col_width = max(len(n) for n in display_names) + 2
+    col_width = max(col_width, 16)
+
+    header = f"{'':24}" + "".join(f"{n:<{col_width}}" for n in display_names)
+    lines = [
+        f"LAB COMPARISON: {' vs '.join(display_names)}",
+        "=" * len(header),
+        header,
+        "-" * len(header),
+    ]
+
+    # Project counts
+    project_counts = []
+    for l in labs:
+        count = (
+            session.query(Project)
+            .filter(Project.lab_id == l.id, Project.is_active == True)
+            .count()
+        )
+        project_counts.append(str(count))
+    lines.append(f"{'Projects':24}" + "".join(f"{c:<{col_width}}" for c in project_counts))
+
+    # Velocity from mv_lab_velocity
+    try:
+        with engine.connect() as conn:
+            lab_ids = [l.id for l in labs]
+            placeholders = ", ".join(f":l{i}" for i in range(len(lab_ids)))
+            params = {f"l{i}": lid for i, lid in enumerate(lab_ids)}
+
+            vel_rows = _safe_mv_query(conn, f"""
+                SELECT lab_id, releases_30d, releases_90d,
+                       avg_days_between_releases, is_accelerating
+                FROM mv_lab_velocity
+                WHERE lab_id IN ({placeholders})
+            """, params)
+
+            vel_by_id = {r["lab_id"]: r for r in vel_rows}
+
+            def _vel_row(label, key, fmt=str):
+                vals = []
+                for l in labs:
+                    v = vel_by_id.get(l.id, {})
+                    val = v.get(key)
+                    vals.append(fmt(val) if val is not None else "n/a")
+                lines.append(f"{label:24}" + "".join(f"{v:<{col_width}}" for v in vals))
+
+            _vel_row("Releases (30d)", "releases_30d", lambda v: str(int(v)))
+            _vel_row("Releases (90d)", "releases_90d", lambda v: str(int(v)))
+            _vel_row("Avg days between", "avg_days_between_releases", lambda v: f"{float(v):.0f}")
+
+            # Enhanced acceleration display
+            accel_vals = []
+            for l in labs:
+                v = vel_by_id.get(l.id, {})
+                r30 = v.get("releases_30d")
+                r90 = v.get("releases_90d")
+                if r30 is not None and r90 is not None and int(r90) > 0:
+                    avg_monthly = int(r90) / 3
+                    accel_vals.append(f"{int(r30)} vs {avg_monthly:.0f}/mo")
+                else:
+                    accel_vals.append("n/a")
+            lines.append(f"{'Velocity (30d vs avg)':24}" + "".join(f"{v:<{col_width}}" for v in accel_vals))
+
+    except Exception:
+        lines.append("  Velocity data not yet available.")
+
+    # Recent releases timeline (interleaved)
+    lines.append("")
+    lines.append("RECENT RELEASES (combined timeline)")
+    lines.append("-" * 40)
+    try:
+        lab_ids = [l.id for l in labs]
+        lab_name_by_id = {l.id: l.name for l in labs}
+        project_ids = [
+            p.id for l in labs
+            for p in session.query(Project).filter(
+                Project.lab_id == l.id, Project.is_active == True
+            ).all()
+        ]
+
+        releases = (
+            session.query(Release, Project.name.label("project_name"), Release.lab_id)
+            .outerjoin(Project, Release.project_id == Project.id)
+            .filter(
+                (Release.lab_id.in_(lab_ids)) |
+                (Release.project_id.in_(project_ids) if project_ids else False)
+            )
+            .order_by(Release.released_at.desc())
+            .limit(15)
+            .all()
+        )
+        if releases:
+            for rel, proj_name, lab_id in releases:
+                lab_label = lab_name_by_id.get(lab_id, "?")
+                lines.append(
+                    f"  {_fmt_date(rel.released_at)}  [{lab_label}]  "
+                    f"{proj_name or 'n/a':<20} {_fmt_version(rel.version)}"
+                )
+        else:
+            lines.append("  No releases recorded.")
+    except Exception as e:
+        lines.append(f"  Could not query releases: {e}")
+
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------------------
 # Tool 6: lab_pulse
 # ---------------------------------------------------------------------------
@@ -897,9 +1017,17 @@ async def project_pulse(project: str) -> str:
 @mcp.tool()
 @track_usage
 async def lab_pulse(lab: str) -> str:
-    """What is a specific lab shipping? Accepts slug or name."""
+    """What is a specific lab shipping? Accepts slug or name.
+
+    Pass comma-separated names for cross-lab comparison (e.g. 'openai, anthropic, meta').
+    """
     session = SessionLocal()
     try:
+        # Cross-lab comparison mode
+        lab_names = [n.strip() for n in lab.split(",")]
+        if len(lab_names) > 1:
+            return _lab_compare(session, lab_names)
+
         lab_obj, suggestions = _find_lab_or_suggest(session, lab)
         if not lab_obj:
             return _not_found_msg("Lab", lab, suggestions)
@@ -987,12 +1115,18 @@ async def lab_pulse(lab: str) -> str:
                 """, {"lid": lab_obj.id})
                 if velocity:
                     v = velocity[0]
+                    r30 = v.get("releases_30d")
+                    r90 = v.get("releases_90d")
                     accel = "Yes" if v.get("is_accelerating") else "No"
+                    velocity_detail = ""
+                    if r30 is not None and r90 is not None and int(r90) > 0:
+                        avg_monthly = int(r90) / 3
+                        velocity_detail = f" ({int(r30)} in 30d vs {avg_monthly:.0f}/mo avg in 90d)"
                     lines.extend([
-                        f"  Releases (30d):             {v.get('releases_30d', 'n/a')}",
-                        f"  Releases (90d):             {v.get('releases_90d', 'n/a')}",
+                        f"  Releases (30d):             {r30 or 'n/a'}",
+                        f"  Releases (90d):             {r90 or 'n/a'}",
                         f"  Avg days between releases:  {v.get('avg_days_between_releases', 'n/a')}",
-                        f"  Accelerating:               {accel}",
+                        f"  Accelerating:               {accel}{velocity_detail}",
                     ])
                 else:
                     lines.append("  Velocity data not yet available.")
@@ -1179,6 +1313,7 @@ async def hype_check(project: str) -> str:
                 f"  Monthly Downloads:  {_fmt_number(downloads)}",
                 f"  Hype Ratio:         {_fmt_ratio(ratio)}",
                 f"  Bucket:             {bucket}",
+                f"             explain('hype_ratio') for methodology and known limitations",
                 "",
             ])
 
@@ -1419,13 +1554,156 @@ async def list_corrections(topic: str = None, status: str = "active") -> str:
 
 
 # ---------------------------------------------------------------------------
+# Tool 12a: propose_article — community article pitches
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def propose_article(
+    topic: str, thesis: str, evidence: str = None, audience_angle: str = None
+) -> str:
+    """Pitch an article idea for Phase Transitions newsletter.
+
+    topic: Short title (e.g. 'The MCP Gold Rush')
+    thesis: 1-2 sentences on why this matters now
+    evidence: Which PT-Edge tools/signals support this (optional)
+    audience_angle: Why Phase Transitions readers would care (optional)
+    """
+    if len(topic) > 300:
+        return "Topic must be 300 characters or fewer."
+    if len(thesis) > 2000:
+        return "Thesis must be 2,000 characters or fewer."
+    if evidence and len(evidence) > 2000:
+        return "Evidence must be 2,000 characters or fewer."
+    if audience_angle and len(audience_angle) > 1000:
+        return "Audience angle must be 1,000 characters or fewer."
+
+    session = SessionLocal()
+    try:
+        pitch = ArticlePitch(
+            topic=topic.strip(),
+            thesis=thesis.strip(),
+            evidence=evidence.strip() if evidence else None,
+            audience_angle=audience_angle.strip() if audience_angle else None,
+            status="pending",
+            upvotes=0,
+        )
+        session.add(pitch)
+        session.commit()
+        pitch_id = pitch.id
+    except Exception as e:
+        session.rollback()
+        return f"Failed to submit pitch: {e}"
+    finally:
+        session.close()
+
+    return (
+        f"Article pitch submitted successfully.\n"
+        f"  ID:       {pitch_id}\n"
+        f"  Topic:    {topic}\n"
+        f"  Thesis:   {thesis[:200]}\n\n"
+        f"Others can upvote this with upvote_pitch({pitch_id}).\n"
+        f"Browse all pitches with list_pitches()."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tool 12b: list_pitches — browse article pitches
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def list_pitches(status: str = None) -> str:
+    """Browse article pitches submitted by the community.
+
+    Optional status filter: 'pending', 'accepted', 'rejected'.
+    """
+    session = SessionLocal()
+    try:
+        query = session.query(ArticlePitch)
+        if status:
+            query = query.filter(ArticlePitch.status == status)
+        pitches = query.order_by(ArticlePitch.upvotes.desc(), ArticlePitch.submitted_at.desc()).all()
+
+        if not pitches:
+            return f"No article pitches found{f' with status={status}' if status else ''}."
+
+        lines = [
+            "ARTICLE PITCHES",
+            "=" * 60,
+        ]
+
+        for p in pitches:
+            lines.append(
+                f"  [{p.id}] {p.topic}  (upvotes: {p.upvotes}, status: {p.status})"
+            )
+            lines.append(f"       {p.thesis[:120]}")
+            if p.evidence:
+                lines.append(f"       Evidence: {p.evidence[:100]}")
+            lines.append("")
+
+        lines.append(f"Total: {len(pitches)} pitch(es)")
+        lines.append("")
+        lines.append("Use upvote_pitch(id) to support a pitch.")
+
+    finally:
+        session.close()
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Tool 12c: upvote_pitch — support an article pitch
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def upvote_pitch(pitch_id: int) -> str:
+    """Upvote an article pitch to signal interest."""
+    from app.models import ToolUsage
+
+    session = SessionLocal()
+    try:
+        pitch = session.query(ArticlePitch).filter(ArticlePitch.id == pitch_id).first()
+        if not pitch:
+            return f"No article pitch found with ID {pitch_id}."
+
+        # Rate limit: max 5 upvotes per pitch per day
+        recent = (
+            session.query(ToolUsage)
+            .filter(
+                ToolUsage.tool_name == "upvote_pitch",
+                ToolUsage.called_at >= datetime.now(timezone.utc) - timedelta(days=1),
+            )
+            .count()
+        )
+        if recent >= 5:
+            return "Rate limit: max 5 pitch upvotes per day."
+
+        pitch.upvotes += 1
+        session.commit()
+        return (
+            f"Upvoted pitch #{pitch_id}: {pitch.topic}\n"
+            f"  Now at {pitch.upvotes} upvote(s)."
+        )
+    except Exception as e:
+        session.rollback()
+        return f"Failed to upvote: {e}"
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
 # Tool 12: lifecycle_map
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
 @track_usage
-async def lifecycle_map(category: str = None, tier: int = None) -> str:
-    """Groups all projects by lifecycle stage. Filter by category or tier."""
+async def lifecycle_map(category: str = None, tier: int = None, transitions: bool = False) -> str:
+    """Groups all projects by lifecycle stage. Filter by category or tier.
+
+    Set transitions=True to see which projects changed lifecycle stage recently.
+    """
     lines = ["LIFECYCLE MAP", "=" * 40]
 
     try:
@@ -1491,8 +1769,45 @@ async def lifecycle_map(category: str = None, tier: int = None) -> str:
                         f"releases: {r.get('releases_30d', 0)}/30d"
                     )
 
+            # Transitions section
+            if transitions:
+                cat_filter = "AND c.category = :cat" if category else ""
+                transition_rows = conn.execute(text(f"""
+                    SELECT c.name, c.category,
+                           h.lifecycle_stage AS previous_stage,
+                           c.lifecycle_stage AS current_stage,
+                           c.stars
+                    FROM mv_lifecycle c
+                    JOIN lifecycle_history h ON h.project_id = c.project_id
+                    WHERE h.snapshot_date = (
+                        SELECT MAX(snapshot_date) FROM lifecycle_history
+                        WHERE project_id = c.project_id
+                          AND snapshot_date <= CURRENT_DATE - INTERVAL '30 days'
+                    )
+                    AND h.lifecycle_stage != c.lifecycle_stage
+                    {cat_filter}
+                    ORDER BY c.stars DESC
+                """), params).fetchall()
+
+                lines.append("")
+                lines.append("LIFECYCLE TRANSITIONS (last 30 days)")
+                lines.append("-" * 40)
+                if transition_rows:
+                    for r in transition_rows:
+                        m = r._mapping
+                        lines.append(
+                            f"  {m['name']:<28} [{m['category']}]  "
+                            f"{m['previous_stage']} -> {m['current_stage']}  "
+                            f"stars: {_fmt_number(m['stars'])}"
+                        )
+                else:
+                    lines.append("  No stage transitions detected (needs 30+ days of history).")
+
     except Exception as e:
         lines.append(f"  Error: {e}")
+
+    lines.append("")
+    lines.append("explain('lifecycle_stages') for how stages are computed.")
 
     return "\n".join(lines)
 
@@ -3821,7 +4136,8 @@ _PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
 _TOOL_LIST = [
     about, describe_schema, query, whats_new, project_pulse, lab_pulse,
     trending, hype_check, submit_correction, upvote_correction,
-    list_corrections, lifecycle_map, hype_landscape, sniff_projects,
+    list_corrections, propose_article, list_pitches, upvote_pitch,
+    lifecycle_map, hype_landscape, sniff_projects,
     accept_candidate, set_tier, movers, compare, related, market_map,
     radar, explain, topic, scout, hn_pulse, deep_dive,
 ]

@@ -1,6 +1,6 @@
 """Embedding service for PT-Edge semantic search.
 
-Thin async module wrapping OpenAI text-embedding-3-small.
+Thin async module wrapping OpenAI text-embedding-3-large.
 All errors return None — never raises. DB is the cache.
 
 Usage:
@@ -18,7 +18,8 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-MODEL = "text-embedding-3-small"
+MODEL = "text-embedding-3-large"
+DIMENSIONS = 1536  # truncate to match existing pgvector columns
 MAX_BATCH_SIZE = 2048  # OpenAI batch limit
 
 
@@ -67,7 +68,7 @@ async def embed_one(text: str) -> Optional[list[float]]:
     try:
         from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        resp = await client.embeddings.create(input=[text], model=MODEL)
+        resp = await client.embeddings.create(input=[text], model=MODEL, dimensions=DIMENSIONS)
         return resp.data[0].embedding
     except Exception as e:
         logger.error(f"Embedding error: {e}")
@@ -87,7 +88,7 @@ async def embed_batch(texts: list[str]) -> list[Optional[list[float]]]:
 
         for start in range(0, len(texts), MAX_BATCH_SIZE):
             chunk = texts[start:start + MAX_BATCH_SIZE]
-            resp = await client.embeddings.create(input=chunk, model=MODEL)
+            resp = await client.embeddings.create(input=chunk, model=MODEL, dimensions=DIMENSIONS)
             for item in resp.data:
                 results[start + item.index] = item.embedding
 

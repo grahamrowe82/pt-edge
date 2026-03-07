@@ -8,6 +8,8 @@ from app.ingest.hn import ingest_hn
 from app.ingest.huggingface import ingest_huggingface
 from app.ingest.releases import ingest_releases
 from app.ingest.trending import ingest_trending
+from app.backfill_embeddings import backfill_projects, backfill_methodology
+from app.embeddings import is_enabled
 from app.views.refresh import refresh_all_views
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,19 @@ async def run_all() -> dict:
         except Exception as e:
             logger.exception(f"{name} failed: {e}")
             results[name] = {"error": str(e)}
+
+    # Backfill embeddings for new projects/methodology (before view refresh)
+    if is_enabled():
+        try:
+            proj_count = await backfill_projects()
+            meth_count = await backfill_methodology()
+            results["embeddings"] = {"projects": proj_count, "methodology": meth_count}
+            logger.info(f"embeddings: {results['embeddings']}")
+        except Exception as e:
+            logger.exception(f"embeddings failed: {e}")
+            results["embeddings"] = {"error": str(e)}
+    else:
+        results["embeddings"] = "skipped (no OPENAI_API_KEY)"
 
     # Refresh materialized views after all ingest jobs complete
     try:
