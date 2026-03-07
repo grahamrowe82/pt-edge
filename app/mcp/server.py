@@ -3346,6 +3346,29 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+# ---------------------------------------------------------------------------
+# JSON-RPC tool registry (uses FunctionTool public attrs, not FastMCP internals)
+# ---------------------------------------------------------------------------
+
+_TOOLS = {
+    t.name: t for t in [
+        about, describe_schema, query, whats_new, project_pulse, lab_pulse,
+        trending, hype_check, submit_correction, upvote_correction,
+        list_corrections, lifecycle_map, hype_landscape, sniff_projects,
+        accept_candidate, set_tier, movers, compare, related, market_map,
+        radar, explain, topic, scout, deep_dive,
+    ]
+}
+
+
+def _tool_definitions() -> list[dict]:
+    """Build JSON-RPC tool definitions from FunctionTool objects."""
+    return [
+        {"name": t.name, "description": t.description, "inputSchema": t.parameters}
+        for t in _TOOLS.values()
+    ]
+
+
 def mount_mcp(app):
     """Mount the MCP server on a FastAPI app.
 
@@ -3392,24 +3415,16 @@ def mount_mcp(app):
             })
 
         if method == "tools/list":
-            tools_list = []
-            for t in mcp._tool_manager._tools.values():
-                mcp_tool = t.to_mcp_tool()
-                tools_list.append({
-                    "name": mcp_tool.name,
-                    "description": mcp_tool.description,
-                    "inputSchema": mcp_tool.inputSchema,
-                })
             return JSONResponse({
                 "jsonrpc": "2.0",
                 "id": req_id,
-                "result": {"tools": tools_list},
+                "result": {"tools": _tool_definitions()},
             })
 
         if method == "tools/call":
             tool_name = params.get("name")
             tool_args = params.get("arguments", {})
-            tool = mcp._tool_manager._tools.get(tool_name)
+            tool = _TOOLS.get(tool_name)
             if not tool:
                 return JSONResponse({
                     "jsonrpc": "2.0",
@@ -3420,12 +3435,14 @@ def mount_mcp(app):
                     },
                 })
             try:
-                result = await tool.run(tool_args)
-                content = [{"type": c.type, "text": c.text} for c in result.content]
+                result = await tool.fn(**tool_args)
                 return JSONResponse({
                     "jsonrpc": "2.0",
                     "id": req_id,
-                    "result": {"content": content, "isError": False},
+                    "result": {
+                        "content": [{"type": "text", "text": result}],
+                        "isError": False,
+                    },
                 })
             except Exception as e:
                 return JSONResponse({
