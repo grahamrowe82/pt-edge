@@ -34,7 +34,9 @@ async def _rescore_candidate(
     Enrichment (created_at, commit_trend, contributor_count) is fetched
     once and cached so MCP tools don't need live API calls per-request.
     """
-    from app.ingest.github import fetch_commit_activity, fetch_contributor_count
+    from app.ingest.github import (
+        fetch_commit_activity, fetch_commit_count_simple, fetch_contributor_count,
+    )
 
     owner = candidate.get("github_owner")
     repo = candidate.get("github_repo")
@@ -82,6 +84,10 @@ async def _rescore_candidate(
         async with semaphore:
             try:
                 commit_trend = await fetch_commit_activity(client, owner, repo)
+                # Stats API often returns 0 for young repos — fall back to
+                # simple commit listing which works for any repo age
+                if commit_trend == 0:
+                    commit_trend = await fetch_commit_count_simple(client, owner, repo)
                 result["commit_trend"] = commit_trend
             except Exception:
                 pass

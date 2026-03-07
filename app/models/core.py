@@ -49,6 +49,7 @@ class Project(Base):
     hf_model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     topics: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     embedding = mapped_column(Vector(1536), nullable=True)
+    repo_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 

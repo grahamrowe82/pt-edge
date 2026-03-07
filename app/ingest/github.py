@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import re
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import text
@@ -33,6 +33,34 @@ async def fetch_commit_activity(client: httpx.AsyncClient, owner: str, repo: str
         if isinstance(weeks, list) and len(weeks) >= 4:
             return sum(w.get("total", 0) for w in weeks[-4:])
     return 0
+
+
+async def fetch_commit_count_simple(
+    client: httpx.AsyncClient, owner: str, repo: str, days: int = 30,
+) -> int:
+    """Count commits in the last N days using the /commits endpoint + Link header.
+
+    Lightweight fallback for repos where /stats/commit_activity returns 0
+    (common for repos < 4 weeks old). Uses the same pagination trick as
+    fetch_contributor_count — request per_page=1 and read the last page number.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    resp = await client.get(
+        f"https://api.github.com/repos/{owner}/{repo}/commits",
+        params={"since": since, "per_page": 1},
+    )
+    if resp.status_code != 200:
+        return 0
+    link = resp.headers.get("Link", "")
+    if 'rel="last"' in link:
+        for part in link.split(","):
+            if 'rel="last"' in part:
+                match = re.search(r"page=(\d+)", part)
+                if match:
+                    return int(match.group(1))
+    # No Link header → one page or less
+    data = resp.json()
+    return len(data) if isinstance(data, list) else 0
 
 
 async def fetch_contributor_count(client: httpx.AsyncClient, owner: str, repo: str) -> int:
@@ -115,6 +143,7 @@ async def collect_project_data(
         "_topics": repo_data.get("topics") or [],
         "_description": (repo_data.get("description") or "")[:500],
         "_language": repo_data.get("language"),
+        "_repo_created_at": repo_data.get("created_at"),
     }
 
 
@@ -154,11 +183,21 @@ async def ingest_github() -> dict:
             topics = r.pop("_topics", [])
             description = r.pop("_description", None)
             language = r.pop("_language", None)
+            repo_created_str = r.pop("_repo_created_at", None)
+            repo_created_at = None
+            if repo_created_str:
+                try:
+                    repo_created_at = datetime.fromisoformat(
+                        repo_created_str.replace("Z", "+00:00")
+                    )
+                except (ValueError, TypeError):
+                    pass
             enrichments.append({
                 "project_id": r["project_id"],
                 "topics": topics,
                 "description": description,
                 "language": language,
+                "repo_created_at": repo_created_at,
             })
             snapshots.append(r)
         # None means skipped (no github info)
@@ -229,7 +268,14 @@ async def _update_project_enrichment(enrichments: list[dict], projects: list[Pro
             old_topics = proj.topics or []
             old_desc = proj.description or ""
 
-            # Only update if something changed
+            # Backfill repo_created_at if not yet set (immutable field)
+            repo_created_at = e.get("repo_created_at")
+            if repo_created_at and proj.repo_created_at is None:
+                conn.execute(text("""
+                    UPDATE projects SET repo_created_at = :rca WHERE id = :pid
+                """), {"rca": repo_created_at, "pid": pid})
+
+            # Only update topics/description if something changed
             if sorted(new_topics) != sorted(old_topics) or new_desc != old_desc:
                 conn.execute(text("""
                     UPDATE projects
