@@ -22,7 +22,12 @@ async def fetch_repo(client: httpx.AsyncClient, owner: str, repo: str) -> dict |
 
 
 async def fetch_commit_activity(client: httpx.AsyncClient, owner: str, repo: str) -> int:
-    resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}/stats/commit_activity")
+    url = f"https://api.github.com/repos/{owner}/{repo}/stats/commit_activity"
+    resp = await client.get(url)
+    # GitHub returns 202 when stats are being computed async — retry once after a pause
+    if resp.status_code == 202:
+        await asyncio.sleep(2.0)
+        resp = await client.get(url)
     if resp.status_code == 200:
         weeks = resp.json()
         if isinstance(weeks, list) and len(weeks) >= 4:
@@ -53,9 +58,12 @@ async def fetch_contributor_count(client: httpx.AsyncClient, owner: str, repo: s
     if count <= 1:
         try:
             await asyncio.sleep(0.1)
-            stats_resp = await client.get(
-                f"https://api.github.com/repos/{owner}/{repo}/stats/contributors"
-            )
+            stats_url = f"https://api.github.com/repos/{owner}/{repo}/stats/contributors"
+            stats_resp = await client.get(stats_url)
+            # GitHub returns 202 when stats are being computed — retry once
+            if stats_resp.status_code == 202:
+                await asyncio.sleep(2.0)
+                stats_resp = await client.get(stats_url)
             if stats_resp.status_code == 200:
                 stats_data = stats_resp.json()
                 if isinstance(stats_data, list) and len(stats_data) > count:
