@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import time
 from datetime import datetime, timezone
 
@@ -8,6 +9,7 @@ from sqlalchemy import text
 
 from app.db import engine, SessionLocal
 from app.models import Project, SyncLog
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -153,5 +155,107 @@ async def ingest_hn() -> dict:
     finally:
         session.close()
 
-    logger.info(f"HN ingest complete: {new_count} new posts, {error_count} errors")
-    return {"success": new_count, "errors": error_count}
+    # Extract project candidates from collected posts
+    candidates_count = await _extract_candidates(all_posts)
+
+    logger.info(f"HN ingest complete: {new_count} new posts, {error_count} errors, {candidates_count} candidates")
+    return {"success": new_count, "errors": error_count, "candidates": candidates_count}
+
+
+GITHUB_REPO_RE = re.compile(r"https?://github\.com/([^/]+)/([^/\s?#]+)")
+
+
+async def _extract_candidates(posts: list[dict]) -> int:
+    """Scan HN posts for GitHub repo URLs and insert untracked ones as candidates."""
+    # Collect all GitHub repo refs from post URLs and titles
+    repo_refs: dict[str, str] = {}  # "owner/repo" -> source HN URL
+    for post in posts:
+        hn_url = f"https://news.ycombinator.com/item?id={post['hn_id']}"
+        for field in [post.get("url") or "", post.get("title") or ""]:
+            for match in GITHUB_REPO_RE.finditer(field):
+                owner, repo = match.group(1), match.group(2)
+                # Strip trailing .git if present
+                repo = repo.removesuffix(".git")
+                full = f"{owner}/{repo}".lower()
+                if full not in repo_refs:
+                    repo_refs[full] = hn_url
+
+    if not repo_refs:
+        return 0
+
+    # Get tracked projects to exclude
+    session = SessionLocal()
+    try:
+        tracked = set()
+        rows = session.execute(text(
+            "SELECT LOWER(github_owner || '/' || github_repo) FROM projects WHERE github_owner IS NOT NULL"
+        )).fetchall()
+        for (key,) in rows:
+            tracked.add(key)
+
+        # Also exclude already-known candidates
+        existing = set()
+        rows = session.execute(text("SELECT github_url FROM project_candidates")).fetchall()
+        for (url,) in rows:
+            existing.add(url.lower())
+    finally:
+        session.close()
+
+    # Filter out tracked and existing
+    new_refs = {
+        full: source_url for full, source_url in repo_refs.items()
+        if full not in tracked and f"https://github.com/{full}".lower() not in existing
+    }
+
+    if not new_refs:
+        return 0
+
+    # Fetch GitHub stats for each new repo
+    headers = {"User-Agent": "pt-edge/1.0"}
+    if settings.GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+
+    candidates = []
+    semaphore = asyncio.Semaphore(5)
+    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+        for full, source_url in new_refs.items():
+            owner, repo = full.split("/", 1)
+            async with semaphore:
+                try:
+                    resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}")
+                    if resp.status_code != 200:
+                        logger.warning(f"GitHub API {resp.status_code} for {owner}/{repo}")
+                        continue
+                    data = resp.json()
+                    candidates.append({
+                        "github_url": f"https://github.com/{owner}/{repo}",
+                        "github_owner": owner,
+                        "github_repo": repo,
+                        "name": data.get("name"),
+                        "description": (data.get("description") or "")[:500],
+                        "stars": data.get("stargazers_count", 0),
+                        "language": data.get("language"),
+                        "source": "hn",
+                        "source_detail": source_url,
+                    })
+                except Exception as e:
+                    logger.error(f"Error fetching GitHub repo {owner}/{repo}: {e}")
+                await asyncio.sleep(0.1)
+
+    # Batch insert candidates
+    if candidates:
+        with engine.connect() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO project_candidates
+                        (github_url, github_owner, github_repo, name, description, stars, language, source, source_detail)
+                    VALUES
+                        (:github_url, :github_owner, :github_repo, :name, :description, :stars, :language, :source, :source_detail)
+                    ON CONFLICT (github_url) DO NOTHING
+                """),
+                candidates,
+            )
+            conn.commit()
+        logger.info(f"Inserted {len(candidates)} HN-sourced project candidates")
+
+    return len(candidates)
