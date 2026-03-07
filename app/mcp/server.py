@@ -2813,6 +2813,36 @@ async def scout(category: str = None, limit: int = 15) -> str:
             unenriched_sql += " ORDER BY stars DESC LIMIT 10"
             unenriched_rows = conn.execute(text(unenriched_sql), unenriched_params).fetchall()
 
+            # ---- Small tracked projects with repo_created_at ----
+            tracked_sql = """
+                SELECT p.name, p.slug, p.category, p.github_owner, p.github_repo,
+                       p.repo_created_at, gs.stars
+                FROM projects p
+                JOIN github_snapshots gs ON gs.project_id = p.id
+                WHERE p.is_active = true
+                  AND p.repo_created_at IS NOT NULL
+                  AND gs.stars < 10000
+                  AND gs.snapshot_date = (
+                      SELECT MAX(snapshot_date) FROM github_snapshots
+                      WHERE project_id = p.id
+                  )
+            """
+            tracked_params: dict = {}
+            if category:
+                tracked_sql += """
+                    AND (
+                        p.name ILIKE '%' || :cat || '%'
+                        OR p.category ILIKE '%' || :cat || '%'
+                        OR EXISTS (
+                            SELECT 1 FROM unnest(p.topics) t
+                            WHERE t ILIKE '%' || :cat || '%'
+                        )
+                    )
+                """
+                tracked_params["cat"] = category
+            tracked_sql += " ORDER BY gs.stars DESC"
+            tracked_rows = conn.execute(text(tracked_sql), tracked_params).fetchall()
+
         # ---- Build velocity entries from cached data ----
         velocity_entries = []  # (stars_per_day, name, stars, age_days, source_label, owner_repo)
 
@@ -2822,6 +2852,16 @@ async def scout(category: str = None, limit: int = 15) -> str:
             name = m["name"] or m["github_repo"] or "?"
             owner_repo = f"{m['github_owner']}/{m['github_repo']}"
             source = f"candidate [{m['source']}]"
+            age = max(1, (datetime.now(timezone.utc) - m["repo_created_at"]).days)
+            spd = stars / age
+            velocity_entries.append((spd, name, stars, age, source, owner_repo))
+
+        for r in tracked_rows:
+            m = r._mapping
+            stars = int(m["stars"] or 0)
+            name = m["name"] or "?"
+            owner_repo = f"{m['github_owner']}/{m['github_repo']}"
+            source = f"tracked [{m['category']}]"
             age = max(1, (datetime.now(timezone.utc) - m["repo_created_at"]).days)
             spd = stars / age
             velocity_entries.append((spd, name, stars, age, source, owner_repo))
@@ -2988,7 +3028,7 @@ async def deep_dive(identifier: str) -> str:
                     SELECT id, name, slug, category, description, url,
                            github_owner, github_repo, pypi_package, npm_package,
                            hf_model_id, distribution_type, topics,
-                           is_active, tier_override, created_at
+                           is_active, tier_override, repo_created_at, created_at
                     FROM projects
                     WHERE github_owner ILIKE :owner AND github_repo ILIKE :repo
                 """), {"owner": owner, "repo": repo}).fetchone()
@@ -3004,25 +3044,41 @@ async def deep_dive(identifier: str) -> str:
                         WHERE github_owner ILIKE :owner AND github_repo ILIKE :repo
                     """), {"owner": owner, "repo": repo}).fetchone()
             else:
-                # Try tracked project first
-                session = SessionLocal()
-                try:
-                    proj, suggestions = await _find_project_or_suggest(
-                        session, identifier
-                    )
-                    if proj:
-                        proj_row = conn.execute(text("""
-                            SELECT id, name, slug, category, description, url,
-                                   github_owner, github_repo, pypi_package, npm_package,
-                                   hf_model_id, distribution_type, topics,
-                                   is_active, tier_override, created_at
-                            FROM projects WHERE id = :pid
-                        """), {"pid": proj.id}).fetchone()
-                finally:
-                    session.close()
+                # Check for exact candidate name match FIRST — prevents
+                # fuzzy tracked project matching from stealing candidates
+                # (e.g. "mini-swe-agent" fuzzy-matching to "swe-agent")
+                cand_row = conn.execute(text("""
+                    SELECT id, name, github_url, github_owner, github_repo,
+                           description, stars, stars_previous, language,
+                           source, source_detail, topics, status,
+                           discovered_at, repo_created_at,
+                           commit_trend, contributor_count
+                    FROM project_candidates
+                    WHERE name ILIKE :name OR github_repo ILIKE :name
+                    ORDER BY stars DESC NULLS LAST
+                    LIMIT 1
+                """), {"name": identifier}).fetchone()
 
-                # Try candidate if not found
-                if not proj_row:
+                # If no exact candidate match, try tracked projects (with fuzzy)
+                if not cand_row:
+                    session = SessionLocal()
+                    try:
+                        proj, suggestions = await _find_project_or_suggest(
+                            session, identifier
+                        )
+                        if proj:
+                            proj_row = conn.execute(text("""
+                                SELECT id, name, slug, category, description, url,
+                                       github_owner, github_repo, pypi_package, npm_package,
+                                       hf_model_id, distribution_type, topics,
+                                       is_active, tier_override, repo_created_at, created_at
+                                FROM projects WHERE id = :pid
+                            """), {"pid": proj.id}).fetchone()
+                    finally:
+                        session.close()
+
+                # If still nothing, try fuzzy candidate match as last resort
+                if not proj_row and not cand_row:
                     cand_row = conn.execute(text("""
                         SELECT id, name, github_url, github_owner, github_repo,
                                description, stars, stars_previous, language,
@@ -3097,6 +3153,13 @@ async def deep_dive(identifier: str) -> str:
                         lines.append("")
                         lines.append("GROWTH SIGNALS")
                         lines.append("-" * 40)
+
+                        if p.get("repo_created_at"):
+                            age_days = max(1, (datetime.now(timezone.utc) - p["repo_created_at"]).days)
+                            spd = stars / age_days
+                            lines.append(f"  Repo created:  {_fmt_date(p['repo_created_at'])[:10]}")
+                            lines.append(f"  Age:           {age_days:,} days")
+                            lines.append(f"  Stars/day:     {spd:.1f}")
 
                         forks = int(s["forks"] or 0)
                         commits = int(s["commits_30d"] or 0)
