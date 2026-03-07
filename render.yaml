@@ -1,0 +1,25 @@
+databases:
+  - name: pt-edge-db
+    plan: basic-256mb
+    databaseName: pt_edge
+    user: pt_edge_user
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: Allow all (needed for MCP connections)
+
+services:
+  - type: web
+    name: pt-edge
+    plan: starter
+    runtime: docker
+    region: oregon
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pt-edge-db
+          property: connectionString
+      - key: API_TOKEN
+        generateValue: true
+      - key: GITHUB_TOKEN
+        sync: false
