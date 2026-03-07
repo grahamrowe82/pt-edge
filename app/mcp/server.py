@@ -343,6 +343,9 @@ async def about() -> str:
         "  upvote_correction(id)            -- confirm someone else's correction",
         "  list_corrections(topic, status)  -- browse corrections",
         "",
+        "Methodology:",
+        "  explain(topic)                   -- how any tool/metric/algo works (deep)",
+        "",
         "Power User:",
         "  describe_schema()                -- database tables and columns",
         "  query(sql)                       -- run read-only SQL",
@@ -2379,6 +2382,116 @@ async def radar() -> str:
 
     except Exception as e:
         return f"Error generating radar: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Tool 22: explain — deep methodology documentation
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def explain(topic: str = None) -> str:
+    """Deep documentation on how PT-Edge works. Ask about any tool, metric, algorithm, or design decision.
+
+    Call with no topic to see all available topics.
+    Call with a topic name for the full explanation, including known limitations and what we'd change.
+
+    Examples: explain('hype_ratio'), explain('auto_promotion'), explain('data_sources')
+    """
+    try:
+        with engine.connect() as conn:
+            if not topic:
+                # List all topics grouped by category
+                rows = conn.execute(text("""
+                    SELECT topic, category, title, summary
+                    FROM methodology
+                    ORDER BY category, topic
+                """)).fetchall()
+
+                if not rows:
+                    return (
+                        "No methodology documentation found. "
+                        "Run `python -m app.methodology_seed` to populate."
+                    )
+
+                lines = [
+                    "PT-EDGE METHODOLOGY",
+                    "=" * 60,
+                    "",
+                    "Deep documentation on how every tool, metric, and algorithm works.",
+                    "Each entry includes known limitations and what we'd change.",
+                    "Call explain('topic_name') for the full explanation.",
+                    "",
+                    "We publish this so you can tell us where we're wrong.",
+                    "Use submit_correction() to push back on anything.",
+                    "",
+                ]
+
+                current_category = None
+                for r in rows:
+                    m = r._mapping
+                    cat = m["category"].upper()
+                    if cat != current_category:
+                        current_category = cat
+                        lines.append(f"{cat}S")
+                        lines.append("-" * 40)
+
+                    lines.append(f"  {m['topic']:<28} {m['title']}")
+                    lines.append(f"  {' ' * 28} {m['summary'][:80]}...")
+                    lines.append("")
+
+                return "\n".join(lines)
+
+            # Specific topic — fuzzy match
+            row = conn.execute(text("""
+                SELECT topic, category, title, summary, detail, updated_at
+                FROM methodology
+                WHERE LOWER(topic) = LOWER(:topic)
+            """), {"topic": topic.strip()}).fetchone()
+
+            if row:
+                m = row._mapping
+                lines = [
+                    f"{m['title']}",
+                    "=" * 60,
+                    f"Category: {m['category']}  |  Topic: {m['topic']}",
+                    f"Last updated: {_fmt_date(m['updated_at'])}",
+                    "",
+                    m["detail"],
+                    "",
+                    "-" * 60,
+                    "Think we're wrong about something? Use submit_correction()",
+                    "to tell us. We read every one.",
+                ]
+                return "\n".join(lines)
+
+            # No exact match — search for partial matches
+            similar = conn.execute(text("""
+                SELECT topic, title FROM methodology
+                WHERE LOWER(topic) LIKE '%' || LOWER(:q) || '%'
+                   OR LOWER(title) LIKE '%' || LOWER(:q) || '%'
+                   OR LOWER(summary) LIKE '%' || LOWER(:q) || '%'
+                ORDER BY topic
+                LIMIT 10
+            """), {"q": topic.strip()}).fetchall()
+
+            if similar:
+                lines = [
+                    f"No exact match for '{topic}'. Did you mean one of these?",
+                    "",
+                ]
+                for s in similar:
+                    sm = s._mapping
+                    lines.append(f"  explain('{sm['topic']}')  — {sm['title']}")
+                return "\n".join(lines)
+
+            return (
+                f"No methodology entry found for '{topic}'. "
+                f"Call explain() with no arguments to see all available topics."
+            )
+
+    except Exception as e:
+        return f"Error querying methodology: {e}"
 
 
 # ---------------------------------------------------------------------------
