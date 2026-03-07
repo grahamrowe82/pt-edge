@@ -1,76 +1,73 @@
-"""Seed labs and projects from JSON files."""
+"""Seed labs and projects from JSON files. Batch insert to avoid round-trip latency."""
 import json
 import sys
 from pathlib import Path
 
-# Add project root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.db import SessionLocal
-from app.models import Lab, Project
+from sqlalchemy import text
+
+from app.db import engine
 
 
 def seed():
-    session = SessionLocal()
-
-    # Load labs
     labs_path = Path(__file__).parent.parent / "seeds" / "labs.json"
+    projects_path = Path(__file__).parent.parent / "seeds" / "projects.json"
+
     with open(labs_path) as f:
         labs_data = json.load(f)
-
-    lab_map = {}  # slug -> Lab object
-    for data in labs_data:
-        existing = session.query(Lab).filter(Lab.slug == data["slug"]).first()
-        if existing:
-            lab_map[data["slug"]] = existing
-            print(f"  Lab already exists: {data['name']}")
-            continue
-        lab = Lab(
-            name=data["name"],
-            slug=data["slug"],
-            url=data.get("url"),
-            blog_url=data.get("blog_url"),
-            github_org=data.get("github_org"),
-        )
-        session.add(lab)
-        session.flush()  # get the ID
-        lab_map[data["slug"]] = lab
-        print(f"  Added lab: {data['name']}")
-
-    session.commit()
-    print(f"Labs: {len(lab_map)} total")
-
-    # Load projects
-    projects_path = Path(__file__).parent.parent / "seeds" / "projects.json"
     with open(projects_path) as f:
         projects_data = json.load(f)
 
-    added = 0
-    skipped = 0
-    for data in projects_data:
-        existing = session.query(Project).filter(Project.slug == data["slug"]).first()
-        if existing:
-            skipped += 1
-            continue
-        lab = lab_map.get(data.get("lab_slug")) if data.get("lab_slug") else None
-        project = Project(
-            name=data["name"],
-            slug=data["slug"],
-            category=data["category"],
-            lab_id=lab.id if lab else None,
-            github_owner=data.get("github_owner"),
-            github_repo=data.get("github_repo"),
-            pypi_package=data.get("pypi_package"),
-            npm_package=data.get("npm_package"),
-            description=data.get("description"),
-            url=data.get("url"),
-        )
-        session.add(project)
-        added += 1
+    with engine.connect() as conn:
+        # Batch upsert labs
+        for lab in labs_data:
+            conn.execute(
+                text("""
+                    INSERT INTO labs (name, slug, url, blog_url, github_org)
+                    VALUES (:name, :slug, :url, :blog_url, :github_org)
+                    ON CONFLICT (slug) DO NOTHING
+                """),
+                lab,
+            )
+        conn.commit()
+        print(f"Labs: {len(labs_data)} processed")
 
-    session.commit()
-    session.close()
-    print(f"Projects: {added} added, {skipped} skipped")
+        # Build slug -> id map in one query
+        rows = conn.execute(text("SELECT id, slug FROM labs")).fetchall()
+        lab_map = {r[1]: r[0] for r in rows}
+        print(f"Lab map: {len(lab_map)} entries")
+
+        # Batch upsert projects
+        for p in projects_data:
+            conn.execute(
+                text("""
+                    INSERT INTO projects (name, slug, category, lab_id, github_owner, github_repo,
+                                         pypi_package, npm_package, description, url)
+                    VALUES (:name, :slug, :category, :lab_id, :github_owner, :github_repo,
+                            :pypi_package, :npm_package, :description, :url)
+                    ON CONFLICT (slug) DO NOTHING
+                """),
+                {
+                    "name": p["name"],
+                    "slug": p["slug"],
+                    "category": p["category"],
+                    "lab_id": lab_map.get(p.get("lab_slug")),
+                    "github_owner": p.get("github_owner"),
+                    "github_repo": p.get("github_repo"),
+                    "pypi_package": p.get("pypi_package"),
+                    "npm_package": p.get("npm_package"),
+                    "description": p.get("description"),
+                    "url": p.get("url"),
+                },
+            )
+        conn.commit()
+        print(f"Projects: {len(projects_data)} processed")
+
+        # Verify
+        lab_count = conn.execute(text("SELECT count(*) FROM labs")).scalar()
+        proj_count = conn.execute(text("SELECT count(*) FROM projects")).scalar()
+        print(f"Total in DB: {lab_count} labs, {proj_count} projects")
 
 
 if __name__ == "__main__":
