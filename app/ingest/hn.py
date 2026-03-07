@@ -8,7 +8,7 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.models import Project, SyncLog
+from app.models import Project, Lab, SyncLog
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -25,6 +25,38 @@ SEARCH_TERMS = [
 ]
 
 SECONDS_IN_7_DAYS = 7 * 24 * 60 * 60
+
+# Lab name aliases for HN title matching.
+# Keys are lowercase match strings; values are lab slugs.
+LAB_ALIASES = {
+    "openai": "openai",
+    "open ai": "openai",
+    "gpt-4": "openai",
+    "gpt-5": "openai",
+    "chatgpt": "openai",
+    "dall-e": "openai",
+    "sora": "openai",
+    "codex": "openai",
+    "anthropic": "anthropic",
+    "claude": "anthropic",
+    "google deepmind": "google-deepmind",
+    "deepmind": "google-deepmind",
+    "gemini": "google-deepmind",
+    "google ai": "google-deepmind",
+    "meta ai": "meta-ai",
+    "llama": "meta-ai",
+    "meta llama": "meta-ai",
+    "mistral": "mistral-ai",
+    "mixtral": "mistral-ai",
+    "cohere": "cohere",
+    "command r": "cohere",
+    "hugging face": "hugging-face",
+    "huggingface": "hugging-face",
+    "stability ai": "stability-ai",
+    "stable diffusion": "stability-ai",
+    "together ai": "together-ai",
+    "groq": "groq",
+}
 
 
 def _determine_post_type(title: str) -> str:
@@ -50,6 +82,15 @@ def _match_project(title: str, projects: list[Project], url: str | None = None) 
             repo_path = f"github.com/{p.github_owner}/{p.github_repo}".lower()
             if repo_path in url_lower:
                 return p.id
+    return None
+
+
+def _match_lab(title: str, lab_slug_to_id: dict[str, int]) -> int | None:
+    """Match an HN post title to a lab based on LAB_ALIASES."""
+    title_lower = title.lower()
+    for alias, slug in LAB_ALIASES.items():
+        if alias in title_lower:
+            return lab_slug_to_id.get(slug)
     return None
 
 
@@ -82,6 +123,36 @@ async def backfill_hn_links() -> int:
     return updated
 
 
+async def backfill_hn_lab_links() -> int:
+    """Match unlinked HN posts to labs by title. Idempotent."""
+    session = SessionLocal()
+    try:
+        labs = session.query(Lab).all()
+        lab_slug_to_id = {lab.slug: lab.id for lab in labs}
+    finally:
+        session.close()
+
+    updated = 0
+    with engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT id, title FROM hn_posts WHERE lab_id IS NULL"
+        )).fetchall()
+
+        for row in rows:
+            m = row._mapping
+            lid = _match_lab(m["title"], lab_slug_to_id)
+            if lid:
+                conn.execute(
+                    text("UPDATE hn_posts SET lab_id = :lid WHERE id = :id"),
+                    {"lid": lid, "id": m["id"]},
+                )
+                updated += 1
+        conn.commit()
+
+    logger.info(f"backfill_hn_lab_links: matched {updated} posts to labs")
+    return updated
+
+
 async def fetch_hn_page(client: httpx.AsyncClient, query: str, min_timestamp: int) -> list[dict]:
     params = {
         "query": query, "tags": "story",
@@ -97,7 +168,8 @@ async def fetch_hn_page(client: httpx.AsyncClient, query: str, min_timestamp: in
 
 async def collect_hn_for_term(
     client: httpx.AsyncClient, term: str, min_timestamp: int,
-    projects: list[Project], semaphore: asyncio.Semaphore,
+    projects: list[Project], lab_slug_to_id: dict[str, int],
+    semaphore: asyncio.Semaphore,
 ) -> list[dict]:
     async with semaphore:
         hits = await fetch_hn_page(client, term, min_timestamp)
@@ -130,6 +202,7 @@ async def collect_hn_for_term(
             "posted_at": datetime.fromtimestamp(created_at_i, tz=timezone.utc),
             "captured_at": datetime.now(timezone.utc),
             "project_id": _match_project(title, projects, url=hit.get("url")),
+            "lab_id": _match_lab(title, lab_slug_to_id),
         })
     return rows
 
@@ -137,6 +210,8 @@ async def collect_hn_for_term(
 async def ingest_hn() -> dict:
     session = SessionLocal()
     projects = session.query(Project).filter(Project.is_active.is_(True)).all()
+    labs = session.query(Lab).all()
+    lab_slug_to_id = {lab.slug: lab.id for lab in labs}
     session.close()
 
     min_timestamp = int(time.time()) - SECONDS_IN_7_DAYS
@@ -145,7 +220,7 @@ async def ingest_hn() -> dict:
 
     semaphore = asyncio.Semaphore(2)
     async with httpx.AsyncClient(headers={"User-Agent": "pt-edge/1.0"}, timeout=30.0) as client:
-        tasks = [collect_hn_for_term(client, t, min_timestamp, projects, semaphore) for t in SEARCH_TERMS]
+        tasks = [collect_hn_for_term(client, t, min_timestamp, projects, lab_slug_to_id, semaphore) for t in SEARCH_TERMS]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     all_posts = []
@@ -169,9 +244,9 @@ async def ingest_hn() -> dict:
                     conn.execute(
                         text("""
                             INSERT INTO hn_posts (hn_id, title, url, author, points, num_comments,
-                                                  post_type, posted_at, captured_at, project_id)
+                                                  post_type, posted_at, captured_at, project_id, lab_id)
                             VALUES (:hn_id, :title, :url, :author, :points, :num_comments,
-                                    :post_type, :posted_at, :captured_at, :project_id)
+                                    :post_type, :posted_at, :captured_at, :project_id, :lab_id)
                             ON CONFLICT (hn_id) DO NOTHING
                         """),
                         post,

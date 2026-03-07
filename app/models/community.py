@@ -21,6 +21,7 @@ class Correction(Base):
     submitted_by: Mapped[str | None] = mapped_column(String(200))
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active, superseded, rejected
+    category: Mapped[str] = mapped_column(String(20), default="bug")  # bug, feature, observation
     upvotes: Mapped[int] = mapped_column(Integer, default=0)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String))
     amendments: Mapped[str | None] = mapped_column(Text)

@@ -397,15 +397,20 @@ async def about() -> str:
         "  topic(query)                     -- what's happening with a topic across ecosystem",
         "  hn_pulse(query, days)            -- HN discourse intelligence + sentiment",
         "",
-        "Community:",
-        "  submit_correction(topic, text)   -- flag something that's wrong",
-        "  upvote_correction(id)            -- confirm someone else's correction",
-        "  list_corrections(topic, status)  -- browse corrections",
-        "  propose_article(topic, thesis)   -- pitch an article for Phase Transitions",
-        "  list_pitches(status)             -- browse community article pitches",
-        "  upvote_pitch(id)                 -- support an article pitch",
-        "  amend_correction(id, reason)     -- append a note to a correction",
-        "  amend_pitch(id, reason)          -- append a note to an article pitch",
+        "Community & Feedback:",
+        "  submit_feedback(topic, text, category)  -- report a bug, request a feature, share an observation",
+        "  upvote_feedback(id)                     -- confirm someone else's feedback",
+        "  list_feedback(topic, status, category)  -- browse feedback",
+        "  amend_feedback(id, reason)              -- append a note to feedback",
+        "  propose_article(topic, thesis)          -- pitch an article for Phase Transitions",
+        "  list_pitches(status)                    -- browse community article pitches",
+        "  upvote_pitch(id)                        -- support an article pitch",
+        "  amend_pitch(id, reason)                 -- append a note to an article pitch",
+        "",
+        "Lab Intelligence:",
+        "  submit_lab_event(lab, type, title)      -- record a product launch, model release, etc.",
+        "  list_lab_events(lab, event_type)        -- browse curated lab events",
+        "  lab_models(lab, capability)             -- frontier models with pricing and capabilities",
         "",
         "Methodology:",
         "  explain(topic)                   -- how any tool/metric/algo works (deep)",
@@ -495,7 +500,7 @@ async def about() -> str:
         "Understand the methodology:",
         "  1. explain()                     — browse all methodology topics",
         "  2. explain('hype_ratio')         — deep dive on a specific metric",
-        "  3. submit_correction('hype_ratio', 'Your objection here')",
+        "  3. submit_feedback('hype_ratio', 'Your objection here')",
         "",
         "BUILT BY",
         "-" * 30,
@@ -1141,6 +1146,83 @@ async def lab_pulse(lab: str) -> str:
         except Exception:
             lines.append("  Velocity data not yet available.")
 
+        # Recent HN discussion about this lab
+        lines.append("")
+        lines.append("RECENT HN DISCUSSION")
+        lines.append("-" * 30)
+        try:
+            hn_posts = (
+                session.query(HNPost)
+                .filter(HNPost.lab_id == lab_obj.id)
+                .order_by(HNPost.posted_at.desc())
+                .limit(10)
+                .all()
+            )
+            if hn_posts:
+                for post in hn_posts:
+                    lines.append(
+                        f"  {_fmt_date(post.posted_at)}  "
+                        f"{post.title[:70]}  "
+                        f"({post.points} pts, {post.num_comments} comments)"
+                    )
+            else:
+                lines.append("  No HN posts linked to this lab yet.")
+        except Exception as e:
+            lines.append(f"  Could not query HN posts: {e}")
+
+        # Key lab events (curated intelligence)
+        lines.append("")
+        lines.append("KEY EVENTS")
+        lines.append("-" * 30)
+        try:
+            from app.models import LabEvent
+            events = (
+                session.query(LabEvent)
+                .filter(LabEvent.lab_id == lab_obj.id)
+                .order_by(LabEvent.event_date.desc())
+                .limit(10)
+                .all()
+            )
+            if events:
+                for ev in events:
+                    date_str = ev.event_date.strftime("%Y-%m-%d") if ev.event_date else "n/a"
+                    lines.append(f"  {date_str}  [{ev.event_type}]  {ev.title}")
+                    if ev.summary:
+                        lines.append(f"             {ev.summary[:100]}")
+            else:
+                lines.append("  No lab events recorded yet. Use submit_lab_event() to curate.")
+        except Exception:
+            lines.append("  Lab events data not yet available.")
+
+        # Frontier models
+        lines.append("")
+        lines.append("FRONTIER MODELS")
+        lines.append("-" * 30)
+        try:
+            from app.models import FrontierModel
+            models = (
+                session.query(FrontierModel)
+                .filter(
+                    FrontierModel.lab_id == lab_obj.id,
+                    FrontierModel.status == "active",
+                )
+                .order_by(FrontierModel.name)
+                .all()
+            )
+            if models:
+                for model in models:
+                    ctx = f"{model.context_window:,}tok" if model.context_window else "n/a"
+                    pricing = ""
+                    if model.pricing_input and model.pricing_output:
+                        pricing = f"  {model.pricing_input} / {model.pricing_output}"
+                    elif not model.pricing_input:
+                        pricing = "  (open weights)"
+                    lines.append(f"  {model.name:<30} ctx: {ctx:<14}{pricing}")
+            else:
+                lines.append("  No frontier models recorded. Run model ingest to populate.")
+        except Exception:
+            lines.append("  Model data not yet available.")
+
     finally:
         session.close()
 
@@ -1429,15 +1511,15 @@ async def hype_check(project: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Tool 9: submit_correction
+# Tool 9: submit_feedback (was submit_correction)
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
 @track_usage
-async def submit_correction(
-    topic: str, correction: str, context: str = None
+async def submit_feedback(
+    topic: str, correction: str, context: str = None, category: str = "bug"
 ) -> str:
-    """Submit a practitioner correction about an AI topic or project."""
+    """Submit feedback about an AI topic or project. Category: bug (default), feature, or observation."""
     # Input length limits
     if len(topic) > 300:
         return "Topic must be 300 characters or fewer."
@@ -1446,12 +1528,17 @@ async def submit_correction(
     if context and len(context) > 2000:
         return "Context must be 2,000 characters or fewer."
 
+    VALID_CATEGORIES = {"bug", "feature", "observation"}
+    if category not in VALID_CATEGORIES:
+        return f"Invalid category '{category}'. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}"
+
     session = SessionLocal()
     try:
         c = Correction(
             topic=topic.strip(),
             correction=correction.strip(),
             context=context.strip() if context else None,
+            category=category,
             status="active",
             upvotes=0,
         )
@@ -1460,43 +1547,44 @@ async def submit_correction(
         correction_id = c.id
         session.close()
         return (
-            f"Correction submitted successfully.\n"
-            f"  ID:    {correction_id}\n"
-            f"  Topic: {topic}\n"
-            f"  Text:  {correction[:200]}\n\n"
-            f"Others can upvote this with upvote_correction({correction_id})."
+            f"Feedback submitted successfully.\n"
+            f"  ID:       {correction_id}\n"
+            f"  Topic:    {topic}\n"
+            f"  Category: {category}\n"
+            f"  Text:     {correction[:200]}\n\n"
+            f"Others can upvote this with upvote_feedback({correction_id})."
         )
     except Exception as e:
         session.rollback()
         session.close()
-        return f"Failed to submit correction: {e}"
+        return f"Failed to submit feedback: {e}"
 
 
 # ---------------------------------------------------------------------------
-# Tool 10: upvote_correction
+# Tool 10: upvote_feedback (was upvote_correction)
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
 @track_usage
-async def upvote_correction(correction_id: int) -> str:
-    """Confirm someone else's correction by upvoting it."""
+async def upvote_feedback(correction_id: int) -> str:
+    """Confirm someone else's feedback by upvoting it."""
     session = SessionLocal()
     try:
         # Rate limit: max 5 upvotes per correction per day
         recent = session.execute(text(
             "SELECT COUNT(*) FROM tool_usage "
-            "WHERE tool_name = 'upvote_correction' "
+            "WHERE tool_name IN ('upvote_correction', 'upvote_feedback') "
             "AND params->>'correction_id' = :cid "
             "AND created_at > NOW() - INTERVAL '24 hours'"
         ), {"cid": str(correction_id)}).scalar()
         if recent and recent >= 5:
             session.close()
-            return f"Rate limit: correction #{correction_id} has been upvoted {recent} times in the last 24 hours (max 5/day)."
+            return f"Rate limit: feedback #{correction_id} has been upvoted {recent} times in the last 24 hours (max 5/day)."
 
         c = session.query(Correction).filter(Correction.id == correction_id).first()
         if not c:
             session.close()
-            return f"Correction #{correction_id} not found."
+            return f"Feedback #{correction_id} not found."
 
         c.upvotes = (c.upvotes or 0) + 1
         session.commit()
@@ -1504,24 +1592,24 @@ async def upvote_correction(correction_id: int) -> str:
         topic = c.topic
         session.close()
         return (
-            f"Upvoted correction #{correction_id}.\n"
+            f"Upvoted feedback #{correction_id}.\n"
             f"  Topic:   {topic}\n"
             f"  Upvotes: {new_count}"
         )
     except Exception as e:
         session.rollback()
         session.close()
-        return f"Failed to upvote correction: {e}"
+        return f"Failed to upvote feedback: {e}"
 
 
 # ---------------------------------------------------------------------------
-# Tool 11: list_corrections
+# Tool 11: list_feedback (was list_corrections)
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
 @track_usage
-async def list_corrections(topic: str = None, status: str = "active") -> str:
-    """Browse practitioner corrections. Optionally filter by topic and status."""
+async def list_feedback(topic: str = None, status: str = "active", category: str = None) -> str:
+    """Browse practitioner feedback. Optionally filter by topic, status, and category."""
     session = SessionLocal()
     try:
         q = session.query(Correction).filter(Correction.status == status)
@@ -1529,20 +1617,23 @@ async def list_corrections(topic: str = None, status: str = "active") -> str:
         if topic:
             q = q.filter(func.lower(Correction.topic).contains(topic.lower()))
 
+        if category:
+            q = q.filter(Correction.category == category)
+
         corrections = q.order_by(Correction.submitted_at.desc()).limit(50).all()
 
         if not corrections:
             filter_desc = f" for topic '{topic}'" if topic else ""
-            return f"No {status} corrections found{filter_desc}."
+            return f"No {status} feedback found{filter_desc}."
 
         lines = [
-            f"CORRECTIONS (status: {status})",
+            f"FEEDBACK (status: {status}{f', category: {category}' if category else ''})",
             "=" * 40,
         ]
 
         for c in corrections:
             lines.append("")
-            lines.append(f"  [{c.id}] {c.topic}")
+            lines.append(f"  [{c.id}] [{c.category.upper()}] {c.topic}")
             lines.append(f"       {c.correction[:200]}")
             if c.context:
                 lines.append(f"       Context: {c.context[:100]}")
@@ -1553,7 +1644,7 @@ async def list_corrections(topic: str = None, status: str = "active") -> str:
             )
 
         lines.append("")
-        lines.append(f"Total: {len(corrections)} correction(s)")
+        lines.append(f"Total: {len(corrections)} feedback item(s)")
 
     finally:
         session.close()
@@ -1703,10 +1794,10 @@ async def upvote_pitch(pitch_id: int) -> str:
 
 @mcp.tool()
 @track_usage
-async def amend_correction(correction_id: int, reason: str) -> str:
-    """Append an amendment note to a correction (e.g. flag a duplicate or outdated item).
+async def amend_feedback(correction_id: int, reason: str) -> str:
+    """Append an amendment note to feedback (e.g. flag a duplicate or outdated item).
 
-    This is append-only — it does not delete or modify the original correction.
+    This is append-only — it does not delete or modify the original feedback.
     """
     if not reason or not reason.strip():
         return "Amendment reason is required."
@@ -1720,13 +1811,13 @@ async def amend_correction(correction_id: int, reason: str) -> str:
     try:
         correction = session.query(Correction).filter(Correction.id == correction_id).first()
         if not correction:
-            return f"No correction found with ID {correction_id}."
+            return f"No feedback found with ID {correction_id}."
 
         # Rate limit: max 5 amendments per day
         recent = (
             session.query(ToolUsage)
             .filter(
-                ToolUsage.tool_name == "amend_correction",
+                ToolUsage.tool_name.in_(["amend_correction", "amend_feedback"]),
                 ToolUsage.created_at >= datetime.now(timezone.utc) - timedelta(days=1),
             )
             .count()
@@ -1739,7 +1830,7 @@ async def amend_correction(correction_id: int, reason: str) -> str:
         correction.amendments = (correction.amendments or "") + note
         session.commit()
         return (
-            f"Amendment added to correction #{correction_id}: {correction.topic}\n"
+            f"Amendment added to feedback #{correction_id}: {correction.topic}\n"
             f"  Note: {reason}"
         )
     except Exception as e:
@@ -1793,6 +1884,217 @@ async def amend_pitch(pitch_id: int, reason: str) -> str:
     except Exception as e:
         session.rollback()
         return f"Failed to amend: {e}"
+    finally:
+        session.close()
+
+
+# Backwards-compatible aliases — delegate to new feedback tools
+# Use _tool_fn() to unwrap the FunctionTool decorator and call the raw async fn.
+async def submit_correction(topic: str, correction: str, context: str = None) -> str:
+    """[Alias] Use submit_feedback() instead. Submits as category='bug'."""
+    return await _tool_fn(submit_feedback)(topic=topic, correction=correction, context=context, category="bug")
+
+async def upvote_correction(correction_id: int) -> str:
+    """[Alias] Use upvote_feedback() instead."""
+    return await _tool_fn(upvote_feedback)(correction_id=correction_id)
+
+async def list_corrections(topic: str = None, status: str = "active") -> str:
+    """[Alias] Use list_feedback() instead."""
+    return await _tool_fn(list_feedback)(topic=topic, status=status)
+
+async def amend_correction(correction_id: int, reason: str) -> str:
+    """[Alias] Use amend_feedback() instead."""
+    return await _tool_fn(amend_feedback)(correction_id=correction_id, reason=reason)
+
+
+# ---------------------------------------------------------------------------
+# Lab Intelligence tools
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def submit_lab_event(
+    lab: str, event_type: str, title: str,
+    summary: str = None, source_url: str = None, event_date: str = None,
+) -> str:
+    """Record a significant lab event (product launch, model release, capability, API change).
+
+    Use this to curate intelligence about what labs are shipping — from HN posts,
+    blog announcements, or other sources.
+
+    Event types: product_launch, model_launch, capability, api_change, pricing_change, protocol, deprecation, other
+    """
+    VALID_EVENT_TYPES = {
+        "product_launch", "model_launch", "capability", "api_change",
+        "pricing_change", "protocol", "deprecation", "other",
+    }
+    if event_type not in VALID_EVENT_TYPES:
+        return f"Invalid event_type '{event_type}'. Must be one of: {', '.join(sorted(VALID_EVENT_TYPES))}"
+    if not title or len(title) > 300:
+        return "Title is required and must be ≤ 300 characters."
+    if summary and len(summary) > 2000:
+        return "Summary must be ≤ 2000 characters."
+
+    session = SessionLocal()
+    try:
+        lab_obj, suggestions = _find_lab_or_suggest(session, lab)
+        if not lab_obj:
+            return _not_found_msg("Lab", lab, suggestions)
+
+        from app.models import LabEvent
+        from datetime import datetime, timezone
+
+        parsed_date = None
+        if event_date:
+            try:
+                parsed_date = datetime.fromisoformat(event_date.replace("Z", "+00:00"))
+            except ValueError:
+                return f"Invalid event_date format. Use ISO 8601 (e.g., '2026-03-05')."
+        else:
+            parsed_date = datetime.now(timezone.utc)
+
+        event = LabEvent(
+            lab_id=lab_obj.id,
+            event_type=event_type,
+            title=title.strip(),
+            summary=summary.strip() if summary else None,
+            source_url=source_url,
+            event_date=parsed_date,
+        )
+        session.add(event)
+        session.commit()
+        session.refresh(event)
+
+        return (
+            f"Lab event recorded (ID: {event.id}).\n"
+            f"  Lab: {lab_obj.name}\n"
+            f"  Type: {event_type}\n"
+            f"  Title: {title[:100]}\n"
+            f"  Date: {parsed_date.strftime('%Y-%m-%d') if parsed_date else 'now'}"
+        )
+    except Exception as e:
+        return f"Failed to record lab event: {e}"
+    finally:
+        session.close()
+
+
+@mcp.tool()
+@track_usage
+async def list_lab_events(lab: str = None, event_type: str = None, limit: int = 20) -> str:
+    """Browse lab events — product launches, model releases, API changes, etc.
+
+    Optional lab filter (slug or name). Optional event_type filter.
+    """
+    session = SessionLocal()
+    try:
+        from app.models import LabEvent
+
+        q = session.query(LabEvent, Lab.name.label("lab_name")).join(
+            Lab, LabEvent.lab_id == Lab.id
+        )
+
+        if lab:
+            lab_obj, suggestions = _find_lab_or_suggest(session, lab)
+            if not lab_obj:
+                return _not_found_msg("Lab", lab, suggestions)
+            q = q.filter(LabEvent.lab_id == lab_obj.id)
+
+        if event_type:
+            q = q.filter(LabEvent.event_type == event_type)
+
+        events = q.order_by(LabEvent.event_date.desc()).limit(min(limit, 50)).all()
+
+        if not events:
+            return f"No lab events found{f' for {lab}' if lab else ''}."
+
+        lines = [
+            f"LAB EVENTS{f' — {lab}' if lab else ''}",
+            "=" * 60,
+        ]
+
+        for event, lab_name in events:
+            date_str = event.event_date.strftime("%Y-%m-%d") if event.event_date else "n/a"
+            lines.append(
+                f"  {date_str}  [{event.event_type}]  {lab_name}: {event.title}"
+            )
+            if event.summary:
+                lines.append(f"             {event.summary[:120]}")
+            if event.source_url:
+                lines.append(f"             {event.source_url}")
+            lines.append("")
+
+        lines.append(f"Total: {len(events)} event(s)")
+        return "\n".join(lines)
+    finally:
+        session.close()
+
+
+@mcp.tool()
+@track_usage
+async def lab_models(lab: str = None, capability: str = None) -> str:
+    """Browse frontier models by lab. Shows context windows, pricing, and capabilities.
+
+    Optional lab filter (slug or name). Optional capability filter (e.g. 'vision', 'reasoning').
+    """
+    session = SessionLocal()
+    try:
+        from app.models import FrontierModel
+
+        q = session.query(FrontierModel, Lab.name.label("lab_name")).join(
+            Lab, FrontierModel.lab_id == Lab.id
+        ).filter(FrontierModel.status == "active")
+
+        if lab:
+            lab_obj, suggestions = _find_lab_or_suggest(session, lab)
+            if not lab_obj:
+                return _not_found_msg("Lab", lab, suggestions)
+            q = q.filter(FrontierModel.lab_id == lab_obj.id)
+
+        models = q.order_by(Lab.name, FrontierModel.name).all()
+
+        if capability:
+            # Filter in Python since capabilities is JSONB
+            models = [
+                (m, ln) for m, ln in models
+                if m.capabilities and m.capabilities.get(capability)
+            ]
+
+        if not models:
+            return f"No frontier models found{f' for {lab}' if lab else ''}{f' with {capability}' if capability else ''}."
+
+        lines = [
+            "FRONTIER MODELS",
+            "=" * 60,
+        ]
+
+        current_lab = None
+        for model, lab_name in models:
+            if lab_name != current_lab:
+                current_lab = lab_name
+                lines.append("")
+                lines.append(f"{lab_name}")
+                lines.append("-" * 30)
+
+            ctx = f"{model.context_window:,}tok" if model.context_window else "n/a"
+            pricing = ""
+            if model.pricing_input and model.pricing_output:
+                pricing = f"  in: {model.pricing_input}, out: {model.pricing_output}"
+            elif not model.pricing_input and not model.pricing_output:
+                pricing = "  (open weights)"
+
+            caps = ""
+            if model.capabilities:
+                cap_list = [k for k, v in model.capabilities.items() if v]
+                if cap_list:
+                    caps = f"  [{', '.join(cap_list[:5])}]"
+
+            lines.append(
+                f"  {model.name:<30} ctx: {ctx:<14}{pricing}{caps}"
+            )
+
+        lines.append("")
+        lines.append(f"Total: {len(models)} model(s)")
+        return "\n".join(lines)
     finally:
         session.close()
 
@@ -3160,7 +3462,7 @@ async def explain(topic: str = None) -> str:
                     "Call explain('topic_name') for the full explanation.",
                     "",
                     "We publish this so you can tell us where we're wrong.",
-                    "Use submit_correction() to push back on anything.",
+                    "Use submit_feedback() to push back on anything.",
                     "",
                 ]
 
@@ -3197,7 +3499,7 @@ async def explain(topic: str = None) -> str:
                     m["detail"],
                     "",
                     "-" * 60,
-                    "Think we're wrong about something? Use submit_correction()",
+                    "Think we're wrong about something? Use submit_feedback()",
                     "to tell us. We read every one.",
                 ]
                 return "\n".join(lines)
@@ -3462,9 +3764,9 @@ async def topic(query: str) -> str:
         else:
             lines.append("  No matching methodology entries.")
 
-    # 5. CORRECTIONS — community intelligence on this topic
+    # 5. FEEDBACK — community intelligence on this topic
     lines.append("")
-    lines.append("ACTIVE CORRECTIONS")
+    lines.append("ACTIVE FEEDBACK")
     lines.append("-" * 40)
     correction_session = SessionLocal()
     try:
@@ -3483,7 +3785,7 @@ async def topic(query: str) -> str:
                 lines.append(f"  [{c.id}] {c.topic} (upvotes: {c.upvotes})")
                 lines.append(f"       {c.correction[:120]}")
         else:
-            lines.append("  No active corrections on this topic.")
+            lines.append("  No active feedback on this topic.")
     finally:
         correction_session.close()
 
@@ -4320,9 +4622,11 @@ _PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
 
 _TOOL_LIST = [
     about, describe_schema, query, whats_new, project_pulse, lab_pulse,
-    trending, hype_check, submit_correction, upvote_correction,
-    list_corrections, amend_correction, propose_article, list_pitches,
-    upvote_pitch, amend_pitch,
+    trending, hype_check,
+    submit_feedback, upvote_feedback, list_feedback, amend_feedback,
+    submit_correction, upvote_correction, list_corrections, amend_correction,
+    propose_article, list_pitches, upvote_pitch, amend_pitch,
+    submit_lab_event, list_lab_events, lab_models,
     lifecycle_map, hype_landscape, sniff_projects,
     accept_candidate, set_tier, movers, compare, related, market_map,
     radar, explain, topic, scout, hn_pulse, deep_dive,
