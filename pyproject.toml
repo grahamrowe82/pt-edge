@@ -1,0 +1,9 @@
+[project]
+name = "pt-edge"
+version = "0.1.0"
+description = "AI intelligence layer — MCP server for staying current on AI"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"

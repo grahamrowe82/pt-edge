@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Anthropic",
+    "slug": "anthropic",
+    "url": "https://www.anthropic.com",
+    "blog_url": "https://www.anthropic.com/news",
+    "github_org": "anthropics"
+  },
+  {
+    "name": "OpenAI",
+    "slug": "openai",
+    "url": "https://openai.com",
+    "blog_url": "https://openai.com/blog",
+    "github_org": "openai"
+  },
+  {
+    "name": "Google DeepMind",
+    "slug": "google-deepmind",
+    "url": "https://deepmind.google",
+    "blog_url": "https://deepmind.google/discover/blog",
+    "github_org": "google-deepmind"
+  },
+  {
+    "name": "Meta AI",
+    "slug": "meta-ai",
+    "url": "https://ai.meta.com",
+    "blog_url": "https://ai.meta.com/blog",
+    "github_org": "facebookresearch"
+  },
+  {
+    "name": "Mistral AI",
+    "slug": "mistral-ai",
+    "url": "https://mistral.ai",
+    "blog_url": "https://mistral.ai/news",
+    "github_org": "mistralai"
+  },
+  {
+    "name": "Cohere",
+    "slug": "cohere",
+    "url": "https://cohere.com",
+    "blog_url": "https://cohere.com/blog",
+    "github_org": "cohere-ai"
+  },
+  {
+    "name": "Hugging Face",
+    "slug": "hugging-face",
+    "url": "https://huggingface.co",
+    "blog_url": "https://huggingface.co/blog",
+    "github_org": "huggingface"
+  },
+  {
+    "name": "Stability AI",
+    "slug": "stability-ai",
+    "url": "https://stability.ai",
+    "blog_url": "https://stability.ai/news",
+    "github_org": "Stability-AI"
+  },
+  {
+    "name": "Together AI",
+    "slug": "together-ai",
+    "url": "https://www.together.ai",
+    "blog_url": "https://www.together.ai/blog",
+    "github_org": "togethercomputer"
+  },
+  {
+    "name": "Groq",
+    "slug": "groq",
+    "url": "https://groq.com",
+    "blog_url": null,
+    "github_org": "groq"
+  }
+]
