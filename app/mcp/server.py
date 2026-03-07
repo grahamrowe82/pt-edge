@@ -1037,10 +1037,13 @@ async def list_corrections(topic: str = None, status: str = "active") -> str:
 # ---------------------------------------------------------------------------
 
 
-class BearerAuthMiddleware(BaseHTTPMiddleware):
+class TokenAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        auth = request.headers.get("Authorization", "")
-        if auth != f"Bearer {settings.API_TOKEN}":
+        token = request.query_params.get("token", "")
+        if not token:
+            auth = request.headers.get("Authorization", "")
+            token = auth.removeprefix("Bearer ") if auth.startswith("Bearer ") else ""
+        if token != settings.API_TOKEN:
             return Response(status_code=401, content="Unauthorized")
         return await call_next(request)
 
@@ -1048,5 +1051,5 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
 def mount_mcp(app):
     """Mount the MCP server on a FastAPI app at /mcp."""
     mcp_app = mcp.http_app(path="/")
-    mcp_app.add_middleware(BearerAuthMiddleware)
+    mcp_app.add_middleware(TokenAuthMiddleware)
     app.mount("/mcp", mcp_app)
