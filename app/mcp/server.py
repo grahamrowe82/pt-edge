@@ -384,6 +384,8 @@ async def about() -> str:
         "",
         "Project Discovery:",
         "  radar()                          -- velocity alerts + HN buzz for unknowns",
+        "  scout(category, limit)           -- fastest growing projects ranked by stars/day",
+        "  deep_dive(identifier)            -- full project profile from cached data",
         "  sniff_projects(limit)            -- auto-discovered project candidates",
         "  accept_candidate(id, category)   -- promote a candidate to tracked",
         "  topic(query)                     -- what's happening with a topic across ecosystem",
@@ -2738,6 +2740,531 @@ async def topic(query: str) -> str:
     )
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Tool 24: scout — find what's growing fastest
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def scout(category: str = None, limit: int = 15) -> str:
+    """Find projects growing fastest — candidates and small tracked projects ranked by stars/day.
+
+    Uses pre-computed enrichment data from the ingest pipeline (no live API calls).
+    Candidates without enrichment data yet are shown separately.
+    Optional category keyword filters results (e.g. 'agent', 'database', 'mcp').
+    """
+    lines = [
+        "SCOUT — fastest growing projects",
+        "=" * 60,
+        "",
+    ]
+
+    try:
+        with engine.connect() as conn:
+            # ---- Enriched candidates: have repo_created_at from ingest ----
+            candidate_sql = """
+                SELECT id, name, github_owner, github_repo, stars, description,
+                       language, source, discovered_at, repo_created_at,
+                       commit_trend, contributor_count
+                FROM project_candidates
+                WHERE status = 'pending'
+                  AND stars > 100
+                  AND repo_created_at IS NOT NULL
+            """
+            params: dict = {}
+            if category:
+                candidate_sql += """
+                    AND (
+                        name ILIKE '%' || :cat || '%'
+                        OR description ILIKE '%' || :cat || '%'
+                        OR EXISTS (
+                            SELECT 1 FROM unnest(topics) t
+                            WHERE t ILIKE '%' || :cat || '%'
+                        )
+                    )
+                """
+                params["cat"] = category
+            candidate_sql += " ORDER BY stars DESC"
+            candidate_rows = conn.execute(text(candidate_sql), params).fetchall()
+
+            # ---- Unenriched candidates (not yet processed by ingest) ----
+            unenriched_sql = """
+                SELECT id, name, github_owner, github_repo, stars, source
+                FROM project_candidates
+                WHERE status = 'pending'
+                  AND stars > 100
+                  AND repo_created_at IS NULL
+            """
+            unenriched_params: dict = {}
+            if category:
+                unenriched_sql += """
+                    AND (
+                        name ILIKE '%' || :cat || '%'
+                        OR description ILIKE '%' || :cat || '%'
+                        OR EXISTS (
+                            SELECT 1 FROM unnest(topics) t
+                            WHERE t ILIKE '%' || :cat || '%'
+                        )
+                    )
+                """
+                unenriched_params["cat"] = category
+            unenriched_sql += " ORDER BY stars DESC LIMIT 10"
+            unenriched_rows = conn.execute(text(unenriched_sql), unenriched_params).fetchall()
+
+        # ---- Build velocity entries from cached data ----
+        velocity_entries = []  # (stars_per_day, name, stars, age_days, source_label, owner_repo)
+
+        for r in candidate_rows:
+            m = r._mapping
+            stars = int(m["stars"] or 0)
+            name = m["name"] or m["github_repo"] or "?"
+            owner_repo = f"{m['github_owner']}/{m['github_repo']}"
+            source = f"candidate [{m['source']}]"
+            age = max(1, (datetime.now(timezone.utc) - m["repo_created_at"]).days)
+            spd = stars / age
+            velocity_entries.append((spd, name, stars, age, source, owner_repo))
+
+        # ---- Sort and display ----
+        velocity_entries.sort(reverse=True)
+        display = velocity_entries[:limit]
+
+        lines.append("FASTEST GROWING (by stars/day)")
+        lines.append("-" * 60)
+
+        if display:
+            lines.append(
+                f"  {'#':<3} {'Name':<28} {'Stars':>7}  "
+                f"{'Age':>6}  {'★/day':>7}  {'Source':<20}"
+            )
+            lines.append("  " + "-" * 58)
+
+            for i, (spd, name, stars, age, source, owner_repo) in enumerate(
+                display, 1
+            ):
+                name_str = name[:26] if len(name) > 26 else name
+                lines.append(
+                    f"  {i:<3} {name_str:<28} {_fmt_number(stars):>7}  "
+                    f"{age:>4}d  {spd:>7.1f}  {source:<20}"
+                )
+                lines.append(f"      github.com/{owner_repo}")
+        else:
+            lines.append("  No candidates or small projects found.")
+            if category:
+                lines.append(f"  Try without the category filter, or a broader term.")
+
+        # ---- Commit intensity (local DB only) ----
+        lines.append("")
+        lines.append("HIGHEST COMMIT INTENSITY (commits_30d / stars × 1000)")
+        lines.append("-" * 60)
+
+        with engine.connect() as conn:
+            intensity_sql = """
+                SELECT p.name, p.category, gs.stars, gs.commits_30d,
+                       ROUND(gs.commits_30d::numeric / GREATEST(gs.stars, 1) * 1000, 1) as ratio
+                FROM projects p
+                JOIN github_snapshots gs ON gs.project_id = p.id
+                WHERE gs.commits_30d > 20 AND gs.stars < 50000
+            """
+            intensity_params: dict = {}
+            if category:
+                intensity_sql += """
+                    AND (
+                        p.name ILIKE '%' || :cat || '%'
+                        OR p.category ILIKE '%' || :cat || '%'
+                    )
+                """
+                intensity_params["cat"] = category
+            intensity_sql += " ORDER BY ratio DESC LIMIT 10"
+            intensity_rows = conn.execute(
+                text(intensity_sql), intensity_params
+            ).fetchall()
+
+        if intensity_rows:
+            lines.append(
+                f"  {'Ratio':>6}  {'Commits':>8}  {'Stars':>7}  {'Project':<30}"
+            )
+            lines.append("  " + "-" * 55)
+            for r in intensity_rows:
+                m = r._mapping
+                lines.append(
+                    f"  {float(m['ratio']):>6.1f}  {int(m['commits_30d']):>8}  "
+                    f"{_fmt_number(m['stars']):>7}  "
+                    f"[{m['category']}] {m['name']}"
+                )
+        else:
+            lines.append("  No projects with sufficient commit data yet.")
+
+        # ---- Awaiting enrichment ----
+        if unenriched_rows:
+            lines.append("")
+            lines.append("AWAITING ENRICHMENT (no velocity data yet)")
+            lines.append("-" * 60)
+            lines.append(
+                f"  {'Name':<28} {'Stars':>7}  {'Source':<15}"
+            )
+            lines.append("  " + "-" * 52)
+            for r in unenriched_rows:
+                m = r._mapping
+                name = (m["name"] or m["github_repo"] or "?")[:26]
+                lines.append(
+                    f"  {name:<28} {_fmt_number(m['stars']):>7}  "
+                    f"{m['source']:<15}"
+                )
+            lines.append(
+                f"  ({len(unenriched_rows)} candidates not yet enriched — "
+                f"next ingest run will compute velocity)"
+            )
+
+        # ---- Scout notes ----
+        lines.append("")
+        lines.append("SCOUT NOTES")
+        lines.append("-" * 60)
+
+        if display:
+            top = display[0]
+            lines.append(
+                f"  • Fastest: {top[1]} at {top[0]:.1f} ★/day "
+                f"({_fmt_number(top[2])} stars in {top[3]} days)"
+            )
+
+            # Count by source type
+            candidate_count = sum(
+                1 for _, _, _, _, s, _ in display if "candidate" in s
+            )
+            if candidate_count:
+                lines.append(
+                    f"  • {candidate_count} of top {len(display)} are untracked "
+                    f"candidates — consider promoting with accept_candidate()"
+                )
+
+            # Highlight any > 50 stars/day
+            rockets = [
+                (n, s) for s, n, _, _, _, _ in display if s > 50
+            ]
+            if rockets:
+                names = ", ".join(n for n, _ in rockets)
+                lines.append(f"  • 🚀 Exponential: {names} (>50 ★/day)")
+
+        lines.append("")
+        lines.append(
+            f"  Use deep_dive('owner/repo') for a full profile on any result."
+        )
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error running scout: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Tool 25: deep_dive — full profile from PT-Edge data
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def deep_dive(identifier: str) -> str:
+    """Full profile of any project or candidate using PT-Edge's cached data.
+    No live API calls — all data comes from ingestion pipeline.
+
+    Accepts owner/repo (e.g. 'microsoft/Trellis'), a tracked project name/slug,
+    or a candidate name. Shows different detail levels depending on what
+    PT-Edge knows about the project.
+    """
+    lines = []
+
+    try:
+        with engine.connect() as conn:
+            # ---- Resolve identifier ----
+            proj_row = None
+            cand_row = None
+
+            if "/" in identifier:
+                owner, repo = identifier.split("/", 1)
+                owner, repo = owner.strip(), repo.strip()
+
+                proj_row = conn.execute(text("""
+                    SELECT id, name, slug, category, description, url,
+                           github_owner, github_repo, pypi_package, npm_package,
+                           hf_model_id, distribution_type, topics,
+                           is_active, tier_override, created_at
+                    FROM projects
+                    WHERE github_owner ILIKE :owner AND github_repo ILIKE :repo
+                """), {"owner": owner, "repo": repo}).fetchone()
+
+                if not proj_row:
+                    cand_row = conn.execute(text("""
+                        SELECT id, name, github_url, github_owner, github_repo,
+                               description, stars, stars_previous, language,
+                               source, source_detail, topics, status,
+                               discovered_at, repo_created_at,
+                               commit_trend, contributor_count
+                        FROM project_candidates
+                        WHERE github_owner ILIKE :owner AND github_repo ILIKE :repo
+                    """), {"owner": owner, "repo": repo}).fetchone()
+            else:
+                # Try tracked project first
+                session = SessionLocal()
+                try:
+                    proj, suggestions = await _find_project_or_suggest(
+                        session, identifier
+                    )
+                    if proj:
+                        proj_row = conn.execute(text("""
+                            SELECT id, name, slug, category, description, url,
+                                   github_owner, github_repo, pypi_package, npm_package,
+                                   hf_model_id, distribution_type, topics,
+                                   is_active, tier_override, created_at
+                            FROM projects WHERE id = :pid
+                        """), {"pid": proj.id}).fetchone()
+                finally:
+                    session.close()
+
+                # Try candidate if not found
+                if not proj_row:
+                    cand_row = conn.execute(text("""
+                        SELECT id, name, github_url, github_owner, github_repo,
+                               description, stars, stars_previous, language,
+                               source, source_detail, topics, status,
+                               discovered_at, repo_created_at,
+                               commit_trend, contributor_count
+                        FROM project_candidates
+                        WHERE name ILIKE :name OR github_repo ILIKE :name
+                        ORDER BY stars DESC NULLS LAST
+                        LIMIT 1
+                    """), {"name": f"%{identifier}%"}).fetchone()
+
+            # ---- Tracked project deep dive ----
+            if proj_row:
+                p = proj_row._mapping
+
+                lines.append(f"DEEP DIVE: {p['name']}")
+                lines.append("=" * 60)
+                if p["description"]:
+                    lines.append(f"  {p['description']}")
+                lines.append("")
+
+                # Identity
+                lines.append("IDENTITY")
+                lines.append("-" * 40)
+                lines.append(f"  Slug:        {p['slug']}")
+                lines.append(f"  Category:    {p['category']}")
+                if p.get("tier_override"):
+                    lines.append(f"  Tier:        {_fmt_tier(p['tier_override'])}")
+                lines.append(f"  Dist type:   {p.get('distribution_type') or 'package'}")
+                if p.get("github_owner") and p.get("github_repo"):
+                    lines.append(f"  GitHub:      github.com/{p['github_owner']}/{p['github_repo']}")
+                if p.get("pypi_package"):
+                    lines.append(f"  PyPI:        {p['pypi_package']}")
+                if p.get("npm_package"):
+                    lines.append(f"  npm:         {p['npm_package']}")
+                if p.get("hf_model_id"):
+                    lines.append(f"  HF model:    {p['hf_model_id']}")
+                if p.get("url"):
+                    lines.append(f"  URL:         {p['url']}")
+                if p.get("topics"):
+                    lines.append(f"  Topics:      {', '.join(p['topics'][:10])}")
+
+                # Latest GitHub snapshot
+                snap = conn.execute(text("""
+                    SELECT stars, forks, open_issues, watchers,
+                           commits_30d, contributors, last_commit_at, license,
+                           snapshot_date
+                    FROM github_snapshots
+                    WHERE project_id = :pid
+                    ORDER BY snapshot_date DESC LIMIT 1
+                """), {"pid": p["id"]}).fetchone()
+
+                if snap:
+                    s = snap._mapping
+                    lines.append("")
+                    lines.append(f"GITHUB METRICS (snapshot {s['snapshot_date']})")
+                    lines.append("-" * 40)
+                    lines.append(f"  Stars:         {_fmt_number(s['stars'])}")
+                    lines.append(f"  Forks:         {_fmt_number(s['forks'])}")
+                    lines.append(f"  Open issues:   {_fmt_number(s['open_issues'])}")
+                    lines.append(f"  Contributors:  {_fmt_number(s['contributors'])}")
+                    lines.append(f"  Commits (30d): {_fmt_number(s['commits_30d'])}")
+                    if s.get("license"):
+                        lines.append(f"  License:       {s['license']}")
+                    if s.get("last_commit_at"):
+                        lines.append(f"  Last commit:   {_fmt_date(s['last_commit_at'])}")
+
+                    # Growth signals
+                    stars = int(s["stars"] or 0)
+                    if stars > 0:
+                        lines.append("")
+                        lines.append("GROWTH SIGNALS")
+                        lines.append("-" * 40)
+
+                        forks = int(s["forks"] or 0)
+                        commits = int(s["commits_30d"] or 0)
+                        lines.append(f"  Fork ratio:    {forks / stars * 100:.1f}%")
+                        if commits > 0:
+                            intensity = commits / max(stars, 1) * 1000
+                            lines.append(f"  Commit ratio:  {intensity:.1f} (commits_30d / stars × 1000)")
+
+                    # Star history (last 7 snapshots)
+                    history = conn.execute(text("""
+                        SELECT snapshot_date, stars
+                        FROM github_snapshots
+                        WHERE project_id = :pid
+                        ORDER BY snapshot_date DESC LIMIT 7
+                    """), {"pid": p["id"]}).fetchall()
+
+                    if len(history) > 1:
+                        lines.append("")
+                        lines.append("STAR HISTORY (recent snapshots)")
+                        lines.append("-" * 40)
+                        for h in reversed(history):
+                            hm = h._mapping
+                            lines.append(f"  {hm['snapshot_date']}  {_fmt_number(hm['stars'])}")
+
+                # Downloads
+                dl = conn.execute(text("""
+                    SELECT source, downloads_daily, downloads_weekly, downloads_monthly,
+                           snapshot_date
+                    FROM download_snapshots
+                    WHERE project_id = :pid
+                    ORDER BY snapshot_date DESC LIMIT 3
+                """), {"pid": p["id"]}).fetchall()
+
+                if dl:
+                    lines.append("")
+                    lines.append("DOWNLOADS")
+                    lines.append("-" * 40)
+                    for d in dl:
+                        dm = d._mapping
+                        lines.append(
+                            f"  [{dm['source']}] {dm['snapshot_date']}  "
+                            f"daily={_fmt_number(dm['downloads_daily'])}  "
+                            f"weekly={_fmt_number(dm['downloads_weekly'])}  "
+                            f"monthly={_fmt_number(dm['downloads_monthly'])}"
+                        )
+
+                # Recent releases
+                rels = conn.execute(text("""
+                    SELECT version, title, released_at, source
+                    FROM releases
+                    WHERE project_id = :pid
+                    ORDER BY released_at DESC LIMIT 5
+                """), {"pid": p["id"]}).fetchall()
+
+                if rels:
+                    lines.append("")
+                    lines.append("RECENT RELEASES")
+                    lines.append("-" * 40)
+                    for r in rels:
+                        rm = r._mapping
+                        ver = _fmt_version(rm["version"])
+                        rel_date = _fmt_date(rm["released_at"])[:10]
+                        title = (rm["title"] or "")[:40]
+                        lines.append(f"  {ver:<20} {rel_date}  {title}")
+
+                # HN mentions
+                hn = conn.execute(text("""
+                    SELECT title, points, num_comments, posted_at
+                    FROM hn_posts
+                    WHERE project_id = :pid
+                    ORDER BY posted_at DESC LIMIT 5
+                """), {"pid": p["id"]}).fetchall()
+
+                if hn:
+                    lines.append("")
+                    lines.append("HACKER NEWS MENTIONS")
+                    lines.append("-" * 40)
+                    for h in hn:
+                        hm = h._mapping
+                        lines.append(
+                            f"  {_fmt_date(hm['posted_at'])[:10]}  "
+                            f"{hm['points']}pts  {hm['num_comments']}c  "
+                            f"{(hm['title'] or '')[:50]}"
+                        )
+
+                lines.append("")
+                lines.append("STATUS: Tracked project")
+                lines.append(f"  Active: {'yes' if p['is_active'] else 'no'}")
+                lines.append(f"  Tracked since: {_fmt_date(p['created_at'])[:10]}")
+
+            # ---- Candidate deep dive ----
+            elif cand_row:
+                c = cand_row._mapping
+
+                name = c["name"] or c["github_repo"] or "Unknown"
+                lines.append(f"DEEP DIVE: {name}")
+                lines.append("=" * 60)
+                if c.get("description"):
+                    lines.append(f"  {c['description']}")
+                lines.append("")
+
+                # Identity
+                lines.append("IDENTITY")
+                lines.append("-" * 40)
+                lines.append(f"  GitHub:      github.com/{c['github_owner']}/{c['github_repo']}")
+                lines.append(f"  Stars:       {_fmt_number(c['stars'])}")
+                if c.get("stars_previous") is not None:
+                    delta = (c["stars"] or 0) - (c["stars_previous"] or 0)
+                    lines.append(f"  Star delta:  {_fmt_delta(delta)} (since last check)")
+                if c.get("language"):
+                    lines.append(f"  Language:    {c['language']}")
+                lines.append(f"  Source:      {c['source']}")
+                if c.get("source_detail"):
+                    lines.append(f"  Source ref:  {c['source_detail'][:80]}")
+                if c.get("topics"):
+                    lines.append(f"  Topics:      {', '.join(c['topics'][:10])}")
+                lines.append(f"  Discovered:  {_fmt_date(c['discovered_at'])[:10]}")
+
+                # Growth signals (from enrichment)
+                if c.get("repo_created_at"):
+                    lines.append("")
+                    lines.append("GROWTH SIGNALS")
+                    lines.append("-" * 40)
+
+                    age_days = max(1, (datetime.now(timezone.utc) - c["repo_created_at"]).days)
+                    stars = int(c["stars"] or 0)
+                    spd = stars / age_days
+                    lines.append(f"  Repo created:    {_fmt_date(c['repo_created_at'])[:10]}")
+                    lines.append(f"  Age:             {age_days:,} days")
+                    lines.append(f"  Stars/day:       {spd:.1f}")
+
+                    if c.get("commit_trend") is not None:
+                        lines.append(f"  Commits (30d):   {_fmt_number(c['commit_trend'])}")
+                        if stars > 0:
+                            intensity = c["commit_trend"] / max(stars, 1) * 1000
+                            lines.append(f"  Commit ratio:    {intensity:.1f} (commits_30d / stars × 1000)")
+
+                    if c.get("contributor_count") is not None:
+                        lines.append(f"  Contributors:    {_fmt_number(c['contributor_count'])}")
+                else:
+                    lines.append("")
+                    lines.append("GROWTH SIGNALS")
+                    lines.append("-" * 40)
+                    lines.append("  Not yet enriched — next ingest run will compute velocity data.")
+
+                # Status
+                lines.append("")
+                lines.append(f"STATUS: Candidate ({c['status']})")
+                if c["status"] == "pending":
+                    lines.append(
+                        f"  Promote with: accept_candidate({c['id']}, '<category>')"
+                    )
+                    lines.append(
+                        f"  Dismiss with: reject_candidate({c['id']})"
+                    )
+
+            # ---- Not found ----
+            else:
+                return (
+                    f"Could not find '{identifier}' in tracked projects or candidates.\n"
+                    f"Try: deep_dive('owner/repo'), a project slug, or a candidate name.\n"
+                    f"Use search('keyword') to find projects, or scout() to see candidates."
+                )
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error running deep_dive: {e}"
 
 
 # ---------------------------------------------------------------------------

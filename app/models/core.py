@@ -72,3 +72,6 @@ class ProjectCandidate(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")
     topics: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    repo_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    commit_trend: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    contributor_count: Mapped[int | None] = mapped_column(Integer, nullable=True)

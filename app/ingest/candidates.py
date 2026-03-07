@@ -29,7 +29,13 @@ MIN_AGE = timedelta(hours=24)
 async def _rescore_candidate(
     client: httpx.AsyncClient, candidate: dict, semaphore: asyncio.Semaphore,
 ) -> dict | None:
-    """Fetch current star count for a candidate repo."""
+    """Fetch current star count and enrichment data for a candidate repo.
+
+    Enrichment (created_at, commit_trend, contributor_count) is fetched
+    once and cached so MCP tools don't need live API calls per-request.
+    """
+    from app.ingest.github import fetch_commit_activity, fetch_contributor_count
+
     owner = candidate.get("github_owner")
     repo = candidate.get("github_repo")
     if not owner or not repo:
@@ -51,11 +57,41 @@ async def _rescore_candidate(
     new_stars = data.get("stargazers_count", 0)
     old_stars = candidate.get("stars") or 0
 
-    return {
+    result = {
         "id": candidate["id"],
         "stars_previous": old_stars,
         "stars": new_stars,
     }
+
+    # Enrichment: repo_created_at (always available from repo response)
+    created_str = data.get("created_at")
+    if created_str:
+        try:
+            result["repo_created_at"] = datetime.fromisoformat(
+                created_str.replace("Z", "+00:00")
+            )
+        except (ValueError, TypeError):
+            pass
+
+    # Enrichment: commit_trend + contributor_count (skip if already cached)
+    needs_enrichment = (
+        candidate.get("repo_created_at") is None
+        or candidate.get("commit_trend") is None
+    )
+    if needs_enrichment:
+        async with semaphore:
+            try:
+                commit_trend = await fetch_commit_activity(client, owner, repo)
+                result["commit_trend"] = commit_trend
+            except Exception:
+                pass
+            try:
+                contrib = await fetch_contributor_count(client, owner, repo)
+                result["contributor_count"] = contrib
+            except Exception:
+                pass
+
+    return result
 
 
 async def ingest_candidate_velocity() -> dict:
@@ -66,7 +102,8 @@ async def ingest_candidate_velocity() -> dict:
     # Get pending candidates old enough to have a baseline
     with engine.connect() as conn:
         rows = conn.execute(text("""
-            SELECT id, github_owner, github_repo, stars
+            SELECT id, github_owner, github_repo, stars,
+                   repo_created_at, commit_trend
             FROM project_candidates
             WHERE status = 'pending'
               AND discovered_at < :cutoff
@@ -101,15 +138,26 @@ async def ingest_candidate_velocity() -> dict:
     if updates:
         with engine.connect() as conn:
             for u in updates:
-                conn.execute(text("""
+                # Build dynamic SET clause — always update stars, conditionally update enrichment
+                set_parts = [
+                    "stars_previous = :stars_previous",
+                    "stars = :stars",
+                    "stars_updated_at = NOW()",
+                ]
+                if "repo_created_at" in u:
+                    set_parts.append("repo_created_at = :repo_created_at")
+                if "commit_trend" in u:
+                    set_parts.append("commit_trend = :commit_trend")
+                if "contributor_count" in u:
+                    set_parts.append("contributor_count = :contributor_count")
+
+                conn.execute(text(f"""
                     UPDATE project_candidates
-                    SET stars_previous = :stars_previous,
-                        stars = :stars,
-                        stars_updated_at = NOW()
+                    SET {', '.join(set_parts)}
                     WHERE id = :id
                 """), u)
             conn.commit()
-        logger.info(f"Updated {len(updates)} candidate star counts")
+        logger.info(f"Updated {len(updates)} candidate star counts + enrichment")
 
     # Log sync
     session = SessionLocal()
