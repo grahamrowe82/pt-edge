@@ -134,18 +134,25 @@ def _safe_mv_query(conn, sql, params=None):
         raise
 
 
-async def _semantic_project_search(query_text: str, limit: int = 5) -> list[dict]:
-    """Find projects by semantic similarity. Returns [{slug, name, similarity}, ...]"""
+async def _semantic_project_search(
+    query_text: str, limit: int = 5,
+) -> tuple[list[dict], str | None]:
+    """Find projects by semantic similarity.
+
+    Returns (results, error_reason).
+    - results: [{slug, name, description, category, similarity}, ...]
+    - error_reason: human-readable string if search couldn't run, else None
+    """
     from app.embeddings import is_enabled, embed_one
 
     if not is_enabled():
         logger.warning("Semantic search skipped: OPENAI_API_KEY not set")
-        return []
+        return [], "OPENAI_API_KEY not configured on this server"
 
     vec = await embed_one(query_text)
     if vec is None:
         logger.warning("Semantic search skipped: embed_one() returned None (API call failed)")
-        return []
+        return [], "Embedding API call failed (check server logs for details)"
 
     try:
         with engine.connect() as conn:
@@ -167,10 +174,10 @@ async def _semantic_project_search(query_text: str, limit: int = 5) -> list[dict
                     "similarity": round(float(r._mapping["similarity"]), 3),
                 }
                 for r in rows
-            ]
+            ], None
     except Exception as e:
         logger.error(f"Semantic search error: {e}")
-        return []
+        return [], f"Database query failed: {e}"
 
 
 async def _find_project_or_suggest(session: Session, identifier: str) -> tuple[Project | None, list[str]]:
@@ -206,7 +213,7 @@ async def _find_project_or_suggest(session: Session, identifier: str) -> tuple[P
             return matches[0], []
         return None, [m.slug for m in matches]
     # 5. Semantic fallback — find conceptually related projects
-    semantic = await _semantic_project_search(identifier, limit=3)
+    semantic, _err = await _semantic_project_search(identifier, limit=3)
     if semantic:
         if len(semantic) == 1:
             match = session.query(Project).filter(Project.slug == semantic[0]["slug"]).first()
@@ -3190,7 +3197,10 @@ async def explain(topic: str = None) -> str:
 
             # Semantic fallback — find methodology entries by meaning
             from app.embeddings import is_enabled, embed_one
-            if is_enabled():
+            embed_err = None
+            if not is_enabled():
+                embed_err = "OPENAI_API_KEY not configured on this server"
+            else:
                 vec = await embed_one(topic.strip())
                 if vec is not None:
                     sem_rows = conn.execute(text("""
@@ -3216,11 +3226,14 @@ async def explain(topic: str = None) -> str:
                             lines.append(f"    {sm['summary'][:100]}...")
                             lines.append("")
                         return "\n".join(lines)
+                else:
+                    embed_err = "Embedding API call failed (check server logs)"
 
-            return (
-                f"No methodology entry found for '{topic}'. "
-                f"Call explain() with no arguments to see all available topics."
-            )
+            no_match = f"No methodology entry found for '{topic}'."
+            if embed_err:
+                no_match += f"\n⚠ Semantic search unavailable: {embed_err}"
+            no_match += "\nCall explain() with no arguments to see all available topics."
+            return no_match
 
     except Exception as e:
         return f"Error querying methodology: {e}"
@@ -3247,28 +3260,18 @@ async def topic(query: str) -> str:
     hn_posts = []
 
     # 1. TRACKED PROJECTS — semantic search
-    semantic_results = await _semantic_project_search(query, limit=10)
+    semantic_results, embed_error = await _semantic_project_search(query, limit=10)
 
     lines.append("")
     lines.append("TRACKED PROJECTS (by semantic similarity)")
     lines.append("-" * 40)
 
-    if semantic_results:
-        for r in semantic_results:
-            desc = (r.get("description") or "")[:80]
-            lines.append(
-                f"  [{r['category']}] {r['name']:<28} "
-                f"(similarity: {r['similarity']:.0%})  {desc}"
-            )
-    else:
-        # Surface why semantic search didn't work
-        from app.embeddings import is_enabled as _emb_enabled
-        if not _emb_enabled():
-            lines.append("  ⚠ Semantic search unavailable (OPENAI_API_KEY not set on server).")
-            lines.append("  Falling back to keyword matching.")
-            lines.append("")
+    if embed_error:
+        lines.append(f"  ⚠ Semantic search unavailable: {embed_error}")
+        lines.append("  Falling back to keyword matching.")
+        lines.append("")
 
-        # Fallback to keyword search if no embeddings
+        # Fallback to keyword search
         session = SessionLocal()
         try:
             keyword_matches = session.query(Project).filter(
@@ -3284,6 +3287,15 @@ async def topic(query: str) -> str:
                 lines.append("  No matching tracked projects found.")
         finally:
             session.close()
+    elif semantic_results:
+        for r in semantic_results:
+            desc = (r.get("description") or "")[:80]
+            lines.append(
+                f"  [{r['category']}] {r['name']:<28} "
+                f"(similarity: {r['similarity']:.0%})  {desc}"
+            )
+    else:
+        lines.append("  No matching tracked projects found.")
 
     # Also search by topic array
     try:
@@ -3386,9 +3398,12 @@ async def topic(query: str) -> str:
     lines.append("RELATED METHODOLOGY")
     lines.append("-" * 40)
     meth_found = False
+    meth_embed_err = None
     try:
         from app.embeddings import is_enabled, embed_one
-        if is_enabled():
+        if not is_enabled():
+            meth_embed_err = "OPENAI_API_KEY not configured on this server"
+        else:
             vec = await embed_one(query)
             if vec:
                 with engine.connect() as conn:
@@ -3407,10 +3422,15 @@ async def topic(query: str) -> str:
                             f"  explain('{m['topic']}')  — {m['title']} "
                             f"(similarity: {float(m['similarity']):.0%})"
                         )
+            else:
+                meth_embed_err = "Embedding API call failed (check server logs)"
     except Exception as e:
         logger.debug(f"Methodology search error: {e}")
     if not meth_found:
-        lines.append("  No matching methodology entries.")
+        if meth_embed_err:
+            lines.append(f"  ⚠ Semantic search unavailable: {meth_embed_err}")
+        else:
+            lines.append("  No matching methodology entries.")
 
     # 5. CORRECTIONS — community intelligence on this topic
     lines.append("")
