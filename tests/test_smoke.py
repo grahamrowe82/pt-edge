@@ -15,6 +15,12 @@ def test_mcp_server_imports():
     assert len(_TOOLS) > 0
 
 
+def test_hn_pulse_registered():
+    """hn_pulse tool is registered in the tool list."""
+    from app.mcp.server import _TOOLS
+    assert "hn_pulse" in _TOOLS
+
+
 def test_tool_definitions_build():
     """Tool definitions build correctly for JSON-RPC endpoint."""
     from app.mcp.server import _tool_definitions

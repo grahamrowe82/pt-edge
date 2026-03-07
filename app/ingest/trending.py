@@ -18,6 +18,8 @@ TOPICS = [
     "generative-ai", "large-language-model",
     "ai-agent", "chatbot", "autonomous-agent", "mcp",
     "rag", "vector-database",
+    "mcp-server", "model-context-protocol",
+    "ai-security", "llm-security",
 ]
 
 
