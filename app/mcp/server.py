@@ -95,7 +95,12 @@ def _fmt_version(version):
         version = version.split("==", 1)[1]
     elif "@" in version and not version.startswith("@"):
         version = version.split("@", 1)[1]
-    return f"v{version.lstrip('v')}"
+    version = version.lstrip("v")
+    # Only prepend 'v' if it starts with a digit (a version number)
+    # Avoids "vchart-1.9.9" for non-semver tags like "chart-1.9.9"
+    if version and version[0].isdigit():
+        return f"v{version}"
+    return version
 
 
 def _fmt_ratio(val):
@@ -321,6 +326,12 @@ async def about() -> str:
         "  project_pulse(name)              -- everything about one project",
         "  lab_pulse(name)                  -- what a lab is shipping",
         "  hype_check(project)              -- stars vs downloads reality check",
+        "",
+        "Comparative Analysis:",
+        "  compare(projects)                -- side-by-side metrics for 2-5 projects",
+        "  movers(window, limit)            -- acceleration/deceleration detector",
+        "  related(project)                 -- HN co-occurrence analysis",
+        "  market_map()                     -- category concentration + power law",
         "",
         "Project Discovery:",
         "  sniff_projects(limit)            -- auto-discovered project candidates",
@@ -1068,6 +1079,35 @@ async def hype_check(project: str) -> str:
                 f"  Bucket:             {bucket}",
                 "",
             ])
+
+            # Multi-source download breakdown
+            try:
+                with engine.connect() as dl_conn:
+                    source_rows = dl_conn.execute(text("""
+                        SELECT source, downloads_monthly
+                        FROM (
+                            SELECT DISTINCT ON (source)
+                                source, downloads_monthly
+                            FROM download_snapshots
+                            WHERE project_id = :pid
+                            ORDER BY source, snapshot_date DESC
+                        ) latest_per_source
+                        ORDER BY downloads_monthly DESC
+                    """), {"pid": proj.id}).fetchall()
+
+                    if len(source_rows) > 1:
+                        lines.append("DOWNLOAD SOURCES")
+                        lines.append("-" * 30)
+                        src_total = 0
+                        for sr in source_rows:
+                            src_name = sr[0] or "unknown"
+                            src_dl = int(sr[1] or 0)
+                            src_total += src_dl
+                            lines.append(f"  {src_name + ':':<16} {_fmt_number(src_dl)}/mo")
+                        lines.append(f"  {'Total:':<16} {_fmt_number(src_total)}/mo")
+                        lines.append("")
+            except Exception:
+                pass  # Non-critical — skip if download_snapshots query fails
 
             # Interpretation
             lines.append("INTERPRETATION")
@@ -1879,6 +1919,219 @@ async def related(project: str) -> str:
 
     except Exception as e:
         return f"Error analyzing related projects: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Tool 20: market_map — category concentration + power law
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def market_map() -> str:
+    """Category concentration, power law distribution, and lab dominance across all tracked projects."""
+    try:
+        with engine.connect() as conn:
+            # Pull project-level summary data
+            rows = _safe_mv_query(conn, """
+                SELECT
+                    s.name, s.slug, s.category, s.tier,
+                    s.stars, s.forks, s.monthly_downloads,
+                    s.commits_30d,
+                    p.lab_id
+                FROM mv_project_summary s
+                JOIN projects p ON p.id = s.project_id
+                ORDER BY s.monthly_downloads DESC NULLS LAST
+            """)
+
+            if not rows:
+                return "No summary data available. Materialized views may need refreshing."
+
+            # Lab names
+            lab_rows = conn.execute(text("SELECT id, name FROM labs")).fetchall()
+            lab_names = {r[0]: r[1] for r in lab_rows}
+
+        lines = [
+            "MARKET MAP",
+            "=" * 70,
+            "",
+        ]
+
+        # ------------------------------------------------------------------
+        # CATEGORY CONCENTRATION
+        # ------------------------------------------------------------------
+        from collections import defaultdict
+        cat_data: dict[str, list] = defaultdict(list)
+        for r in rows:
+            cat = r.get("category") or "uncategorized"
+            cat_data[cat].append(r)
+
+        lines.append("CATEGORY CONCENTRATION")
+        lines.append("-" * 70)
+        lines.append(
+            f"  {'Category':<16} {'#Proj':>5}  {'Total DL/mo':>14}  "
+            f"{'#1 Project':<22} {'#1 Share':>8}  {'Top 3':>6}"
+        )
+        lines.append("  " + "-" * 68)
+
+        # Sort categories by total downloads descending
+        cat_totals = []
+        for cat, projs in cat_data.items():
+            total = sum(int(p.get("monthly_downloads") or 0) for p in projs)
+            cat_totals.append((cat, projs, total))
+        cat_totals.sort(key=lambda x: x[2], reverse=True)
+
+        for cat, projs, total in cat_totals:
+            sorted_projs = sorted(projs, key=lambda p: int(p.get("monthly_downloads") or 0), reverse=True)
+            top1 = sorted_projs[0]
+            top1_dl = int(top1.get("monthly_downloads") or 0)
+            top1_share = (top1_dl / total * 100) if total > 0 else 0
+            top3_dl = sum(int(p.get("monthly_downloads") or 0) for p in sorted_projs[:3])
+            top3_share = (top3_dl / total * 100) if total > 0 else 0
+            top1_name = top1.get("name", "?")
+            if len(top1_name) > 20:
+                top1_name = top1_name[:19] + "…"
+            lines.append(
+                f"  {cat:<16} {len(projs):>5}  {_fmt_number(total):>14}  "
+                f"{top1_name:<22} {top1_share:>7.1f}%  {top3_share:>5.1f}%"
+            )
+
+        # ------------------------------------------------------------------
+        # POWER LAW
+        # ------------------------------------------------------------------
+        all_dl = [int(r.get("monthly_downloads") or 0) for r in rows]
+        grand_total = sum(all_dl)
+
+        lines.append("")
+        lines.append("POWER LAW")
+        lines.append("-" * 70)
+
+        if grand_total > 0:
+            for n in [5, 10, 20]:
+                top_n = sum(all_dl[:n]) if len(all_dl) >= n else sum(all_dl)
+                pct = top_n / grand_total * 100
+                lines.append(f"  Top {n:<3} = {pct:>5.1f}% of {_fmt_number(grand_total)} total monthly downloads")
+        else:
+            lines.append("  No download data available.")
+
+        # ------------------------------------------------------------------
+        # LAB DOMINANCE
+        # ------------------------------------------------------------------
+        lab_agg: dict[int, dict] = defaultdict(lambda: {"projects": 0, "stars": 0, "downloads": 0, "commits": 0})
+        indie_agg = {"projects": 0, "stars": 0, "downloads": 0, "commits": 0}
+
+        for r in rows:
+            lab_id = r.get("lab_id")
+            stars = int(r.get("stars") or 0)
+            dl = int(r.get("monthly_downloads") or 0)
+            commits = int(r.get("commits_30d") or 0)
+            if lab_id:
+                lab_agg[lab_id]["projects"] += 1
+                lab_agg[lab_id]["stars"] += stars
+                lab_agg[lab_id]["downloads"] += dl
+                lab_agg[lab_id]["commits"] += commits
+            else:
+                indie_agg["projects"] += 1
+                indie_agg["stars"] += stars
+                indie_agg["downloads"] += dl
+                indie_agg["commits"] += commits
+
+        lines.append("")
+        lines.append("LAB DOMINANCE")
+        lines.append("-" * 70)
+        lines.append(
+            f"  {'Lab':<22} {'#Proj':>5}  {'Stars':>10}  "
+            f"{'DL/mo':>14}  {'Commits 30d':>11}"
+        )
+        lines.append("  " + "-" * 68)
+
+        sorted_labs = sorted(lab_agg.items(), key=lambda x: x[1]["downloads"], reverse=True)
+        for lab_id, agg in sorted_labs:
+            lab_name = lab_names.get(lab_id, f"Lab {lab_id}")
+            if len(lab_name) > 20:
+                lab_name = lab_name[:19] + "…"
+            lines.append(
+                f"  {lab_name:<22} {agg['projects']:>5}  "
+                f"{_fmt_number(agg['stars']):>10}  "
+                f"{_fmt_number(agg['downloads']):>14}  "
+                f"{_fmt_number(agg['commits']):>11}"
+            )
+        if indie_agg["projects"] > 0:
+            lines.append(
+                f"  {'(Independent)':<22} {indie_agg['projects']:>5}  "
+                f"{_fmt_number(indie_agg['stars']):>10}  "
+                f"{_fmt_number(indie_agg['downloads']):>14}  "
+                f"{_fmt_number(indie_agg['commits']):>11}"
+            )
+
+        # ------------------------------------------------------------------
+        # KEY NARRATIVES (auto-generated)
+        # ------------------------------------------------------------------
+        lines.append("")
+        lines.append("KEY NARRATIVES")
+        lines.append("-" * 70)
+
+        # Narrative 1: Biggest category leader
+        if cat_totals:
+            biggest_cat, biggest_projs, biggest_total = cat_totals[0]
+            top_proj = sorted(biggest_projs, key=lambda p: int(p.get("monthly_downloads") or 0), reverse=True)[0]
+            top_proj_dl = int(top_proj.get("monthly_downloads") or 0)
+            share = (top_proj_dl / biggest_total * 100) if biggest_total > 0 else 0
+            lines.append(
+                f"  • {top_proj['name']} is {share:.0f}% of {biggest_cat} downloads "
+                f"({_fmt_number(top_proj_dl)}/{_fmt_number(biggest_total)} per month)"
+            )
+
+        # Narrative 2: Stars-downloads disconnect
+        for r in rows:
+            stars = int(r.get("stars") or 0)
+            dl = int(r.get("monthly_downloads") or 0)
+            if stars > 50000 and dl == 0:
+                lines.append(
+                    f"  • {r['name']} has {_fmt_number(stars)} stars but 0 tracked downloads "
+                    f"(binary/self-hosted distribution)"
+                )
+                break
+
+        # Narrative 3: Invisible infrastructure — high downloads, low stars
+        infra_candidates = [
+            r for r in rows
+            if int(r.get("monthly_downloads") or 0) > 1_000_000
+            and int(r.get("stars") or 0) < 15_000
+        ]
+        if infra_candidates:
+            inf = infra_candidates[0]
+            lines.append(
+                f"  • {inf['name']} has {_fmt_number(inf.get('monthly_downloads'))}/mo downloads "
+                f"with only {_fmt_number(inf.get('stars'))} stars — invisible infrastructure"
+            )
+
+        # Narrative 4: Lab output efficiency
+        if sorted_labs:
+            top_lab_id, top_lab = sorted_labs[0]
+            top_lab_name = lab_names.get(top_lab_id, "?")
+            if top_lab["projects"] > 0:
+                per_proj = top_lab["downloads"] // top_lab["projects"]
+                lines.append(
+                    f"  • {top_lab_name} averages {_fmt_number(per_proj)} downloads/mo "
+                    f"per project ({top_lab['projects']} projects tracked)"
+                )
+
+        # Narrative 5: Small category, big ambition
+        for cat, projs, total in cat_totals:
+            if len(projs) >= 2 and total < 5_000_000:
+                total_stars = sum(int(p.get("stars") or 0) for p in projs)
+                if total_stars > 50_000:
+                    lines.append(
+                        f"  • {cat} has {_fmt_number(total_stars)} stars across "
+                        f"{len(projs)} projects but only {_fmt_number(total)} downloads/mo "
+                        f"— high interest, early adoption"
+                    )
+                    break
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error generating market map: {e}"
 
 
 # ---------------------------------------------------------------------------
