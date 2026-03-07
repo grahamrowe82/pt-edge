@@ -3347,7 +3347,103 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
 
 
 def mount_mcp(app):
-    """Mount the MCP server on a FastAPI app at /mcp/stream."""
+    """Mount the MCP server on a FastAPI app.
+
+    Two transports:
+      - /mcp/stream  — Streamable HTTP (SSE) for Claude Desktop / SDK clients
+      - /mcp         — Simple JSON-RPC POST for Claude.ai web connector
+    """
+    from fastapi.responses import JSONResponse
+
+    # ---- Simple JSON-RPC POST transport (for Claude.ai) ----
+    # Must be registered BEFORE the /mcp mount so FastAPI matches it
+    # instead of falling through to the Starlette sub-app.
+
+    def _check_token(request: Request):
+        token = request.query_params.get("token", "")
+        if not token:
+            auth = request.headers.get("Authorization", "")
+            token = auth.removeprefix("Bearer ") if auth.startswith("Bearer ") else ""
+        if token != settings.API_TOKEN:
+            return None
+        return token
+
+    @app.post("/mcp")
+    async def mcp_json_rpc(request: Request):
+        """Simple JSON-RPC endpoint for Claude.ai web connector."""
+        token = _check_token(request)
+        if not token:
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+        body = await request.json()
+        method = body.get("method")
+        params = body.get("params", {})
+        req_id = body.get("id", 0)
+
+        if method == "initialize":
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "pt-edge", "version": "1.0.0"},
+                },
+            })
+
+        if method == "tools/list":
+            tools_list = []
+            for t in mcp._tool_manager._tools.values():
+                mcp_tool = t.to_mcp_tool()
+                tools_list.append({
+                    "name": mcp_tool.name,
+                    "description": mcp_tool.description,
+                    "inputSchema": mcp_tool.inputSchema,
+                })
+            return JSONResponse({
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {"tools": tools_list},
+            })
+
+        if method == "tools/call":
+            tool_name = params.get("name")
+            tool_args = params.get("arguments", {})
+            tool = mcp._tool_manager._tools.get(tool_name)
+            if not tool:
+                return JSONResponse({
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": f"Unknown tool: {tool_name}"}],
+                        "isError": True,
+                    },
+                })
+            try:
+                result = await tool.run(tool_args)
+                content = [{"type": c.type, "text": c.text} for c in result.content]
+                return JSONResponse({
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {"content": content, "isError": False},
+                })
+            except Exception as e:
+                return JSONResponse({
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {
+                        "content": [{"type": "text", "text": f"Error: {e}"}],
+                        "isError": True,
+                    },
+                })
+
+        return JSONResponse({
+            "jsonrpc": "2.0",
+            "id": req_id,
+            "error": {"code": -32601, "message": f"Unknown method: {method}"},
+        })
+
+    # ---- Streamable HTTP transport (for Claude Desktop / SDK) ----
     mcp_app = mcp.http_app(path="/stream")
     mcp_app.add_middleware(TokenAuthMiddleware)
     app.mount("/mcp", mcp_app)
