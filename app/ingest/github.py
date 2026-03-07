@@ -126,7 +126,7 @@ async def ingest_github() -> dict:
     semaphore = asyncio.Semaphore(5)
 
     # Phase 1: collect all data from API (async, concurrent)
-    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+    async with httpx.AsyncClient(headers=headers, timeout=30.0, follow_redirects=True) as client:
         tasks = [collect_project_data(client, p, semaphore) for p in projects]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 

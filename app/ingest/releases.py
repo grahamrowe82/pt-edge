@@ -73,7 +73,7 @@ async def ingest_releases() -> dict:
         headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
 
     semaphore = asyncio.Semaphore(5)
-    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+    async with httpx.AsyncClient(headers=headers, timeout=30.0, follow_redirects=True) as client:
         tasks = [collect_releases_for_project(client, p, semaphore) for p in projects]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 

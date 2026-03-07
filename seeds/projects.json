@@ -9,7 +9,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Anthropic's Claude family of large language models, accessible via API",
-    "url": "https://www.anthropic.com/claude"
+    "url": "https://www.anthropic.com/claude",
+    "distribution_type": "hosted"
   },
   {
     "name": "GPT-4",
@@ -21,7 +22,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "OpenAI's GPT-4 family of multimodal large language models",
-    "url": "https://openai.com/gpt-4"
+    "url": "https://openai.com/gpt-4",
+    "distribution_type": "hosted"
   },
   {
     "name": "Gemini",
@@ -33,7 +35,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Google DeepMind's Gemini family of multimodal AI models",
-    "url": "https://deepmind.google/technologies/gemini"
+    "url": "https://deepmind.google/technologies/gemini",
+    "distribution_type": "hosted"
   },
   {
     "name": "LLaMA",
@@ -45,7 +48,9 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Meta's open-weight large language model family",
-    "url": "https://llama.meta.com"
+    "url": "https://llama.meta.com",
+    "distribution_type": "model",
+    "hf_model_id": "meta-llama/Llama-3.2-1B"
   },
   {
     "name": "Mistral",
@@ -57,7 +62,9 @@
     "pypi_package": "mistral-inference",
     "npm_package": null,
     "description": "Mistral AI's open-weight and commercial language models",
-    "url": "https://mistral.ai"
+    "url": "https://mistral.ai",
+    "distribution_type": "package",
+    "hf_model_id": "mistralai/Mistral-7B-Instruct-v0.3"
   },
   {
     "name": "Command R",
@@ -69,7 +76,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Cohere's retrieval-augmented generation optimized language models",
-    "url": "https://cohere.com/command"
+    "url": "https://cohere.com/command",
+    "distribution_type": "hosted"
   },
   {
     "name": "Stable Diffusion",
@@ -77,11 +85,13 @@
     "category": "model",
     "lab_slug": "stability-ai",
     "github_owner": "Stability-AI",
-    "github_repo": "stablediffusion",
+    "github_repo": "generative-models",
     "pypi_package": null,
     "npm_package": null,
     "description": "Stability AI's open-source text-to-image diffusion model",
-    "url": "https://stability.ai/stable-diffusion"
+    "url": "https://stability.ai/stable-diffusion",
+    "distribution_type": "model",
+    "hf_model_id": "stabilityai/stable-diffusion-xl-base-1.0"
   },
   {
     "name": "FLUX",
@@ -93,7 +103,9 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Black Forest Labs' state-of-the-art text-to-image generation model",
-    "url": "https://blackforestlabs.ai"
+    "url": "https://blackforestlabs.ai",
+    "distribution_type": "model",
+    "hf_model_id": "black-forest-labs/FLUX.1-dev"
   },
   {
     "name": "Phi",
@@ -101,11 +113,13 @@
     "category": "model",
     "lab_slug": null,
     "github_owner": "microsoft",
-    "github_repo": "phi-3",
+    "github_repo": "PhiCookBook",
     "pypi_package": null,
     "npm_package": null,
     "description": "Microsoft's small language model family optimized for efficiency",
-    "url": "https://azure.microsoft.com/en-us/products/phi"
+    "url": "https://azure.microsoft.com/en-us/products/phi",
+    "distribution_type": "model",
+    "hf_model_id": "microsoft/Phi-3-mini-4k-instruct"
   },
   {
     "name": "Qwen",
@@ -117,7 +131,9 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Alibaba's Qwen series of large language and multimodal models",
-    "url": "https://qwenlm.github.io"
+    "url": "https://qwenlm.github.io",
+    "distribution_type": "model",
+    "hf_model_id": "Qwen/Qwen2.5-7B-Instruct"
   },
   {
     "name": "DeepSeek",
@@ -129,7 +145,9 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "DeepSeek's high-performance open-weight language models",
-    "url": "https://www.deepseek.com"
+    "url": "https://www.deepseek.com",
+    "distribution_type": "model",
+    "hf_model_id": "deepseek-ai/DeepSeek-V3"
   },
   {
     "name": "Gemma",
@@ -141,7 +159,9 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Google's lightweight open-weight language models",
-    "url": "https://ai.google.dev/gemma"
+    "url": "https://ai.google.dev/gemma",
+    "distribution_type": "model",
+    "hf_model_id": "google/gemma-2-2b"
   },
   {
     "name": "Whisper",
@@ -153,7 +173,9 @@
     "pypi_package": "openai-whisper",
     "npm_package": null,
     "description": "OpenAI's general-purpose speech recognition model",
-    "url": "https://openai.com/research/whisper"
+    "url": "https://openai.com/research/whisper",
+    "distribution_type": "model",
+    "hf_model_id": "openai/whisper-large-v3"
   },
   {
     "name": "LLaVA",
@@ -165,7 +187,9 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Large Language and Vision Assistant for multimodal understanding",
-    "url": "https://llava-vl.github.io"
+    "url": "https://llava-vl.github.io",
+    "distribution_type": "model",
+    "hf_model_id": "llava-hf/llava-1.5-7b-hf"
   },
   {
     "name": "Moondream",
@@ -177,7 +201,9 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Tiny, efficient vision-language model for edge deployment",
-    "url": "https://moondream.ai"
+    "url": "https://moondream.ai",
+    "distribution_type": "model",
+    "hf_model_id": "vikhyatk/moondream2"
   },
   {
     "name": "LangChain",
@@ -189,7 +215,8 @@
     "pypi_package": "langchain",
     "npm_package": null,
     "description": "Framework for building applications powered by language models",
-    "url": "https://www.langchain.com"
+    "url": "https://www.langchain.com",
+    "distribution_type": "package"
   },
   {
     "name": "LlamaIndex",
@@ -201,7 +228,8 @@
     "pypi_package": "llama-index",
     "npm_package": null,
     "description": "Data framework for connecting custom data sources to LLMs",
-    "url": "https://www.llamaindex.ai"
+    "url": "https://www.llamaindex.ai",
+    "distribution_type": "package"
   },
   {
     "name": "DSPy",
@@ -213,7 +241,8 @@
     "pypi_package": "dspy",
     "npm_package": null,
     "description": "Framework for programming with foundation models using declarative signatures",
-    "url": "https://dspy-docs.vercel.app"
+    "url": "https://dspy-docs.vercel.app",
+    "distribution_type": "package"
   },
   {
     "name": "CrewAI",
@@ -225,7 +254,8 @@
     "pypi_package": "crewai",
     "npm_package": null,
     "description": "Framework for orchestrating role-playing AI agents working together",
-    "url": "https://www.crewai.com"
+    "url": "https://www.crewai.com",
+    "distribution_type": "package"
   },
   {
     "name": "Haystack",
@@ -237,7 +267,8 @@
     "pypi_package": "haystack-ai",
     "npm_package": null,
     "description": "End-to-end NLP framework for building search and RAG pipelines",
-    "url": "https://haystack.deepset.ai"
+    "url": "https://haystack.deepset.ai",
+    "distribution_type": "package"
   },
   {
     "name": "Semantic Kernel",
@@ -249,7 +280,8 @@
     "pypi_package": "semantic-kernel",
     "npm_package": null,
     "description": "Microsoft's SDK for integrating LLMs into applications",
-    "url": "https://learn.microsoft.com/en-us/semantic-kernel"
+    "url": "https://learn.microsoft.com/en-us/semantic-kernel",
+    "distribution_type": "package"
   },
   {
     "name": "AutoGen",
@@ -261,7 +293,8 @@
     "pypi_package": "autogen",
     "npm_package": null,
     "description": "Microsoft's framework for building multi-agent conversational systems",
-    "url": "https://microsoft.github.io/autogen"
+    "url": "https://microsoft.github.io/autogen",
+    "distribution_type": "package"
   },
   {
     "name": "PydanticAI",
@@ -273,7 +306,8 @@
     "pypi_package": "pydantic-ai",
     "npm_package": null,
     "description": "Agent framework built on Pydantic for type-safe LLM applications",
-    "url": "https://ai.pydantic.dev"
+    "url": "https://ai.pydantic.dev",
+    "distribution_type": "package"
   },
   {
     "name": "smolagents",
@@ -285,7 +319,8 @@
     "pypi_package": "smolagents",
     "npm_package": null,
     "description": "Hugging Face's lightweight library for building AI agents",
-    "url": "https://huggingface.co/docs/smolagents"
+    "url": "https://huggingface.co/docs/smolagents",
+    "distribution_type": "package"
   },
   {
     "name": "Mastra",
@@ -297,7 +332,8 @@
     "pypi_package": null,
     "npm_package": "mastra",
     "description": "TypeScript AI framework for building agents, workflows, and RAG pipelines",
-    "url": "https://mastra.ai"
+    "url": "https://mastra.ai",
+    "distribution_type": "package"
   },
   {
     "name": "Vercel AI SDK",
@@ -309,7 +345,8 @@
     "pypi_package": null,
     "npm_package": "ai",
     "description": "TypeScript toolkit for building AI-powered user interfaces",
-    "url": "https://sdk.vercel.ai"
+    "url": "https://sdk.vercel.ai",
+    "distribution_type": "package"
   },
   {
     "name": "Spring AI",
@@ -321,7 +358,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Spring ecosystem framework for AI engineering in Java",
-    "url": "https://spring.io/projects/spring-ai"
+    "url": "https://spring.io/projects/spring-ai",
+    "distribution_type": "package"
   },
   {
     "name": "Letta",
@@ -333,7 +371,8 @@
     "pypi_package": "letta",
     "npm_package": null,
     "description": "Framework for building stateful LLM agents with long-term memory",
-    "url": "https://www.letta.com"
+    "url": "https://www.letta.com",
+    "distribution_type": "package"
   },
   {
     "name": "Mem0",
@@ -345,19 +384,21 @@
     "pypi_package": "mem0ai",
     "npm_package": null,
     "description": "Memory layer for personalized AI experiences across applications",
-    "url": "https://mem0.ai"
+    "url": "https://mem0.ai",
+    "distribution_type": "package"
   },
   {
     "name": "Phidata",
     "slug": "phidata",
     "category": "framework",
     "lab_slug": null,
-    "github_owner": "phidatahq",
-    "github_repo": "phidata",
+    "github_owner": "agno-agi",
+    "github_repo": "agno",
     "pypi_package": "phidata",
     "npm_package": null,
     "description": "Toolkit for building AI assistants with memory, knowledge, and tools",
-    "url": "https://www.phidata.com"
+    "url": "https://www.phidata.com",
+    "distribution_type": "package"
   },
   {
     "name": "vLLM",
@@ -369,7 +410,8 @@
     "pypi_package": "vllm",
     "npm_package": null,
     "description": "High-throughput and memory-efficient LLM inference and serving engine",
-    "url": "https://vllm.ai"
+    "url": "https://vllm.ai",
+    "distribution_type": "package"
   },
   {
     "name": "Ollama",
@@ -381,19 +423,21 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Run large language models locally with a simple CLI",
-    "url": "https://ollama.com"
+    "url": "https://ollama.com",
+    "distribution_type": "binary"
   },
   {
     "name": "llama.cpp",
     "slug": "llama-cpp",
     "category": "infra",
     "lab_slug": null,
-    "github_owner": "ggerganov",
+    "github_owner": "ggml-org",
     "github_repo": "llama.cpp",
     "pypi_package": null,
     "npm_package": null,
     "description": "Port of LLaMA model in C/C++ for efficient CPU and GPU inference",
-    "url": null
+    "url": null,
+    "distribution_type": "package"
   },
   {
     "name": "llama-cpp-python",
@@ -405,7 +449,8 @@
     "pypi_package": "llama-cpp-python",
     "npm_package": null,
     "description": "Python bindings for llama.cpp with OpenAI-compatible API server",
-    "url": null
+    "url": null,
+    "distribution_type": "package"
   },
   {
     "name": "Text Generation Inference",
@@ -417,7 +462,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Hugging Face's production-ready LLM serving with continuous batching",
-    "url": "https://huggingface.co/docs/text-generation-inference"
+    "url": "https://huggingface.co/docs/text-generation-inference",
+    "distribution_type": "package"
   },
   {
     "name": "SGLang",
@@ -429,7 +475,8 @@
     "pypi_package": "sglang",
     "npm_package": null,
     "description": "Fast serving framework for large language and vision-language models",
-    "url": "https://sglang.ai"
+    "url": "https://sglang.ai",
+    "distribution_type": "package"
   },
   {
     "name": "MLX",
@@ -441,7 +488,8 @@
     "pypi_package": "mlx",
     "npm_package": null,
     "description": "Apple's array framework for machine learning on Apple silicon",
-    "url": null
+    "url": null,
+    "distribution_type": "package"
   },
   {
     "name": "MLX-LM",
@@ -453,7 +501,8 @@
     "pypi_package": "mlx-lm",
     "npm_package": null,
     "description": "Language model tools and examples for MLX on Apple silicon",
-    "url": null
+    "url": null,
+    "distribution_type": "package"
   },
   {
     "name": "ExLlamaV2",
@@ -465,7 +514,8 @@
     "pypi_package": "exllamav2",
     "npm_package": null,
     "description": "Fast inference library for running quantized LLMs on consumer GPUs",
-    "url": null
+    "url": null,
+    "distribution_type": "package"
   },
   {
     "name": "TensorRT-LLM",
@@ -477,7 +527,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "NVIDIA's library for optimizing LLM inference on GPUs with TensorRT",
-    "url": "https://nvidia.github.io/TensorRT-LLM"
+    "url": "https://nvidia.github.io/TensorRT-LLM",
+    "distribution_type": "package"
   },
   {
     "name": "LocalAI",
@@ -489,7 +540,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Self-hosted OpenAI-compatible API for running models locally",
-    "url": "https://localai.io"
+    "url": "https://localai.io",
+    "distribution_type": "binary"
   },
   {
     "name": "Jan",
@@ -501,7 +553,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Open-source desktop app for running AI models offline",
-    "url": "https://jan.ai"
+    "url": "https://jan.ai",
+    "distribution_type": "binary"
   },
   {
     "name": "Cursor",
@@ -513,7 +566,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "AI-powered code editor built on VS Code with integrated LLM capabilities",
-    "url": "https://cursor.com"
+    "url": "https://cursor.com",
+    "distribution_type": "hosted"
   },
   {
     "name": "Claude Code",
@@ -525,7 +579,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Anthropic's agentic coding tool for the terminal",
-    "url": "https://docs.anthropic.com/en/docs/claude-code"
+    "url": "https://docs.anthropic.com/en/docs/claude-code",
+    "distribution_type": "hosted"
   },
   {
     "name": "Aider",
@@ -537,7 +592,8 @@
     "pypi_package": "aider-chat",
     "npm_package": null,
     "description": "AI pair programming in your terminal with git integration",
-    "url": "https://aider.chat"
+    "url": "https://aider.chat",
+    "distribution_type": "package"
   },
   {
     "name": "Continue",
@@ -549,7 +605,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Open-source AI code assistant for VS Code and JetBrains",
-    "url": "https://continue.dev"
+    "url": "https://continue.dev",
+    "distribution_type": "extension"
   },
   {
     "name": "Open Interpreter",
@@ -561,7 +618,8 @@
     "pypi_package": "open-interpreter",
     "npm_package": null,
     "description": "Natural language interface for running code on your computer",
-    "url": "https://openinterpreter.com"
+    "url": "https://openinterpreter.com",
+    "distribution_type": "package"
   },
   {
     "name": "Fabric",
@@ -573,7 +631,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Open-source framework for augmenting humans using AI with reusable prompts",
-    "url": null
+    "url": null,
+    "distribution_type": "package"
   },
   {
     "name": "gptme",
@@ -585,7 +644,8 @@
     "pypi_package": "gptme",
     "npm_package": null,
     "description": "Personal AI assistant in the terminal with tool use and code execution",
-    "url": "https://gptme.org"
+    "url": "https://gptme.org",
+    "distribution_type": "package"
   },
   {
     "name": "LM Studio",
@@ -597,7 +657,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Desktop application for discovering, downloading, and running local LLMs",
-    "url": "https://lmstudio.ai"
+    "url": "https://lmstudio.ai",
+    "distribution_type": "binary"
   },
   {
     "name": "Chatbox",
@@ -609,7 +670,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Desktop client for multiple AI model APIs with prompt management",
-    "url": "https://chatboxai.app"
+    "url": "https://chatboxai.app",
+    "distribution_type": "binary"
   },
   {
     "name": "Open WebUI",
@@ -621,7 +683,8 @@
     "pypi_package": "open-webui",
     "npm_package": null,
     "description": "Self-hosted web interface for running and managing LLMs",
-    "url": "https://openwebui.com"
+    "url": "https://openwebui.com",
+    "distribution_type": "binary"
   },
   {
     "name": "AnythingLLM",
@@ -633,7 +696,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "All-in-one AI desktop app with RAG, agents, and multi-model support",
-    "url": "https://anythingllm.com"
+    "url": "https://anythingllm.com",
+    "distribution_type": "binary"
   },
   {
     "name": "LibreChat",
@@ -645,7 +709,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Open-source AI chat platform supporting multiple providers and plugins",
-    "url": "https://www.librechat.ai"
+    "url": "https://www.librechat.ai",
+    "distribution_type": "binary"
   },
   {
     "name": "Transformers",
@@ -657,7 +722,8 @@
     "pypi_package": "transformers",
     "npm_package": null,
     "description": "State-of-the-art machine learning library for PyTorch, TensorFlow, and JAX",
-    "url": "https://huggingface.co/docs/transformers"
+    "url": "https://huggingface.co/docs/transformers",
+    "distribution_type": "package"
   },
   {
     "name": "OpenAI Python",
@@ -669,7 +735,8 @@
     "pypi_package": "openai",
     "npm_package": null,
     "description": "Official Python client library for the OpenAI API",
-    "url": "https://platform.openai.com/docs"
+    "url": "https://platform.openai.com/docs",
+    "distribution_type": "package"
   },
   {
     "name": "Anthropic SDK",
@@ -681,7 +748,8 @@
     "pypi_package": "anthropic",
     "npm_package": null,
     "description": "Official Python client library for the Anthropic API",
-    "url": "https://docs.anthropic.com/en/api"
+    "url": "https://docs.anthropic.com/en/api",
+    "distribution_type": "package"
   },
   {
     "name": "LiteLLM",
@@ -693,7 +761,8 @@
     "pypi_package": "litellm",
     "npm_package": null,
     "description": "Unified interface to call 100+ LLM APIs in the OpenAI format",
-    "url": "https://litellm.ai"
+    "url": "https://litellm.ai",
+    "distribution_type": "package"
   },
   {
     "name": "Instructor",
@@ -705,7 +774,8 @@
     "pypi_package": "instructor",
     "npm_package": null,
     "description": "Structured output library for LLMs using Pydantic validation",
-    "url": "https://python.useinstructor.com"
+    "url": "https://python.useinstructor.com",
+    "distribution_type": "package"
   },
   {
     "name": "Outlines",
@@ -717,7 +787,8 @@
     "pypi_package": "outlines",
     "npm_package": null,
     "description": "Structured text generation library with JSON schema and regex support",
-    "url": "https://dottxt-ai.github.io/outlines"
+    "url": "https://dottxt-ai.github.io/outlines",
+    "distribution_type": "package"
   },
   {
     "name": "Guidance",
@@ -729,7 +800,8 @@
     "pypi_package": "guidance",
     "npm_package": null,
     "description": "Language for controlling LLM output with constrained generation",
-    "url": null
+    "url": null,
+    "distribution_type": "package"
   },
   {
     "name": "Tokenizers",
@@ -741,7 +813,8 @@
     "pypi_package": "tokenizers",
     "npm_package": null,
     "description": "Fast, Rust-based tokenizer implementations used across the ML ecosystem",
-    "url": "https://huggingface.co/docs/tokenizers"
+    "url": "https://huggingface.co/docs/tokenizers",
+    "distribution_type": "package"
   },
   {
     "name": "Sentence Transformers",
@@ -753,7 +826,8 @@
     "pypi_package": "sentence-transformers",
     "npm_package": null,
     "description": "Framework for computing dense vector representations of text and images",
-    "url": "https://www.sbert.net"
+    "url": "https://www.sbert.net",
+    "distribution_type": "package"
   },
   {
     "name": "PEFT",
@@ -765,7 +839,8 @@
     "pypi_package": "peft",
     "npm_package": null,
     "description": "Parameter-Efficient Fine-Tuning methods for large pretrained models",
-    "url": "https://huggingface.co/docs/peft"
+    "url": "https://huggingface.co/docs/peft",
+    "distribution_type": "package"
   },
   {
     "name": "TRL",
@@ -777,7 +852,8 @@
     "pypi_package": "trl",
     "npm_package": null,
     "description": "Transformer Reinforcement Learning library for RLHF and alignment",
-    "url": "https://huggingface.co/docs/trl"
+    "url": "https://huggingface.co/docs/trl",
+    "distribution_type": "package"
   },
   {
     "name": "Unsloth",
@@ -789,19 +865,21 @@
     "pypi_package": "unsloth",
     "npm_package": null,
     "description": "Fine-tune LLMs 2-5x faster with 80% less memory",
-    "url": "https://unsloth.ai"
+    "url": "https://unsloth.ai",
+    "distribution_type": "package"
   },
   {
     "name": "FastMCP",
     "slug": "fastmcp",
     "category": "library",
     "lab_slug": null,
-    "github_owner": "jlowin",
+    "github_owner": "PrefectHQ",
     "github_repo": "fastmcp",
     "pypi_package": "fastmcp",
     "npm_package": null,
     "description": "Fast, Pythonic way to build Model Context Protocol servers and clients",
-    "url": "https://gofastmcp.com"
+    "url": "https://gofastmcp.com",
+    "distribution_type": "package"
   },
   {
     "name": "Marvin",
@@ -813,7 +891,8 @@
     "pypi_package": "marvin",
     "npm_package": null,
     "description": "Lightweight AI toolkit for building natural language interfaces",
-    "url": "https://www.askmarvin.ai"
+    "url": "https://www.askmarvin.ai",
+    "distribution_type": "package"
   },
   {
     "name": "Mirascope",
@@ -825,19 +904,21 @@
     "pypi_package": "mirascope",
     "npm_package": null,
     "description": "Pythonic toolkit for building LLM applications with provider-agnostic abstractions",
-    "url": "https://mirascope.io"
+    "url": "https://mirascope.io",
+    "distribution_type": "package"
   },
   {
     "name": "Modal",
     "slug": "modal",
     "category": "infra",
     "lab_slug": null,
-    "github_owner": "modal-com",
+    "github_owner": "modal-labs",
     "github_repo": "modal-client",
     "pypi_package": "modal",
     "npm_package": null,
     "description": "Serverless cloud platform for running AI and ML workloads at scale",
-    "url": "https://modal.com"
+    "url": "https://modal.com",
+    "distribution_type": "package"
   },
   {
     "name": "ChromaDB",
@@ -849,7 +930,8 @@
     "pypi_package": "chromadb",
     "npm_package": null,
     "description": "Open-source embedding database for AI applications",
-    "url": "https://www.trychroma.com"
+    "url": "https://www.trychroma.com",
+    "distribution_type": "package"
   },
   {
     "name": "Qdrant",
@@ -861,7 +943,8 @@
     "pypi_package": "qdrant-client",
     "npm_package": null,
     "description": "High-performance vector similarity search engine written in Rust",
-    "url": "https://qdrant.tech"
+    "url": "https://qdrant.tech",
+    "distribution_type": "package"
   },
   {
     "name": "Weaviate",
@@ -873,7 +956,8 @@
     "pypi_package": "weaviate-client",
     "npm_package": null,
     "description": "Open-source vector database for scalable AI-native applications",
-    "url": "https://weaviate.io"
+    "url": "https://weaviate.io",
+    "distribution_type": "package"
   },
   {
     "name": "pgvector",
@@ -885,7 +969,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Open-source vector similarity search extension for PostgreSQL",
-    "url": null
+    "url": null,
+    "distribution_type": "package"
   },
   {
     "name": "LanceDB",
@@ -897,7 +982,8 @@
     "pypi_package": "lancedb",
     "npm_package": null,
     "description": "Serverless vector database built on the Lance columnar format",
-    "url": "https://lancedb.com"
+    "url": "https://lancedb.com",
+    "distribution_type": "package"
   },
   {
     "name": "Milvus",
@@ -909,7 +995,8 @@
     "pypi_package": "pymilvus",
     "npm_package": null,
     "description": "Open-source vector database for scalable similarity search",
-    "url": "https://milvus.io"
+    "url": "https://milvus.io",
+    "distribution_type": "package"
   },
   {
     "name": "Pinecone",
@@ -921,7 +1008,8 @@
     "pypi_package": "pinecone-client",
     "npm_package": null,
     "description": "Managed vector database for high-performance similarity search",
-    "url": "https://www.pinecone.io"
+    "url": "https://www.pinecone.io",
+    "distribution_type": "package"
   },
   {
     "name": "Ragas",
@@ -933,7 +1021,8 @@
     "pypi_package": "ragas",
     "npm_package": null,
     "description": "Evaluation framework for Retrieval Augmented Generation pipelines",
-    "url": "https://ragas.io"
+    "url": "https://ragas.io",
+    "distribution_type": "package"
   },
   {
     "name": "Phoenix",
@@ -945,7 +1034,8 @@
     "pypi_package": "arize-phoenix",
     "npm_package": null,
     "description": "AI observability and evaluation platform for LLM applications",
-    "url": "https://phoenix.arize.com"
+    "url": "https://phoenix.arize.com",
+    "distribution_type": "package"
   },
   {
     "name": "Lunary",
@@ -957,7 +1047,8 @@
     "pypi_package": "lunary",
     "npm_package": null,
     "description": "Open-source observability and analytics platform for AI applications",
-    "url": "https://lunary.ai"
+    "url": "https://lunary.ai",
+    "distribution_type": "package"
   },
   {
     "name": "Langfuse",
@@ -969,7 +1060,8 @@
     "pypi_package": "langfuse",
     "npm_package": null,
     "description": "Open-source LLM engineering platform for tracing, evals, and prompt management",
-    "url": "https://langfuse.com"
+    "url": "https://langfuse.com",
+    "distribution_type": "package"
   },
   {
     "name": "OpenHands",
@@ -981,7 +1073,8 @@
     "pypi_package": "openhands-ai",
     "npm_package": null,
     "description": "Autonomous AI software engineer agent for complex coding tasks",
-    "url": "https://www.all-hands.dev"
+    "url": "https://www.all-hands.dev",
+    "distribution_type": "package"
   },
   {
     "name": "SWE-agent",
@@ -993,7 +1086,8 @@
     "pypi_package": "sweagent",
     "npm_package": null,
     "description": "Agent that autonomously fixes GitHub issues using language models",
-    "url": "https://swe-agent.com"
+    "url": "https://swe-agent.com",
+    "distribution_type": "package"
   },
   {
     "name": "GPT Engineer",
@@ -1005,7 +1099,8 @@
     "pypi_package": "gpt-engineer",
     "npm_package": null,
     "description": "AI agent that generates entire codebases from natural language specifications",
-    "url": null
+    "url": null,
+    "distribution_type": "package"
   },
   {
     "name": "Devika",
@@ -1017,7 +1112,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Agentic AI software engineer that can plan, research, and write code",
-    "url": null
+    "url": null,
+    "distribution_type": "package"
   },
   {
     "name": "Sweep",
@@ -1029,7 +1125,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "AI-powered junior developer that handles bug fixes and feature requests",
-    "url": "https://sweep.dev"
+    "url": "https://sweep.dev",
+    "distribution_type": "package"
   },
   {
     "name": "Devin",
@@ -1041,7 +1138,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Cognition's autonomous AI software engineer",
-    "url": "https://www.cognition.ai/devin"
+    "url": "https://www.cognition.ai/devin",
+    "distribution_type": "hosted"
   },
   {
     "name": "Cline",
@@ -1053,7 +1151,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Autonomous coding agent for VS Code that can create and edit files",
-    "url": "https://cline.bot"
+    "url": "https://cline.bot",
+    "distribution_type": "extension"
   },
   {
     "name": "Bolt",
@@ -1061,11 +1160,12 @@
     "category": "agent",
     "lab_slug": null,
     "github_owner": "stackblitz-labs",
-    "github_repo": "bolt.new",
+    "github_repo": "bolt.diy",
     "pypi_package": null,
     "npm_package": null,
     "description": "AI-powered full-stack web app development in the browser",
-    "url": "https://bolt.new"
+    "url": "https://bolt.new",
+    "distribution_type": "package"
   },
   {
     "name": "Windsurf",
@@ -1077,7 +1177,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Codeium's AI-powered IDE with agentic coding capabilities",
-    "url": "https://windsurf.com"
+    "url": "https://windsurf.com",
+    "distribution_type": "hosted"
   },
   {
     "name": "Goose",
@@ -1089,7 +1190,8 @@
     "pypi_package": null,
     "npm_package": null,
     "description": "Block's autonomous developer agent that operates on your machine",
-    "url": "https://www.block.xyz/solutions/goose"
+    "url": "https://www.block.xyz/solutions/goose",
+    "distribution_type": "package"
   },
   {
     "name": "LM Evaluation Harness",
@@ -1101,7 +1203,8 @@
     "pypi_package": "lm-eval",
     "npm_package": null,
     "description": "Unified framework for evaluating language models on hundreds of benchmarks",
-    "url": null
+    "url": null,
+    "distribution_type": "package"
   },
   {
     "name": "Promptfoo",
@@ -1113,7 +1216,8 @@
     "pypi_package": null,
     "npm_package": "promptfoo",
     "description": "CLI and library for testing and evaluating LLM prompts and outputs",
-    "url": "https://promptfoo.dev"
+    "url": "https://promptfoo.dev",
+    "distribution_type": "package"
   },
   {
     "name": "Giskard",
@@ -1125,7 +1229,8 @@
     "pypi_package": "giskard",
     "npm_package": null,
     "description": "Testing framework for ML models covering bias, performance, and security",
-    "url": "https://www.giskard.ai"
+    "url": "https://www.giskard.ai",
+    "distribution_type": "package"
   },
   {
     "name": "DeepEval",
@@ -1137,7 +1242,8 @@
     "pypi_package": "deepeval",
     "npm_package": null,
     "description": "Unit testing framework for evaluating LLM outputs",
-    "url": "https://deepeval.com"
+    "url": "https://deepeval.com",
+    "distribution_type": "package"
   },
   {
     "name": "Inspect AI",
@@ -1149,6 +1255,7 @@
     "pypi_package": "inspect-ai",
     "npm_package": null,
     "description": "Framework for large language model evaluations from UK AISI",
-    "url": "https://inspect.ai-safety-institute.org.uk"
+    "url": "https://inspect.ai-safety-institute.org.uk",
+    "distribution_type": "package"
   }
 ]

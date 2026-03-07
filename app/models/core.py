@@ -44,6 +44,8 @@ class Project(Base):
     url: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     tier_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    distribution_type: Mapped[str | None] = mapped_column(String(20), nullable=True, default="package")
+    hf_model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
