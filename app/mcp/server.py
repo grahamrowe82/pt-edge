@@ -334,6 +334,7 @@ async def about() -> str:
         "  market_map()                     -- category concentration + power law",
         "",
         "Project Discovery:",
+        "  radar()                          -- velocity alerts + HN buzz for unknowns",
         "  sniff_projects(limit)            -- auto-discovered project candidates",
         "  accept_candidate(id, category)   -- promote a candidate to tracked",
         "",
@@ -341,6 +342,9 @@ async def about() -> str:
         "  submit_correction(topic, text)   -- flag something that's wrong",
         "  upvote_correction(id)            -- confirm someone else's correction",
         "  list_corrections(topic, status)  -- browse corrections",
+        "",
+        "Methodology:",
+        "  explain(topic)                   -- how any tool/metric/algo works (deep)",
         "",
         "Power User:",
         "  describe_schema()                -- database tables and columns",
@@ -2132,6 +2136,362 @@ async def market_map() -> str:
 
     except Exception as e:
         return f"Error generating market map: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Tool 21: radar — early detection for untracked projects
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def radar() -> str:
+    """What should you be paying attention to that isn't tracked yet? Surfaces candidate velocity, unmatched HN buzz, and fresh discoveries."""
+    lines = [
+        "RADAR",
+        "=" * 70,
+        "",
+    ]
+
+    try:
+        with engine.connect() as conn:
+            # ------------------------------------------------------------------
+            # SECTION 1: VELOCITY ALERTS
+            # ------------------------------------------------------------------
+            velocity_rows = conn.execute(text("""
+                SELECT id, name, github_owner, github_repo, stars, stars_previous,
+                       source, discovered_at, stars_updated_at,
+                       CASE
+                           WHEN stars_previous IS NOT NULL AND stars_updated_at IS NOT NULL
+                                AND stars_updated_at > discovered_at
+                           THEN EXTRACT(EPOCH FROM (stars_updated_at - discovered_at)) / 86400.0
+                           ELSE NULL
+                       END AS days_elapsed
+                FROM project_candidates
+                WHERE status = 'pending'
+                  AND stars IS NOT NULL
+                ORDER BY
+                    CASE
+                        WHEN stars_previous IS NOT NULL THEN stars - stars_previous
+                        ELSE stars
+                    END DESC NULLS LAST
+                LIMIT 10
+            """)).fetchall()
+
+            lines.append("VELOCITY ALERTS")
+            lines.append("-" * 70)
+
+            if velocity_rows:
+                lines.append(
+                    f"  {'#':<3} {'Name':<26} {'Stars':>8}  "
+                    f"{'Δ Stars':>10}  {'Days':>5}  {'Velocity':>10}  {'Source':<10}"
+                )
+                lines.append("  " + "-" * 68)
+
+                for i, r in enumerate(velocity_rows, 1):
+                    m = r._mapping
+                    name = (m["name"] or m["github_repo"] or "?")[:24]
+                    stars = int(m["stars"] or 0)
+                    prev = m.get("stars_previous")
+                    days = m.get("days_elapsed")
+
+                    if prev is not None and days and float(days) > 0:
+                        delta = stars - int(prev)
+                        velocity = f"{delta / float(days):,.0f}/d"
+                        delta_str = f"+{delta:,}" if delta >= 0 else f"{delta:,}"
+                        days_str = f"{float(days):.1f}"
+                    else:
+                        delta_str = "new"
+                        velocity = "—"
+                        days_str = "—"
+
+                    source = m.get("source") or "?"
+                    lines.append(
+                        f"  {i:<3} {name:<26} {_fmt_number(stars):>8}  "
+                        f"{delta_str:>10}  {days_str:>5}  {velocity:>10}  {source:<10}"
+                    )
+            else:
+                lines.append("  No pending candidates with star data.")
+                lines.append("  Run ingest to discover candidates from HN and GitHub trending.")
+
+            # ------------------------------------------------------------------
+            # SECTION 2: HN BUZZ (UNTRACKED)
+            # ------------------------------------------------------------------
+            lines.append("")
+            lines.append("HN BUZZ (UNTRACKED)")
+            lines.append("-" * 70)
+
+            hn_rows = conn.execute(text("""
+                SELECT title, url, points, num_comments, posted_at
+                FROM hn_posts
+                WHERE project_id IS NULL
+                  AND posted_at >= NOW() - INTERVAL '14 days'
+                  AND points > 20
+                ORDER BY points DESC
+                LIMIT 10
+            """)).fetchall()
+
+            if hn_rows:
+                lines.append(
+                    f"  {'Pts':>5}  {'Cmt':>4}  {'Title':<48}  {'Posted':<10}"
+                )
+                lines.append("  " + "-" * 68)
+
+                for r in hn_rows:
+                    m = r._mapping
+                    title = str(m.get("title") or "")
+                    if len(title) > 46:
+                        title = title[:45] + "…"
+                    pts = int(m.get("points") or 0)
+                    cmt = int(m.get("num_comments") or 0)
+                    posted = m.get("posted_at")
+                    if posted:
+                        delta = datetime.now(timezone.utc) - posted
+                        if delta.days == 0:
+                            age = f"{delta.seconds // 3600}h ago"
+                        elif delta.days == 1:
+                            age = "1d ago"
+                        else:
+                            age = f"{delta.days}d ago"
+                    else:
+                        age = "?"
+                    lines.append(
+                        f"  {pts:>5}  {cmt:>4}  {title:<48}  {age:<10}"
+                    )
+            else:
+                lines.append("  No unmatched HN posts in the last 14 days.")
+                lines.append("  This means either all posts matched to tracked projects,")
+                lines.append("  or the HN ingest hasn't run recently.")
+
+            # ------------------------------------------------------------------
+            # SECTION 3: FRESH CANDIDATES
+            # ------------------------------------------------------------------
+            lines.append("")
+            lines.append("FRESH CANDIDATES")
+            lines.append("-" * 70)
+
+            fresh_rows = conn.execute(text("""
+                SELECT id, name, github_repo, description, stars, language,
+                       source, source_detail, discovered_at
+                FROM project_candidates
+                WHERE status = 'pending'
+                ORDER BY discovered_at DESC
+                LIMIT 10
+            """)).fetchall()
+
+            if fresh_rows:
+                for r in fresh_rows:
+                    m = r._mapping
+                    name = m.get("name") or m.get("github_repo") or "?"
+                    stars = _fmt_number(m.get("stars"))
+                    lang = m.get("language") or "?"
+                    lines.append(f"  [{m['id']}] {name} ({stars} ★) — {lang}")
+                    desc = str(m.get("description") or "")
+                    if desc:
+                        if len(desc) > 100:
+                            desc = desc[:99] + "…"
+                        lines.append(f"       {desc}")
+                    detail = m.get("source_detail")
+                    if detail:
+                        lines.append(f"       Found via: {str(detail)[:80]}")
+                    lines.append("")
+            else:
+                lines.append("  No pending candidates.")
+
+            # ------------------------------------------------------------------
+            # NARRATIVES
+            # ------------------------------------------------------------------
+            lines.append("NARRATIVES")
+            lines.append("-" * 70)
+
+            # Total pending candidates + star distribution
+            stats = conn.execute(text("""
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE stars > 1000) AS gt_1k,
+                    COUNT(*) FILTER (WHERE stars > 10000) AS gt_10k,
+                    MAX(stars) AS max_stars
+                FROM project_candidates
+                WHERE status = 'pending'
+            """)).fetchone()
+
+            if stats:
+                sm = stats._mapping
+                total = int(sm["total"] or 0)
+                gt_1k = int(sm["gt_1k"] or 0)
+                gt_10k = int(sm["gt_10k"] or 0)
+                max_stars = int(sm["max_stars"] or 0)
+                lines.append(f"  • {total} pending candidates, {gt_1k} with >1K stars, {gt_10k} with >10K stars")
+
+            # Biggest velocity gainer
+            if velocity_rows:
+                top = velocity_rows[0]._mapping
+                prev = top.get("stars_previous")
+                days = top.get("days_elapsed")
+                if prev is not None and days and float(days) > 0:
+                    delta = int(top["stars"] or 0) - int(prev)
+                    name = top.get("name") or top.get("github_repo") or "?"
+                    lines.append(
+                        f"  • {name} gained {_fmt_number(delta)} stars in "
+                        f"{float(days):.1f} days — fastest candidate velocity"
+                    )
+
+            # Unmatched HN summary
+            hn_unmatched_count = conn.execute(text("""
+                SELECT COUNT(*) FROM hn_posts
+                WHERE project_id IS NULL
+                  AND posted_at >= NOW() - INTERVAL '7 days'
+            """)).scalar() or 0
+
+            hn_matched_count = conn.execute(text("""
+                SELECT COUNT(*) FROM hn_posts
+                WHERE project_id IS NOT NULL
+                  AND posted_at >= NOW() - INTERVAL '7 days'
+            """)).scalar() or 0
+
+            total_hn = hn_unmatched_count + hn_matched_count
+            if total_hn > 0:
+                pct = hn_unmatched_count / total_hn * 100
+                lines.append(
+                    f"  • {hn_unmatched_count} of {total_hn} HN posts this week "
+                    f"({pct:.0f}%) mention projects we don't track"
+                )
+
+            # Recently auto-promoted
+            auto_promoted = conn.execute(text("""
+                SELECT pc.name, pc.stars, pc.source, pc.reviewed_at
+                FROM project_candidates pc
+                WHERE pc.status = 'accepted'
+                  AND pc.reviewed_at >= NOW() - INTERVAL '7 days'
+                ORDER BY pc.stars DESC NULLS LAST
+                LIMIT 5
+            """)).fetchall()
+
+            if auto_promoted:
+                count = len(auto_promoted)
+                names = ", ".join(r._mapping.get("name") or "?" for r in auto_promoted[:3])
+                lines.append(
+                    f"  • {count} projects auto-promoted this week: {names}"
+                    + (" ..." if count > 3 else "")
+                )
+
+            lines.append("")
+            lines.append("  Projects with >1K stars (HN) or >5K stars (any source)")
+            lines.append("  are auto-promoted to tracking. Use set_tier() to adjust.")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error generating radar: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Tool 22: explain — deep methodology documentation
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def explain(topic: str = None) -> str:
+    """Deep documentation on how PT-Edge works. Ask about any tool, metric, algorithm, or design decision.
+
+    Call with no topic to see all available topics.
+    Call with a topic name for the full explanation, including known limitations and what we'd change.
+
+    Examples: explain('hype_ratio'), explain('auto_promotion'), explain('data_sources')
+    """
+    try:
+        with engine.connect() as conn:
+            if not topic:
+                # List all topics grouped by category
+                rows = conn.execute(text("""
+                    SELECT topic, category, title, summary
+                    FROM methodology
+                    ORDER BY category, topic
+                """)).fetchall()
+
+                if not rows:
+                    return (
+                        "No methodology documentation found. "
+                        "Run `python -m app.methodology_seed` to populate."
+                    )
+
+                lines = [
+                    "PT-EDGE METHODOLOGY",
+                    "=" * 60,
+                    "",
+                    "Deep documentation on how every tool, metric, and algorithm works.",
+                    "Each entry includes known limitations and what we'd change.",
+                    "Call explain('topic_name') for the full explanation.",
+                    "",
+                    "We publish this so you can tell us where we're wrong.",
+                    "Use submit_correction() to push back on anything.",
+                    "",
+                ]
+
+                current_category = None
+                for r in rows:
+                    m = r._mapping
+                    cat = m["category"].upper()
+                    if cat != current_category:
+                        current_category = cat
+                        lines.append(f"{cat}S")
+                        lines.append("-" * 40)
+
+                    lines.append(f"  {m['topic']:<28} {m['title']}")
+                    lines.append(f"  {' ' * 28} {m['summary'][:80]}...")
+                    lines.append("")
+
+                return "\n".join(lines)
+
+            # Specific topic — fuzzy match
+            row = conn.execute(text("""
+                SELECT topic, category, title, summary, detail, updated_at
+                FROM methodology
+                WHERE LOWER(topic) = LOWER(:topic)
+            """), {"topic": topic.strip()}).fetchone()
+
+            if row:
+                m = row._mapping
+                lines = [
+                    f"{m['title']}",
+                    "=" * 60,
+                    f"Category: {m['category']}  |  Topic: {m['topic']}",
+                    f"Last updated: {_fmt_date(m['updated_at'])}",
+                    "",
+                    m["detail"],
+                    "",
+                    "-" * 60,
+                    "Think we're wrong about something? Use submit_correction()",
+                    "to tell us. We read every one.",
+                ]
+                return "\n".join(lines)
+
+            # No exact match — search for partial matches
+            similar = conn.execute(text("""
+                SELECT topic, title FROM methodology
+                WHERE LOWER(topic) LIKE '%' || LOWER(:q) || '%'
+                   OR LOWER(title) LIKE '%' || LOWER(:q) || '%'
+                   OR LOWER(summary) LIKE '%' || LOWER(:q) || '%'
+                ORDER BY topic
+                LIMIT 10
+            """), {"q": topic.strip()}).fetchall()
+
+            if similar:
+                lines = [
+                    f"No exact match for '{topic}'. Did you mean one of these?",
+                    "",
+                ]
+                for s in similar:
+                    sm = s._mapping
+                    lines.append(f"  explain('{sm['topic']}')  — {sm['title']}")
+                return "\n".join(lines)
+
+            return (
+                f"No methodology entry found for '{topic}'. "
+                f"Call explain() with no arguments to see all available topics."
+            )
+
+    except Exception as e:
+        return f"Error querying methodology: {e}"
 
 
 # ---------------------------------------------------------------------------
