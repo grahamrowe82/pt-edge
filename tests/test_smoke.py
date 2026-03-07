@@ -21,6 +21,14 @@ def test_hn_pulse_registered():
     assert "hn_pulse" in _TOOLS
 
 
+def test_pitch_tools_registered():
+    """Article pitch tools are registered."""
+    from app.mcp.server import _TOOLS
+    assert "propose_article" in _TOOLS
+    assert "list_pitches" in _TOOLS
+    assert "upvote_pitch" in _TOOLS
+
+
 def test_tool_definitions_build():
     """Tool definitions build correctly for JSON-RPC endpoint."""
     from app.mcp.server import _tool_definitions

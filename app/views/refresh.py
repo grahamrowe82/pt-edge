@@ -45,6 +45,21 @@ def refresh_all_views():
                     errors.append(f"{view_name}: {e2}")
                     logger.error(f"Failed to refresh {view_name}: {e2}")
 
+    # Snapshot lifecycle stages for transition tracking
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                INSERT INTO lifecycle_history (project_id, lifecycle_stage, snapshot_date)
+                SELECT project_id, lifecycle_stage, CURRENT_DATE
+                FROM mv_lifecycle
+                ON CONFLICT (project_id, snapshot_date) DO UPDATE
+                SET lifecycle_stage = EXCLUDED.lifecycle_stage
+            """))
+            conn.commit()
+            logger.info("Snapshotted lifecycle stages to lifecycle_history")
+    except Exception as e:
+        logger.warning(f"Could not snapshot lifecycle stages: {e}")
+
     # Log sync
     session = SessionLocal()
     try:
