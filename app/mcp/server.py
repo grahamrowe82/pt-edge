@@ -1020,6 +1020,101 @@ def _lab_compare(session: Session, lab_names: list[str]) -> str:
     except Exception as e:
         lines.append(f"  Could not query releases: {e}")
 
+    # Key Events combined timeline (interleaved across labs)
+    lines.append("")
+    lines.append("KEY EVENTS (combined timeline)")
+    lines.append("-" * 40)
+    try:
+        from app.models import LabEvent
+        lab_ids = [l.id for l in labs]
+        lab_name_by_id = {l.id: l.name for l in labs}
+        events = (
+            session.query(LabEvent)
+            .filter(LabEvent.lab_id.in_(lab_ids))
+            .order_by(LabEvent.event_date.desc())
+            .limit(20)
+            .all()
+        )
+        if events:
+            for ev in events:
+                date_str = ev.event_date.strftime("%Y-%m-%d") if ev.event_date else "n/a"
+                lab_label = lab_name_by_id.get(ev.lab_id, "?")
+                lines.append(f"  {date_str}  [{lab_label}]  [{ev.event_type}]  {ev.title}")
+                if ev.summary:
+                    lines.append(f"             {ev.summary[:100]}")
+        else:
+            lines.append("  No lab events recorded yet.")
+    except Exception as e:
+        lines.append(f"  Could not query lab events: {e}")
+
+    # HN Discussion combined (interleaved across labs)
+    lines.append("")
+    lines.append("HN DISCUSSION (combined)")
+    lines.append("-" * 40)
+    try:
+        lab_ids = [l.id for l in labs]
+        lab_name_by_id = {l.id: l.name for l in labs}
+        hn_posts = (
+            session.query(HNPost)
+            .filter(HNPost.lab_id.in_(lab_ids))
+            .order_by(HNPost.posted_at.desc())
+            .limit(15)
+            .all()
+        )
+        if hn_posts:
+            for post in hn_posts:
+                lab_label = lab_name_by_id.get(post.lab_id, "?")
+                lines.append(
+                    f"  {_fmt_date(post.posted_at)}  [{lab_label}]  "
+                    f"{post.title[:60]}  "
+                    f"({post.points} pts, {post.num_comments} comments)"
+                )
+        else:
+            lines.append("  No HN posts linked to these labs yet.")
+    except Exception as e:
+        lines.append(f"  Could not query HN posts: {e}")
+
+    # Frontier Models comparison (flagship per lab)
+    lines.append("")
+    lines.append("FRONTIER MODELS (comparison)")
+    lines.append("-" * 40)
+    try:
+        from app.models import FrontierModel
+        lab_ids = [l.id for l in labs]
+        lab_name_by_id = {l.id: l.name for l in labs}
+        models = (
+            session.query(FrontierModel)
+            .filter(
+                FrontierModel.lab_id.in_(lab_ids),
+                FrontierModel.status == "active",
+            )
+            .order_by(FrontierModel.context_window.desc().nullslast())
+            .all()
+        )
+        if models:
+            # Group by lab, show top 3 per lab by context window
+            from collections import defaultdict
+            by_lab = defaultdict(list)
+            for m in models:
+                by_lab[m.lab_id].append(m)
+
+            for l in labs:
+                lab_models = by_lab.get(l.id, [])
+                if lab_models:
+                    lines.append(f"  {l.name}:")
+                    for m in lab_models[:3]:
+                        ctx = f"{m.context_window:,}tok" if m.context_window else "n/a"
+                        pricing = ""
+                        if m.pricing_input and m.pricing_output:
+                            pricing = f"{m.pricing_input} / {m.pricing_output}"
+                        elif not m.pricing_input:
+                            pricing = "(open weights)"
+                        lines.append(f"    {m.name:<30} {ctx:<16} {pricing}")
+        else:
+            lines.append("  No frontier models recorded.")
+    except Exception as e:
+        lines.append(f"  Could not query models: {e}")
+
     return "\n".join(lines)
 
 
