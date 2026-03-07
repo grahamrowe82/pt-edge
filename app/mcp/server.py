@@ -369,7 +369,7 @@ async def about() -> str:
         "  whats_new(days=7)                -- releases, trending, HN discussion",
         "  trending(category, window)       -- top 20 by star growth",
         "  lifecycle_map(category, tier)     -- projects grouped by lifecycle stage",
-        "  hype_landscape(category, limit)  -- top overhyped + underrated projects",
+        "  hype_landscape(category, limit, window, format) -- overhyped + underrated + trends",
         "",
         "Deep Dives:",
         "  project_pulse(name)              -- everything about one project",
@@ -389,6 +389,7 @@ async def about() -> str:
         "  sniff_projects(limit)            -- auto-discovered project candidates",
         "  accept_candidate(id, category)   -- promote a candidate to tracked",
         "  topic(query)                     -- what's happening with a topic across ecosystem",
+        "  hn_pulse(query, days)            -- HN discourse intelligence + sentiment",
         "",
         "Community:",
         "  submit_correction(topic, text)   -- flag something that's wrong",
@@ -459,6 +460,31 @@ async def about() -> str:
         lines.append(f"DATA FRESHNESS: Could not query ({e})")
 
     lines.extend([
+        "",
+        "COMMON WORKFLOWS",
+        "-" * 30,
+        "",
+        "Research a topic:",
+        "  1. topic('MCP')                  — ecosystem overview",
+        "  2. scout(category='mcp-server')  — fastest growing projects",
+        "  3. deep_dive('owner/repo')       — full profile of interesting finds",
+        "  4. accept_candidate(id, 'mcp-server')  — start tracking it",
+        "",
+        "Compare competitors:",
+        "  1. compare('langchain, llamaindex, haystack')  — side-by-side metrics",
+        "  2. hype_landscape(category='framework')        — who's overhyped?",
+        "  3. related('langchain')                        — HN co-discussion",
+        "",
+        "Monitor what's happening:",
+        "  1. whats_new(days=7)             — releases + HN buzz this week",
+        "  2. trending()                    — star growth acceleration",
+        "  3. radar()                       — untracked projects gaining attention",
+        "  4. hn_pulse()                    — HN discourse intelligence",
+        "",
+        "Understand the methodology:",
+        "  1. explain()                     — browse all methodology topics",
+        "  2. explain('hype_ratio')         — deep dive on a specific metric",
+        "  3. submit_correction('hype_ratio', 'Your objection here')",
         "",
         "BUILT BY",
         "-" * 30,
@@ -1477,9 +1503,17 @@ async def lifecycle_map(category: str = None, tier: int = None) -> str:
 
 @mcp.tool()
 @track_usage
-async def hype_landscape(category: str = None, limit: int = 10) -> str:
-    """Top overhyped + top underrated projects. Bulk hype comparison."""
+async def hype_landscape(category: str = None, limit: int = 10, window: str = None, format: str = "text") -> str:
+    """Top overhyped + top underrated projects. Bulk hype comparison.
+
+    Optional window ('30d' or '90d') adds a hype-ratio trend section showing
+    which projects' ratios are shifting fastest.
+    Set format='json' for machine-readable output.
+    """
     lines = ["HYPE LANDSCAPE", "=" * 40]
+    overhyped = []
+    underrated = []
+    trend_data = []
 
     try:
         with engine.connect() as conn:
@@ -1507,6 +1541,8 @@ async def hype_landscape(category: str = None, limit: int = 10) -> str:
             """, params)
 
             if not overhyped and not underrated:
+                if format == "json":
+                    return json.dumps({"overhyped": [], "underrated": [], "trend": []})
                 lines.append("")
                 lines.append("  No hype data available. Run view refresh first.")
                 return "\n".join(lines)
@@ -1533,8 +1569,65 @@ async def hype_landscape(category: str = None, limit: int = 10) -> str:
                     f"[{r.get('hype_bucket', '')}]"
                 )
 
+            # Time dimension — hype ratio trend from historical snapshots
+            if window:
+                weeks = 12 if window == "90d" else 4
+                trend_params: dict = {"lim": limit, "weeks": weeks}
+                trend_cat = ""
+                if category:
+                    trend_cat = "AND p.category = :cat"
+                    trend_params["cat"] = category
+
+                trend_rows = conn.execute(text(f"""
+                    WITH weekly_hype AS (
+                        SELECT p.name, p.category,
+                               gs.snapshot_date,
+                               gs.stars,
+                               ds.downloads_monthly,
+                               CASE WHEN ds.downloads_monthly > 0
+                                    THEN gs.stars::numeric / ds.downloads_monthly
+                                    ELSE NULL END AS hype_ratio
+                        FROM projects p
+                        JOIN github_snapshots gs ON gs.project_id = p.id
+                        LEFT JOIN download_snapshots ds ON ds.project_id = p.id
+                            AND ds.snapshot_date = gs.snapshot_date
+                        WHERE p.is_active = true
+                          AND gs.snapshot_date >= CURRENT_DATE - INTERVAL ':weeks weeks'
+                          {trend_cat}
+                    )
+                    SELECT name, category,
+                           MIN(hype_ratio) AS min_ratio,
+                           MAX(hype_ratio) AS max_ratio,
+                           MAX(hype_ratio) - MIN(hype_ratio) AS ratio_change
+                    FROM weekly_hype
+                    WHERE hype_ratio IS NOT NULL
+                    GROUP BY name, category
+                    HAVING COUNT(DISTINCT snapshot_date) >= 2
+                    ORDER BY ratio_change DESC
+                    LIMIT :lim
+                """), trend_params).fetchall()
+
+                if trend_rows:
+                    trend_data = [dict(r._mapping) for r in trend_rows]
+                    lines.append("")
+                    lines.append(f"HYPE RATIO TREND (last {window})")
+                    lines.append("-" * 30)
+                    for r in trend_data:
+                        lines.append(
+                            f"  {r['name']:<28} "
+                            f"min: {_fmt_ratio(r.get('min_ratio')):<8} "
+                            f"max: {_fmt_ratio(r.get('max_ratio')):<8} "
+                            f"change: {_fmt_ratio(r.get('ratio_change'))}"
+                        )
+
     except Exception as e:
         lines.append(f"  Error: {e}")
+
+    if format == "json":
+        data = {"overhyped": overhyped, "underrated": underrated}
+        if window:
+            data["trend"] = trend_data
+        return json.dumps(data, default=_serialize)
 
     return "\n".join(lines)
 
@@ -1599,7 +1692,10 @@ async def sniff_projects(limit: int = 20) -> str:
 # Tool 15: accept_candidate
 # ---------------------------------------------------------------------------
 
-VALID_CATEGORIES = {"tool", "model", "framework", "library", "agent", "eval", "dataset", "infra"}
+VALID_CATEGORIES = {
+    "tool", "model", "framework", "library", "agent", "eval", "dataset", "infra",
+    "mcp-server", "security",
+}
 
 
 @mcp.tool()
@@ -1926,6 +2022,67 @@ async def compare(projects: str) -> str:
         if missing:
             lines.append("")
             lines.append(f"Note: No summary data for: {', '.join(missing)}. Views may need refreshing.")
+
+        # Auto-generated editorial narrative
+        narratives = []
+
+        # Size disparity
+        stars_data = [(by_slug.get(s, {}).get("stars") or 0, s) for s in slugs]
+        stars_data.sort(reverse=True)
+        if stars_data[0][0] and stars_data[-1][0] and stars_data[-1][0] > 0:
+            ratio = stars_data[0][0] / stars_data[-1][0]
+            if ratio > 10:
+                top_name = by_slug.get(stars_data[0][1], {}).get("name", "?")
+                bot_name = by_slug.get(stars_data[-1][1], {}).get("name", "?")
+                narratives.append(
+                    f"{top_name} has {ratio:.0f}x more stars than {bot_name}, "
+                    f"but stars aren't adoption."
+                )
+
+        # Hype divergence
+        for slug in slugs:
+            r = by_slug.get(slug, {})
+            bucket = r.get("hype_bucket", "")
+            name = r.get("name", "?")
+            if bucket == "hype":
+                narratives.append(f"{name} is in 'hype' territory — stars vastly exceed downloads.")
+            elif bucket == "quiet_adoption":
+                narratives.append(f"{name} is 'quiet adoption' — heavily used but few stars.")
+
+        # Lifecycle mismatch
+        stages = {}
+        for slug in slugs:
+            r = by_slug.get(slug, {})
+            if r.get("lifecycle_stage"):
+                stages[slug] = r["lifecycle_stage"]
+        if len(set(stages.values())) > 1:
+            stage_strs = [f"{by_slug[s].get('name', '?')}: {stages[s]}" for s in slugs if s in stages]
+            narratives.append(f"Different lifecycle stages: {', '.join(stage_strs)}.")
+
+        # Momentum winner
+        accel = [(by_slug.get(s, {}).get("stars_7d_delta") or 0, s) for s in slugs]
+        accel.sort(reverse=True)
+        if accel[0][0] > 0:
+            winner = by_slug.get(accel[0][1], {}).get("name", "?")
+            narratives.append(
+                f"{winner} is gaining the most momentum ({_fmt_delta(accel[0][0])} stars in 7d)."
+            )
+
+        if narratives:
+            lines.append("")
+            lines.append("EDITORIAL NARRATIVE")
+            lines.append("-" * 30)
+            for n in narratives:
+                lines.append(f"  {n}")
+
+        # Dig deeper suggestions
+        lines.append("")
+        lines.append("DIG DEEPER")
+        lines.append("-" * 30)
+        for slug in slugs:
+            name = by_slug.get(slug, {}).get("name", slug)
+            lines.append(f"  project_pulse('{slug}')  — full profile of {name}")
+            lines.append(f"  hype_check('{slug}')     — stars vs downloads reality check")
 
         return "\n".join(lines)
 
@@ -2474,6 +2631,8 @@ async def radar() -> str:
             lines.append("")
             lines.append("  Projects with >1K stars (HN) or >5K stars (any source)")
             lines.append("  are auto-promoted to tracking. Use set_tier() to adjust.")
+            lines.append("")
+            lines.append("Use deep_dive('owner/repo') to investigate, or accept_candidate(id, category) to start tracking.")
 
         return "\n".join(lines)
 
@@ -2771,7 +2930,64 @@ async def topic(query: str) -> str:
     finally:
         session.close()
 
-    # 4. NARRATIVE SUMMARY
+    # 4. METHODOLOGY — semantic search across explanations
+    lines.append("")
+    lines.append("RELATED METHODOLOGY")
+    lines.append("-" * 40)
+    meth_found = False
+    try:
+        from app.embeddings import is_enabled, embed_one
+        if is_enabled():
+            vec = await embed_one(query)
+            if vec:
+                with engine.connect() as conn:
+                    meth_rows = conn.execute(text("""
+                        SELECT topic, title, summary,
+                               1 - (embedding <=> :vec::vector) AS similarity
+                        FROM methodology
+                        WHERE embedding IS NOT NULL
+                        ORDER BY embedding <=> :vec::vector
+                        LIMIT 3
+                    """), {"vec": str(vec)}).fetchall()
+                    for r in meth_rows:
+                        m = r._mapping
+                        if float(m["similarity"]) > 0.3:
+                            meth_found = True
+                            lines.append(
+                                f"  explain('{m['topic']}')  — {m['title']} "
+                                f"(similarity: {float(m['similarity']):.0%})"
+                            )
+    except Exception as e:
+        logger.debug(f"Methodology search error: {e}")
+    if not meth_found:
+        lines.append("  No matching methodology entries.")
+
+    # 5. CORRECTIONS — community intelligence on this topic
+    lines.append("")
+    lines.append("ACTIVE CORRECTIONS")
+    lines.append("-" * 40)
+    correction_session = SessionLocal()
+    try:
+        corrections = (
+            correction_session.query(Correction)
+            .filter(
+                Correction.topic.ilike(f"%{query}%"),
+                Correction.status == "active",
+            )
+            .order_by(Correction.upvotes.desc())
+            .limit(5)
+            .all()
+        )
+        if corrections:
+            for c in corrections:
+                lines.append(f"  [{c.id}] {c.topic} (upvotes: {c.upvotes})")
+                lines.append(f"       {c.correction[:120]}")
+        else:
+            lines.append("  No active corrections on this topic.")
+    finally:
+        correction_session.close()
+
+    # 6. NARRATIVE SUMMARY
     lines.append("")
     lines.append("SUMMARY")
     lines.append("-" * 40)
@@ -2783,6 +2999,8 @@ async def topic(query: str) -> str:
         f"{candidate_count} pending candidates, "
         f"{hn_count} HN posts"
     )
+    lines.append("")
+    lines.append("Use scout(category='...') to find the fastest growing projects in this space.")
 
     return "\n".join(lines)
 
@@ -2798,7 +3016,9 @@ async def scout(category: str = None, limit: int = 15) -> str:
 
     Uses pre-computed enrichment data from the ingest pipeline (no live API calls).
     Candidates without enrichment data yet are shown separately.
-    Optional category keyword filters results (e.g. 'agent', 'database', 'mcp').
+    Optional category filters by project category, name, description, or topics.
+    Valid categories: agent, dataset, eval, framework, infra, library, mcp-server, model, security, tool.
+    Also accepts any keyword (e.g. 'database', 'rust', 'embedding').
     """
     lines = [
         "SCOUT — fastest growing projects",
@@ -2824,6 +3044,7 @@ async def scout(category: str = None, limit: int = 15) -> str:
                     AND (
                         name ILIKE '%' || :cat || '%'
                         OR description ILIKE '%' || :cat || '%'
+                        OR language ILIKE :cat
                         OR EXISTS (
                             SELECT 1 FROM unnest(topics) t
                             WHERE t ILIKE '%' || :cat || '%'
@@ -2876,7 +3097,8 @@ async def scout(category: str = None, limit: int = 15) -> str:
             if category:
                 tracked_sql += """
                     AND (
-                        p.name ILIKE '%' || :cat || '%'
+                        p.category = :cat
+                        OR p.name ILIKE '%' || :cat || '%'
                         OR p.category ILIKE '%' || :cat || '%'
                         OR EXISTS (
                             SELECT 1 FROM unnest(p.topics) t
@@ -3033,14 +3255,208 @@ async def scout(category: str = None, limit: int = 15) -> str:
                 lines.append(f"  • 🚀 Exponential: {names} (>50 ★/day)")
 
         lines.append("")
-        lines.append(
-            f"  Use deep_dive('owner/repo') for a full profile on any result."
-        )
+        lines.append("Use deep_dive('owner/repo') for full profiles, or accept_candidate(id, category) to track.")
 
         return "\n".join(lines)
 
     except Exception as e:
         return f"Error running scout: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Tool 26: hn_pulse — HN discourse intelligence
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def hn_pulse(query: str = None, days: int = 14) -> str:
+    """HN discourse intelligence. What is the community actually talking about?
+
+    Without a query: top discussions, trending topics, and discussion quality metrics.
+    With a query: focused analysis of HN discourse around a specific topic/project.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    lines = [
+        f"HN PULSE (last {days} days)",
+        "=" * 60,
+    ]
+
+    try:
+        with engine.connect() as conn:
+            if query:
+                # FOCUSED MODE: discourse around a specific topic
+                posts = conn.execute(text("""
+                    SELECT title, url, points, num_comments, posted_at, post_type,
+                           project_id
+                    FROM hn_posts
+                    WHERE title ILIKE '%' || :q || '%'
+                      AND posted_at >= :cutoff
+                    ORDER BY points DESC
+                    LIMIT 20
+                """), {"q": query.strip(), "cutoff": cutoff}).fetchall()
+
+                lines.append(f"  Topic: {query}")
+                lines.append(f"  Posts found: {len(posts)}")
+
+                if posts:
+                    total_points = sum(int(r._mapping["points"] or 0) for r in posts)
+                    total_comments = sum(int(r._mapping["num_comments"] or 0) for r in posts)
+                    avg_points = total_points / len(posts)
+                    avg_comments = total_comments / len(posts)
+                    comment_density = total_comments / max(total_points, 1)
+
+                    lines.append("")
+                    lines.append("ENGAGEMENT SUMMARY")
+                    lines.append("-" * 40)
+                    lines.append(f"  Total posts:      {len(posts)}")
+                    lines.append(f"  Total points:     {total_points:,}")
+                    lines.append(f"  Total comments:   {total_comments:,}")
+                    lines.append(f"  Avg points:       {avg_points:.0f}")
+                    lines.append(f"  Avg comments:     {avg_comments:.0f}")
+                    lines.append(f"  Comment density:  {comment_density:.2f} comments/point")
+
+                    # Post type breakdown
+                    show_count = sum(1 for r in posts if r._mapping["post_type"] == "show")
+                    ask_count = sum(1 for r in posts if r._mapping["post_type"] == "ask")
+                    link_count = len(posts) - show_count - ask_count
+                    lines.append("")
+                    lines.append(f"  Show HN: {show_count}  |  Ask HN: {ask_count}  |  Links: {link_count}")
+
+                    # Top posts
+                    lines.append("")
+                    lines.append("TOP POSTS")
+                    lines.append("-" * 40)
+                    for r in posts[:10]:
+                        m = r._mapping
+                        tracked = " [tracked]" if m["project_id"] else ""
+                        lines.append(
+                            f"  {int(m['points'] or 0):>5} pts  {int(m['num_comments'] or 0):>4} cmt  "
+                            f"[{m['post_type']}] {m['title'][:65]}{tracked}"
+                        )
+
+                    # Discussion quality signal
+                    high_discussion = [
+                        r for r in posts
+                        if (int(r._mapping["num_comments"] or 0) >
+                            int(r._mapping["points"] or 0) * 0.5)
+                    ]
+                    if high_discussion:
+                        lines.append("")
+                        lines.append("DISCUSSION QUALITY")
+                        lines.append("-" * 40)
+                        lines.append(
+                            f"  {len(high_discussion)} posts have high comment density "
+                            f"(>0.5 comments per point)"
+                        )
+                        lines.append(
+                            "  High density often signals controversy or genuine technical debate:"
+                        )
+                        sorted_disc = sorted(
+                            high_discussion,
+                            key=lambda x: int(x._mapping["num_comments"] or 0),
+                            reverse=True,
+                        )
+                        for r in sorted_disc[:3]:
+                            m = r._mapping
+                            lines.append(
+                                f"    {int(m['num_comments'] or 0)} comments on "
+                                f"{int(m['points'] or 0)} pts: {m['title'][:60]}"
+                            )
+                else:
+                    lines.append("")
+                    lines.append("  No HN posts found for this topic in the period.")
+
+            else:
+                # OVERVIEW MODE: general HN discourse health
+                lines.append("")
+                lines.append("TOP DISCUSSIONS")
+                lines.append("-" * 40)
+                top = conn.execute(text("""
+                    SELECT title, points, num_comments, post_type, posted_at
+                    FROM hn_posts
+                    WHERE posted_at >= :cutoff
+                    ORDER BY points DESC
+                    LIMIT 10
+                """), {"cutoff": cutoff}).fetchall()
+                for r in top:
+                    m = r._mapping
+                    lines.append(
+                        f"  {int(m['points'] or 0):>5} pts  {int(m['num_comments'] or 0):>4} cmt  "
+                        f"[{m['post_type']}] {m['title'][:65]}"
+                    )
+
+                # Most discussed (by comment count)
+                lines.append("")
+                lines.append("MOST DISCUSSED (by comments)")
+                lines.append("-" * 40)
+                discussed = conn.execute(text("""
+                    SELECT title, points, num_comments, post_type
+                    FROM hn_posts
+                    WHERE posted_at >= :cutoff
+                    ORDER BY num_comments DESC
+                    LIMIT 10
+                """), {"cutoff": cutoff}).fetchall()
+                for r in discussed:
+                    m = r._mapping
+                    lines.append(
+                        f"  {int(m['num_comments'] or 0):>5} cmt  {int(m['points'] or 0):>4} pts  "
+                        f"[{m['post_type']}] {m['title'][:65]}"
+                    )
+
+                # Show HN launches
+                lines.append("")
+                lines.append("SHOW HN LAUNCHES")
+                lines.append("-" * 40)
+                shows = conn.execute(text("""
+                    SELECT title, points, num_comments, posted_at
+                    FROM hn_posts
+                    WHERE posted_at >= :cutoff AND post_type = 'show'
+                    ORDER BY points DESC
+                    LIMIT 5
+                """), {"cutoff": cutoff}).fetchall()
+                if shows:
+                    for r in shows:
+                        m = r._mapping
+                        lines.append(
+                            f"  {int(m['points'] or 0):>5} pts  {int(m['num_comments'] or 0):>4} cmt  "
+                            f"{m['title'][:65]}"
+                        )
+                else:
+                    lines.append("  No Show HN posts in this period.")
+
+                # Daily volume trend
+                lines.append("")
+                lines.append("DAILY POST VOLUME")
+                lines.append("-" * 40)
+                daily = conn.execute(text("""
+                    SELECT posted_at::date AS day,
+                           COUNT(*) AS posts,
+                           SUM(points) AS total_points,
+                           SUM(num_comments) AS total_comments
+                    FROM hn_posts
+                    WHERE posted_at >= :cutoff
+                    GROUP BY posted_at::date
+                    ORDER BY day DESC
+                    LIMIT 14
+                """), {"cutoff": cutoff}).fetchall()
+                for r in daily:
+                    m = r._mapping
+                    lines.append(
+                        f"  {m['day']}  {int(m['posts']):>3} posts  "
+                        f"{int(m['total_points']):>6} pts  "
+                        f"{int(m['total_comments']):>5} cmt"
+                    )
+
+        lines.append("")
+        lines.append(
+            "Use topic('...') for ecosystem-wide analysis, "
+            "or radar() for untracked project discovery."
+        )
+
+    except Exception as e:
+        lines.append(f"  Error: {e}")
+
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -3407,7 +3823,7 @@ _TOOL_LIST = [
     trending, hype_check, submit_correction, upvote_correction,
     list_corrections, lifecycle_map, hype_landscape, sniff_projects,
     accept_candidate, set_tier, movers, compare, related, market_map,
-    radar, explain, topic, scout, deep_dive,
+    radar, explain, topic, scout, hn_pulse, deep_dive,
 ]
 
 
