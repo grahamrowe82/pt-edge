@@ -3,9 +3,11 @@ import re
 import logging
 from datetime import date, datetime, timezone, timedelta
 
+from fastapi import Request, Response
 from fastmcp import FastMCP
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.db import SessionLocal, engine
 from app.models import (
@@ -13,6 +15,7 @@ from app.models import (
     Release, HNPost, Correction, SyncLog,
 )
 from app.mcp.tracking import track_usage
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -1027,3 +1030,23 @@ async def list_corrections(topic: str = None, status: str = "active") -> str:
         session.close()
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Auth middleware & mount
+# ---------------------------------------------------------------------------
+
+
+class BearerAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        auth = request.headers.get("Authorization", "")
+        if auth != f"Bearer {settings.API_TOKEN}":
+            return Response(status_code=401, content="Unauthorized")
+        return await call_next(request)
+
+
+def mount_mcp(app):
+    """Mount the MCP server on a FastAPI app at /mcp."""
+    mcp_app = mcp.http_app(path="/")
+    mcp_app.add_middleware(BearerAuthMiddleware)
+    app.mount("/mcp", mcp_app)
