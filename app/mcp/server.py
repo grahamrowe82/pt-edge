@@ -2353,9 +2353,27 @@ async def radar() -> str:
                     f"({pct:.0f}%) mention projects we don't track"
                 )
 
+            # Recently auto-promoted
+            auto_promoted = conn.execute(text("""
+                SELECT pc.name, pc.stars, pc.source, pc.reviewed_at
+                FROM project_candidates pc
+                WHERE pc.status = 'accepted'
+                  AND pc.reviewed_at >= NOW() - INTERVAL '7 days'
+                ORDER BY pc.stars DESC NULLS LAST
+                LIMIT 5
+            """)).fetchall()
+
+            if auto_promoted:
+                count = len(auto_promoted)
+                names = ", ".join(r._mapping.get("name") or "?" for r in auto_promoted[:3])
+                lines.append(
+                    f"  • {count} projects auto-promoted this week: {names}"
+                    + (" ..." if count > 3 else "")
+                )
+
             lines.append("")
-            lines.append("  Use sniff_projects() to see full candidate list.")
-            lines.append("  Use accept_candidate(id, category) to promote one to tracking.")
+            lines.append("  Projects with >1K stars (HN) or >5K stars (any source)")
+            lines.append("  are auto-promoted to tracking. Use set_tier() to adjust.")
 
         return "\n".join(lines)
 

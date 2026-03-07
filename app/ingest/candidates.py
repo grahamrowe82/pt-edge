@@ -2,17 +2,22 @@
 
 This enables velocity tracking: by comparing the current star count to the
 previous value, radar() can surface candidates that are exploding in popularity.
+
+Auto-promotion: candidates crossing star thresholds are automatically promoted
+to tracked projects. Generous thresholds — false positives are cheap to clean up,
+false negatives mean missing the next OpenClaw.
 """
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone, timedelta
 
 import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.models import SyncLog
+from app.models import Project, SyncLog
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -121,5 +126,125 @@ async def ingest_candidate_velocity() -> dict:
     finally:
         session.close()
 
-    logger.info(f"Candidate velocity complete: {len(updates)} rescored, {error_count} errors")
-    return {"rescored": len(updates), "errors": error_count}
+    # Auto-promote candidates that cross thresholds
+    promoted = _auto_promote_candidates()
+
+    logger.info(
+        f"Candidate velocity complete: {len(updates)} rescored, "
+        f"{error_count} errors, {len(promoted)} auto-promoted"
+    )
+    return {"rescored": len(updates), "errors": error_count, "auto_promoted": promoted}
+
+
+# ---------------------------------------------------------------------------
+# Auto-promotion: generous thresholds, false positives are cheap
+# ---------------------------------------------------------------------------
+
+# >1K stars + discovered via HN = someone in AI community posted it
+AUTO_PROMOTE_HN_STARS = 1_000
+# >5K stars from any source = significant project regardless of how we found it
+AUTO_PROMOTE_ANY_STARS = 5_000
+
+# Language → likely category mapping
+LANG_CATEGORY = {
+    "python": "library",
+    "typescript": "tool",
+    "javascript": "tool",
+    "rust": "library",
+    "go": "tool",
+    "c++": "library",
+    "c": "library",
+    "jupyter notebook": "library",
+}
+
+
+def _auto_promote_candidates() -> list[dict]:
+    """Promote pending candidates that cross star thresholds.
+
+    Returns list of {"slug": ..., "stars": ..., "source": ...} for each promoted project.
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT id, github_url, github_owner, github_repo, name, description,
+                   stars, language, source
+            FROM project_candidates
+            WHERE status = 'pending'
+              AND stars IS NOT NULL
+              AND (
+                  (stars >= :hn_threshold AND source = 'hn')
+                  OR stars >= :any_threshold
+              )
+            ORDER BY stars DESC
+        """), {
+            "hn_threshold": AUTO_PROMOTE_HN_STARS,
+            "any_threshold": AUTO_PROMOTE_ANY_STARS,
+        }).fetchall()
+
+    if not rows:
+        return []
+
+    promoted = []
+    for r in rows:
+        c = r._mapping
+
+        # Generate slug
+        slug = (c.get("github_repo") or c.get("name") or f"candidate-{c['id']}").lower()
+        slug = re.sub(r"[^a-z0-9-]", "-", slug).strip("-")
+
+        # Each promotion in its own session to avoid long-running transaction timeouts
+        session = SessionLocal()
+        try:
+            # Skip if slug already exists as a tracked project
+            existing = session.query(Project).filter(Project.slug == slug).first()
+            if existing:
+                # Mark candidate as accepted (already tracked under this slug)
+                session.execute(text(
+                    "UPDATE project_candidates SET status = 'accepted', reviewed_at = NOW() WHERE id = :cid"
+                ), {"cid": c["id"]})
+                session.commit()
+                continue
+
+            # Guess category from language
+            lang = (c.get("language") or "").lower()
+            category = LANG_CATEGORY.get(lang, "tool")
+
+            # Create project — default to binary distribution (most HN/trending
+            # discoveries are apps, not pip-installable packages)
+            project = Project(
+                slug=slug,
+                name=c.get("name") or c.get("github_repo") or slug,
+                category=category,
+                github_owner=c.get("github_owner"),
+                github_repo=c.get("github_repo"),
+                url=c.get("github_url"),
+                description=(c.get("description") or "")[:500],
+                distribution_type="binary",
+                is_active=True,
+            )
+            session.add(project)
+
+            # Mark candidate as accepted
+            session.execute(text(
+                "UPDATE project_candidates SET status = 'accepted', reviewed_at = NOW() WHERE id = :cid"
+            ), {"cid": c["id"]})
+
+            session.commit()
+
+            promoted.append({
+                "slug": slug,
+                "stars": c.get("stars"),
+                "source": c.get("source"),
+            })
+            logger.info(
+                f"Auto-promoted: {slug} ({c.get('stars'):,} stars, source={c.get('source')})"
+            )
+        except Exception as e:
+            session.rollback()
+            logger.error(f"Auto-promotion failed for {slug}: {e}")
+        finally:
+            session.close()
+
+    if promoted:
+        logger.info(f"Auto-promoted {len(promoted)} candidates to tracked projects")
+
+    return promoted
