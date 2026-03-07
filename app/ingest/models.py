@@ -146,7 +146,7 @@ async def ingest_models() -> dict:
                 VALUES
                     (:lab_id, :name, :slug, :openrouter_id, :context_window,
                      :max_completion_tokens, :pricing_input, :pricing_output,
-                     :modality, :capabilities::jsonb, :released_at::timestamptz, 'active')
+                     :modality, CAST(:capabilities AS jsonb), CAST(:released_at AS timestamptz), 'active')
                 ON CONFLICT (openrouter_id) DO UPDATE SET
                     name = EXCLUDED.name,
                     context_window = EXCLUDED.context_window,
