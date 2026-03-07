@@ -250,3 +250,33 @@ def test_new_models_import():
     from app.models import FrontierModel, LabEvent
     assert FrontierModel.__tablename__ == "frontier_models"
     assert LabEvent.__tablename__ == "lab_events"
+
+
+# ---------------------------------------------------------------------------
+# PR #26: V2EX ingest + Chinese lab coverage
+# ---------------------------------------------------------------------------
+
+def test_v2ex_post_import():
+    """V2EXPost model imports and has correct tablename."""
+    from app.models import V2EXPost
+    assert V2EXPost.__tablename__ == "v2ex_posts"
+
+
+def test_chinese_labs_in_aliases():
+    """LAB_ALIASES includes Chinese lab entries."""
+    from app.ingest.hn import LAB_ALIASES
+    assert "deepseek" in LAB_ALIASES
+    assert "qwen" in LAB_ALIASES
+    assert "zhipu" in LAB_ALIASES
+    assert LAB_ALIASES["deepseek"] == "deepseek"
+    assert LAB_ALIASES["qwen"] == "qwen"
+    assert LAB_ALIASES["zhipu"] == "zhipu-ai"
+
+
+def test_chinese_labs_in_provider_map():
+    """PROVIDER_TO_LAB includes Chinese lab OpenRouter prefixes."""
+    from app.ingest.models import PROVIDER_TO_LAB
+    assert "deepseek" in PROVIDER_TO_LAB
+    assert "qwen" in PROVIDER_TO_LAB
+    assert PROVIDER_TO_LAB["deepseek"] == "deepseek"
+    assert PROVIDER_TO_LAB["qwen"] == "qwen"

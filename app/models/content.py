@@ -41,3 +41,20 @@ class HNPost(Base):
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     project_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("projects.id"))
     lab_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("labs.id"))
+
+
+class V2EXPost(Base):
+    __tablename__ = "v2ex_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    v2ex_id: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[str | None] = mapped_column(Text)
+    author: Mapped[str] = mapped_column(String(100), nullable=False)
+    replies: Mapped[int] = mapped_column(Integer, default=0)
+    node_name: Mapped[str | None] = mapped_column(String(50))
+    posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    project_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("projects.id"))
+    lab_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("labs.id"))

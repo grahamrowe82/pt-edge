@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     GITHUB_RATE_LIMIT: float = 10.0  # requests per second
     DATABASE_URL_READONLY: str = ""  # separate read-only connection for query(); falls back to DATABASE_URL
     OPENAI_API_KEY: str = ""  # empty = embeddings disabled, everything still works
+    V2EX_TOKEN: str = ""  # Personal Access Token from v2ex.com; empty = V2EX ingest skipped
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 

@@ -1,7 +1,7 @@
 from app.models.base import Base
 from app.models.core import Lab, Project, ProjectCandidate, FrontierModel, LabEvent
 from app.models.snapshots import GitHubSnapshot, DownloadSnapshot
-from app.models.content import Release, HNPost
+from app.models.content import Release, HNPost, V2EXPost
 from app.models.community import Correction, ArticlePitch
 from app.models.meta import ToolUsage, SyncLog, Methodology
 
@@ -21,4 +21,5 @@ __all__ = [
     "Methodology",
     "FrontierModel",
     "LabEvent",
+    "V2EXPost",
 ]

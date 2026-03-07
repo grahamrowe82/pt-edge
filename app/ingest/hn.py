@@ -56,6 +56,18 @@ LAB_ALIASES = {
     "stable diffusion": "stability-ai",
     "together ai": "together-ai",
     "groq": "groq",
+    "deepseek": "deepseek",
+    "deep seek": "deepseek",
+    "deepseek-v3": "deepseek",
+    "deepseek-r1": "deepseek",
+    "qwen": "qwen",
+    "qwen2": "qwen",
+    "qwen3": "qwen",
+    "alibaba ai": "qwen",
+    "zhipu": "zhipu-ai",
+    "glm-4": "zhipu-ai",
+    "glm-5": "zhipu-ai",
+    "chatglm": "zhipu-ai",
 }
 
 

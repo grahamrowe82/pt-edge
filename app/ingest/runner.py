@@ -5,6 +5,7 @@ from app.ingest.candidates import ingest_candidate_velocity
 from app.ingest.downloads import ingest_downloads
 from app.ingest.github import ingest_github
 from app.ingest.hn import ingest_hn, backfill_hn_links, backfill_hn_lab_links
+from app.ingest.v2ex import ingest_v2ex, backfill_v2ex_lab_links
 from app.ingest.models import ingest_models
 from app.ingest.huggingface import ingest_huggingface
 from app.ingest.releases import ingest_releases
@@ -28,6 +29,7 @@ async def run_all() -> dict:
         ("huggingface", ingest_huggingface()),
         ("releases", ingest_releases()),
         ("hn", ingest_hn()),
+        ("v2ex", ingest_v2ex()),
         ("trending", ingest_trending()),
         ("candidate_velocity", ingest_candidate_velocity()),
     ]:
@@ -55,6 +57,15 @@ async def run_all() -> dict:
     except Exception as e:
         logger.exception(f"hn_lab_backfill failed: {e}")
         results["hn_lab_backfill"] = {"error": str(e)}
+
+    # Match unlinked V2EX posts to labs
+    try:
+        v2ex_lab_linked = await backfill_v2ex_lab_links()
+        results["v2ex_lab_backfill"] = {"linked": v2ex_lab_linked}
+        logger.info(f"v2ex_lab_backfill: {results['v2ex_lab_backfill']}")
+    except Exception as e:
+        logger.exception(f"v2ex_lab_backfill failed: {e}")
+        results["v2ex_lab_backfill"] = {"error": str(e)}
 
     # Sync frontier models from OpenRouter
     try:
