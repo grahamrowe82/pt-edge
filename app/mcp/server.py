@@ -156,19 +156,16 @@ async def _semantic_project_search(query_text: str, limit: int = 5) -> list[dict
                 LIMIT :limit
             """), {"vec": str(vec), "limit": limit}).fetchall()
 
-            results = []
-            for r in rows:
-                m = r._mapping
-                sim = float(m["similarity"])
-                if sim > 0.3:  # threshold — below this is noise
-                    results.append({
-                        "slug": m["slug"],
-                        "name": m["name"],
-                        "description": m["description"],
-                        "category": m["category"],
-                        "similarity": round(sim, 3),
-                    })
-            return results
+            return [
+                {
+                    "slug": r._mapping["slug"],
+                    "name": r._mapping["name"],
+                    "description": r._mapping["description"],
+                    "category": r._mapping["category"],
+                    "similarity": round(float(r._mapping["similarity"]), 3),
+                }
+                for r in rows
+            ]
     except Exception as e:
         logger.error(f"Semantic search error: {e}")
         return []
@@ -398,6 +395,8 @@ async def about() -> str:
         "  propose_article(topic, thesis)   -- pitch an article for Phase Transitions",
         "  list_pitches(status)             -- browse community article pitches",
         "  upvote_pitch(id)                 -- support an article pitch",
+        "  amend_correction(id, reason)     -- append a note to a correction",
+        "  amend_pitch(id, reason)          -- append a note to an article pitch",
         "",
         "Methodology:",
         "  explain(topic)                   -- how any tool/metric/algo works (deep)",
@@ -1693,6 +1692,102 @@ async def upvote_pitch(pitch_id: int) -> str:
         session.close()
 
 
+@mcp.tool()
+@track_usage
+async def amend_correction(correction_id: int, reason: str) -> str:
+    """Append an amendment note to a correction (e.g. flag a duplicate or outdated item).
+
+    This is append-only — it does not delete or modify the original correction.
+    """
+    if not reason or not reason.strip():
+        return "Amendment reason is required."
+    reason = reason.strip()
+    if len(reason) > 500:
+        return f"Reason too long ({len(reason)} chars). Max 500."
+
+    from app.models import ToolUsage
+
+    session = SessionLocal()
+    try:
+        correction = session.query(Correction).filter(Correction.id == correction_id).first()
+        if not correction:
+            return f"No correction found with ID {correction_id}."
+
+        # Rate limit: max 5 amendments per day
+        recent = (
+            session.query(ToolUsage)
+            .filter(
+                ToolUsage.tool_name == "amend_correction",
+                ToolUsage.called_at >= datetime.now(timezone.utc) - timedelta(days=1),
+            )
+            .count()
+        )
+        if recent >= 5:
+            return "Rate limit: max 5 amendments per day."
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        note = f"\n[{timestamp}] {reason}"
+        correction.amendments = (correction.amendments or "") + note
+        session.commit()
+        return (
+            f"Amendment added to correction #{correction_id}: {correction.topic}\n"
+            f"  Note: {reason}"
+        )
+    except Exception as e:
+        session.rollback()
+        return f"Failed to amend: {e}"
+    finally:
+        session.close()
+
+
+@mcp.tool()
+@track_usage
+async def amend_pitch(pitch_id: int, reason: str) -> str:
+    """Append an amendment note to an article pitch (e.g. flag a duplicate or add context).
+
+    This is append-only — it does not delete or modify the original pitch.
+    """
+    if not reason or not reason.strip():
+        return "Amendment reason is required."
+    reason = reason.strip()
+    if len(reason) > 500:
+        return f"Reason too long ({len(reason)} chars). Max 500."
+
+    from app.models import ToolUsage
+
+    session = SessionLocal()
+    try:
+        pitch = session.query(ArticlePitch).filter(ArticlePitch.id == pitch_id).first()
+        if not pitch:
+            return f"No article pitch found with ID {pitch_id}."
+
+        # Rate limit: max 5 amendments per day
+        recent = (
+            session.query(ToolUsage)
+            .filter(
+                ToolUsage.tool_name == "amend_pitch",
+                ToolUsage.called_at >= datetime.now(timezone.utc) - timedelta(days=1),
+            )
+            .count()
+        )
+        if recent >= 5:
+            return "Rate limit: max 5 amendments per day."
+
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+        note = f"\n[{timestamp}] {reason}"
+        pitch.amendments = (pitch.amendments or "") + note
+        session.commit()
+        return (
+            f"Amendment added to pitch #{pitch_id}: {pitch.topic}\n"
+            f"  Note: {reason}"
+        )
+    except Exception as e:
+        session.rollback()
+        return f"Failed to amend: {e}"
+    finally:
+        session.close()
+
+
 # ---------------------------------------------------------------------------
 # Tool 12: lifecycle_map
 # ---------------------------------------------------------------------------
@@ -2374,14 +2469,49 @@ async def compare(projects: str) -> str:
             stage_strs = [f"{by_slug[s].get('name', '?')}: {stages[s]}" for s in slugs if s in stages]
             narratives.append(f"Different lifecycle stages: {', '.join(stage_strs)}.")
 
-        # Momentum winner
-        accel = [(by_slug.get(s, {}).get("stars_7d_delta") or 0, s) for s in slugs]
-        accel.sort(reverse=True)
-        if accel[0][0] > 0:
-            winner = by_slug.get(accel[0][1], {}).get("name", "?")
-            narratives.append(
-                f"{winner} is gaining the most momentum ({_fmt_delta(accel[0][0])} stars in 7d)."
-            )
+        # Momentum winner — only if we have valid baselines
+        has_any_baseline = any(
+            by_slug.get(s, {}).get("has_7d_baseline") for s in slugs
+        )
+        if has_any_baseline:
+            accel = [(by_slug.get(s, {}).get("stars_7d_delta") or 0, s) for s in slugs]
+            accel.sort(reverse=True)
+            if accel[0][0] > 0:
+                winner = by_slug.get(accel[0][1], {}).get("name", "?")
+                narratives.append(
+                    f"{winner} is gaining the most momentum ({_fmt_delta(accel[0][0])} stars in 7d)."
+                )
+
+        # Hype ratio divergence — surface extreme gaps
+        hype_data = [
+            (by_slug.get(s, {}).get("hype_ratio"), by_slug.get(s, {}).get("name", "?"), s)
+            for s in slugs if by_slug.get(s, {}).get("hype_ratio") is not None
+        ]
+        if len(hype_data) >= 2:
+            hype_data.sort(key=lambda x: x[0], reverse=True)
+            top_hr, top_name, _ = hype_data[0]
+            bot_hr, bot_name, _ = hype_data[-1]
+            if bot_hr and bot_hr > 0 and top_hr / bot_hr > 50:
+                narratives.append(
+                    f"{top_name} has {top_hr / bot_hr:.0f}x more stars per download than "
+                    f"{bot_name} — a massive hype gap."
+                )
+
+        # Release staleness alert — flag outliers
+        release_data = [
+            (by_slug.get(s, {}).get("days_since_release"), by_slug.get(s, {}).get("name", "?"))
+            for s in slugs
+            if by_slug.get(s, {}).get("days_since_release") is not None
+        ]
+        if len(release_data) >= 2:
+            release_data.sort(key=lambda x: x[0], reverse=True)
+            stalest_days, stalest_name = release_data[0]
+            freshest_days, freshest_name = release_data[-1]
+            if stalest_days and stalest_days > 90 and (stalest_days - (freshest_days or 0)) > 60:
+                narratives.append(
+                    f"{stalest_name} hasn't released in {stalest_days} days while "
+                    f"{freshest_name} released {freshest_days} day{'s' if freshest_days != 1 else ''} ago."
+                )
 
         if narratives:
             lines.append("")
@@ -3070,10 +3200,7 @@ async def explain(topic: str = None) -> str:
                         LIMIT 3
                     """), {"vec": str(vec)}).fetchall()
 
-                    sem_matches = [
-                        r._mapping for r in sem_rows
-                        if float(r._mapping["similarity"]) > 0.3
-                    ]
+                    sem_matches = [r._mapping for r in sem_rows]
                     if sem_matches:
                         lines = [
                             f"No exact match for '{topic}', but found semantically related entries:",
@@ -3266,12 +3393,11 @@ async def topic(query: str) -> str:
                     """), {"vec": str(vec)}).fetchall()
                     for r in meth_rows:
                         m = r._mapping
-                        if float(m["similarity"]) > 0.3:
-                            meth_found = True
-                            lines.append(
-                                f"  explain('{m['topic']}')  — {m['title']} "
-                                f"(similarity: {float(m['similarity']):.0%})"
-                            )
+                        meth_found = True
+                        lines.append(
+                            f"  explain('{m['topic']}')  — {m['title']} "
+                            f"(similarity: {float(m['similarity']):.0%})"
+                        )
     except Exception as e:
         logger.debug(f"Methodology search error: {e}")
     if not meth_found:
@@ -4136,7 +4262,8 @@ _PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
 _TOOL_LIST = [
     about, describe_schema, query, whats_new, project_pulse, lab_pulse,
     trending, hype_check, submit_correction, upvote_correction,
-    list_corrections, propose_article, list_pitches, upvote_pitch,
+    list_corrections, amend_correction, propose_article, list_pitches,
+    upvote_pitch, amend_pitch,
     lifecycle_map, hype_landscape, sniff_projects,
     accept_candidate, set_tier, movers, compare, related, market_map,
     radar, explain, topic, scout, hn_pulse, deep_dive,

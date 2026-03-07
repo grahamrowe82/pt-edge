@@ -4,7 +4,7 @@ import logging
 from app.ingest.candidates import ingest_candidate_velocity
 from app.ingest.downloads import ingest_downloads
 from app.ingest.github import ingest_github
-from app.ingest.hn import ingest_hn
+from app.ingest.hn import ingest_hn, backfill_hn_links
 from app.ingest.huggingface import ingest_huggingface
 from app.ingest.releases import ingest_releases
 from app.ingest.trending import ingest_trending
@@ -36,6 +36,15 @@ async def run_all() -> dict:
         except Exception as e:
             logger.exception(f"{name} failed: {e}")
             results[name] = {"error": str(e)}
+
+    # Re-match unlinked HN posts against current project list
+    try:
+        hn_linked = await backfill_hn_links()
+        results["hn_backfill"] = {"linked": hn_linked}
+        logger.info(f"hn_backfill: {results['hn_backfill']}")
+    except Exception as e:
+        logger.exception(f"hn_backfill failed: {e}")
+        results["hn_backfill"] = {"error": str(e)}
 
     # Backfill embeddings for new projects/methodology (before view refresh)
     if is_enabled():

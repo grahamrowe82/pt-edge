@@ -23,6 +23,7 @@ class Correction(Base):
     status: Mapped[str] = mapped_column(String(20), default="active")  # active, superseded, rejected
     upvotes: Mapped[int] = mapped_column(Integer, default=0)
     tags: Mapped[list[str] | None] = mapped_column(ARRAY(String))
+    amendments: Mapped[str | None] = mapped_column(Text)
 
 
 class ArticlePitch(Base):
@@ -36,3 +37,4 @@ class ArticlePitch(Base):
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     status: Mapped[str] = mapped_column(String(20), default="pending")  # pending, accepted, rejected
     upvotes: Mapped[int] = mapped_column(Integer, default=0)
+    amendments: Mapped[str | None] = mapped_column(Text)

@@ -36,14 +36,50 @@ def _determine_post_type(title: str) -> str:
     return "link"
 
 
-def _match_project(title: str, projects: list[Project]) -> int | None:
+def _match_project(title: str, projects: list[Project], url: str | None = None) -> int | None:
     title_lower = title.lower()
+    url_lower = (url or "").lower()
     for p in projects:
+        # Match name or slug in title
         if p.name and p.name.lower() in title_lower:
             return p.id
         if p.slug and p.slug.lower() in title_lower:
             return p.id
+        # Match GitHub repo URL in post URL
+        if url_lower and getattr(p, "github_owner", None) and getattr(p, "github_repo", None):
+            repo_path = f"github.com/{p.github_owner}/{p.github_repo}".lower()
+            if repo_path in url_lower:
+                return p.id
     return None
+
+
+async def backfill_hn_links() -> int:
+    """Re-match unlinked HN posts against current project list. Idempotent."""
+    session = SessionLocal()
+    try:
+        projects = session.query(Project).filter(Project.is_active.is_(True)).all()
+    finally:
+        session.close()
+
+    updated = 0
+    with engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT id, title, url FROM hn_posts WHERE project_id IS NULL"
+        )).fetchall()
+
+        for row in rows:
+            m = row._mapping
+            pid = _match_project(m["title"], projects, url=m.get("url"))
+            if pid:
+                conn.execute(
+                    text("UPDATE hn_posts SET project_id = :pid WHERE id = :id"),
+                    {"pid": pid, "id": m["id"]},
+                )
+                updated += 1
+        conn.commit()
+
+    logger.info(f"backfill_hn_links: matched {updated} previously-unlinked posts")
+    return updated
 
 
 async def fetch_hn_page(client: httpx.AsyncClient, query: str, min_timestamp: int) -> list[dict]:
@@ -93,7 +129,7 @@ async def collect_hn_for_term(
             "post_type": _determine_post_type(title),
             "posted_at": datetime.fromtimestamp(created_at_i, tz=timezone.utc),
             "captured_at": datetime.now(timezone.utc),
-            "project_id": _match_project(title, projects),
+            "project_id": _match_project(title, projects, url=hit.get("url")),
         })
     return rows
 
