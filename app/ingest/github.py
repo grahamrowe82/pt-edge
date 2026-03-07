@@ -35,6 +35,7 @@ async def fetch_contributor_count(client: httpx.AsyncClient, owner: str, repo: s
         f"https://api.github.com/repos/{owner}/{repo}/contributors",
         params={"per_page": 1, "anon": "true"},
     )
+    count = 0
     if resp.status_code == 200:
         link = resp.headers.get("Link", "")
         if 'rel="last"' in link:
@@ -42,10 +43,31 @@ async def fetch_contributor_count(client: httpx.AsyncClient, owner: str, repo: s
                 if 'rel="last"' in part:
                     match = re.search(r"page=(\d+)", part)
                     if match:
-                        return int(match.group(1))
-        data = resp.json()
-        return len(data) if isinstance(data, list) else 0
-    return 0
+                        count = int(match.group(1))
+                        break
+        if count == 0:
+            data = resp.json()
+            count = len(data) if isinstance(data, list) else 0
+
+    # Fallback: if pagination trick returned 0 or 1, try stats/contributors endpoint
+    if count <= 1:
+        try:
+            await asyncio.sleep(0.1)
+            stats_resp = await client.get(
+                f"https://api.github.com/repos/{owner}/{repo}/stats/contributors"
+            )
+            if stats_resp.status_code == 200:
+                stats_data = stats_resp.json()
+                if isinstance(stats_data, list) and len(stats_data) > count:
+                    return len(stats_data)
+            # Stats endpoint failed or returned less — use -1 sentinel for "unknown"
+            if count == 0:
+                return -1
+        except Exception:
+            if count == 0:
+                return -1
+
+    return count
 
 
 async def collect_project_data(

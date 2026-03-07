@@ -5,6 +5,7 @@ from app.ingest.downloads import ingest_downloads
 from app.ingest.github import ingest_github
 from app.ingest.hn import ingest_hn
 from app.ingest.releases import ingest_releases
+from app.ingest.trending import ingest_trending
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ async def run_all() -> dict:
         ("downloads", ingest_downloads()),
         ("releases", ingest_releases()),
         ("hn", ingest_hn()),
+        ("trending", ingest_trending()),
     ]:
         try:
             results[name] = await coro

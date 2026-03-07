@@ -43,7 +43,26 @@ class Project(Base):
     description: Mapped[str | None] = mapped_column(Text)
     url: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    tier_override: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
 
     lab: Mapped[Lab | None] = relationship(back_populates="projects")
+
+
+class ProjectCandidate(Base):
+    __tablename__ = "project_candidates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    github_url: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    github_owner: Mapped[str | None] = mapped_column(String(100))
+    github_repo: Mapped[str | None] = mapped_column(String(200))
+    name: Mapped[str | None] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text)
+    stars: Mapped[int | None] = mapped_column(Integer)
+    language: Mapped[str | None] = mapped_column(String(50))
+    source: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_detail: Mapped[str | None] = mapped_column(Text)
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

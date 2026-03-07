@@ -10,10 +10,12 @@ from app.models import SyncLog
 logger = logging.getLogger(__name__)
 
 VIEWS_IN_ORDER = [
-    "mv_momentum",
-    "mv_hype_ratio",
-    "mv_lab_velocity",
-    "mv_project_summary",  # depends on all above
+    "mv_momentum",         # base: no dependencies
+    "mv_hype_ratio",       # base: no dependencies
+    "mv_lab_velocity",     # base: no dependencies
+    "mv_project_tier",     # base: no dependencies
+    "mv_lifecycle",        # depends on: mv_momentum
+    "mv_project_summary",  # depends on: mv_momentum, mv_hype_ratio, mv_project_tier, mv_lifecycle
 ]
 
 
