@@ -1681,7 +1681,7 @@ async def upvote_pitch(pitch_id: int) -> str:
             session.query(ToolUsage)
             .filter(
                 ToolUsage.tool_name == "upvote_pitch",
-                ToolUsage.called_at >= datetime.now(timezone.utc) - timedelta(days=1),
+                ToolUsage.created_at >= datetime.now(timezone.utc) - timedelta(days=1),
             )
             .count()
         )
@@ -1727,7 +1727,7 @@ async def amend_correction(correction_id: int, reason: str) -> str:
             session.query(ToolUsage)
             .filter(
                 ToolUsage.tool_name == "amend_correction",
-                ToolUsage.called_at >= datetime.now(timezone.utc) - timedelta(days=1),
+                ToolUsage.created_at >= datetime.now(timezone.utc) - timedelta(days=1),
             )
             .count()
         )
@@ -1775,7 +1775,7 @@ async def amend_pitch(pitch_id: int, reason: str) -> str:
             session.query(ToolUsage)
             .filter(
                 ToolUsage.tool_name == "amend_pitch",
-                ToolUsage.called_at >= datetime.now(timezone.utc) - timedelta(days=1),
+                ToolUsage.created_at >= datetime.now(timezone.utc) - timedelta(days=1),
             )
             .count()
         )
@@ -2458,15 +2458,35 @@ async def compare(projects: str) -> str:
                     f"but stars aren't adoption."
                 )
 
-        # Hype divergence
+        # Hype divergence — group by bucket to avoid repetitive lines
+        bucket_groups: dict[str, list[str]] = {}
         for slug in slugs:
             r = by_slug.get(slug, {})
             bucket = r.get("hype_bucket", "")
-            name = r.get("name", "?")
+            if bucket in ("hype", "quiet_adoption"):
+                bucket_groups.setdefault(bucket, []).append(r.get("name", "?"))
+        for bucket, names in bucket_groups.items():
             if bucket == "hype":
-                narratives.append(f"{name} is in 'hype' territory — stars vastly exceed downloads.")
-            elif bucket == "quiet_adoption":
-                narratives.append(f"{name} is 'quiet adoption' — heavily used but few stars.")
+                label = "'hype' territory — stars vastly exceed downloads"
+            else:
+                label = "'quiet adoption' — heavily used but few stars"
+            if len(names) == 1:
+                narratives.append(f"{names[0]} is {label}.")
+            else:
+                all_count = sum(len(v) for v in bucket_groups.values())
+                total = len(slugs)
+                if len(names) >= total - 1 and total > 2:
+                    # Almost all share the same bucket — highlight the outlier
+                    others = [n for b, ns in bucket_groups.items() if b != bucket for n in ns]
+                    if others:
+                        narratives.append(
+                            f"{len(names)} of {total} projects are {label}. "
+                            f"The outlier is {others[0]}."
+                        )
+                    else:
+                        narratives.append(f"All {len(names)} projects are {label}.")
+                else:
+                    narratives.append(f"{', '.join(names)} are all {label}.")
 
         # Lifecycle mismatch
         stages = {}
@@ -2491,7 +2511,7 @@ async def compare(projects: str) -> str:
                     f"{winner} is gaining the most momentum ({_fmt_delta(accel[0][0])} stars in 7d)."
                 )
 
-        # Hype ratio divergence — surface extreme gaps
+        # Hype ratio divergence — always surface the largest gap if meaningful
         hype_data = [
             (by_slug.get(s, {}).get("hype_ratio"), by_slug.get(s, {}).get("name", "?"), s)
             for s in slugs if by_slug.get(s, {}).get("hype_ratio") is not None
@@ -2500,11 +2520,18 @@ async def compare(projects: str) -> str:
             hype_data.sort(key=lambda x: x[0], reverse=True)
             top_hr, top_name, _ = hype_data[0]
             bot_hr, bot_name, _ = hype_data[-1]
-            if bot_hr and bot_hr > 0 and top_hr / bot_hr > 50:
-                narratives.append(
-                    f"{top_name} has {top_hr / bot_hr:.0f}x more stars per download than "
-                    f"{bot_name} — a massive hype gap."
-                )
+            if bot_hr and bot_hr > 0:
+                gap = top_hr / bot_hr
+                if gap > 100:
+                    narratives.append(
+                        f"{top_name} has {gap:.0f}x more stars per download than "
+                        f"{bot_name} — a massive hype gap."
+                    )
+                elif gap > 5:
+                    narratives.append(
+                        f"{top_name} has {gap:.0f}x more stars per download than "
+                        f"{bot_name}."
+                    )
 
         # Release staleness alert — flag outliers
         release_data = [
@@ -3297,7 +3324,10 @@ async def topic(query: str) -> str:
     else:
         lines.append("  No matching tracked projects found.")
 
-    # Also search by topic array
+    # Also search by topic array — always runs independently
+    lines.append("")
+    lines.append("PROJECTS WITH MATCHING GITHUB TOPICS")
+    lines.append("-" * 40)
     try:
         with engine.connect() as conn:
             topic_rows = conn.execute(text("""
@@ -3312,7 +3342,7 @@ async def topic(query: str) -> str:
                 LIMIT 10
             """), {"q": query.strip()}).fetchall()
 
-            # Deduplicate against semantic results
+            # Deduplicate against projects already shown above
             seen_slugs = {r["slug"] for r in semantic_results} if semantic_results else set()
             topic_matches = [
                 r._mapping for r in topic_rows
@@ -3320,16 +3350,16 @@ async def topic(query: str) -> str:
             ]
 
             if topic_matches:
-                lines.append("")
-                lines.append("PROJECTS WITH MATCHING TOPICS")
-                lines.append("-" * 40)
                 for m in topic_matches:
                     topics_str = ", ".join(m["topics"][:5]) if m["topics"] else ""
                     lines.append(
                         f"  [{m['category']}] {m['name']:<28} topics: {topics_str}"
                     )
+            else:
+                lines.append("  No projects with matching GitHub topics.")
     except Exception as e:
         logger.debug(f"Topic array search error: {e}")
+        lines.append("  Could not query GitHub topics.")
 
     # 2. CANDIDATES — keyword + topic search
     lines.append("")
