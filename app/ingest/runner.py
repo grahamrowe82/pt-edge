@@ -8,12 +8,13 @@ from app.ingest.hn import ingest_hn
 from app.ingest.huggingface import ingest_huggingface
 from app.ingest.releases import ingest_releases
 from app.ingest.trending import ingest_trending
+from app.views.refresh import refresh_all_views
 
 logger = logging.getLogger(__name__)
 
 
 async def run_all() -> dict:
-    """Run all ingest jobs sequentially."""
+    """Run all ingest jobs sequentially, then refresh materialized views."""
     results = {}
 
     logger.info("Starting full ingest cycle")
@@ -33,6 +34,14 @@ async def run_all() -> dict:
         except Exception as e:
             logger.exception(f"{name} failed: {e}")
             results[name] = {"error": str(e)}
+
+    # Refresh materialized views after all ingest jobs complete
+    try:
+        results["views"] = refresh_all_views()
+        logger.info(f"views: {results['views']}")
+    except Exception as e:
+        logger.exception(f"views failed: {e}")
+        results["views"] = {"error": str(e)}
 
     logger.info(f"Full ingest complete: {results}")
     return results
