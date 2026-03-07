@@ -14,7 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.db import SessionLocal, engine, readonly_engine
 from app.models import (
     Lab, Project, GitHubSnapshot, DownloadSnapshot,
-    Release, HNPost, Correction, ArticlePitch, SyncLog, Methodology,
+    Release, HNPost, V2EXPost, Correction, ArticlePitch, SyncLog, Methodology,
 )
 from app.mcp.tracking import track_usage
 from app.settings import settings
@@ -1074,6 +1074,33 @@ def _lab_compare(session: Session, lab_names: list[str]) -> str:
     except Exception as e:
         lines.append(f"  Could not query HN posts: {e}")
 
+    # V2EX Discussion combined (interleaved across labs)
+    lines.append("")
+    lines.append("V2EX DISCUSSION (Chinese dev community)")
+    lines.append("-" * 40)
+    try:
+        lab_ids = [l.id for l in labs]
+        lab_name_by_id = {l.id: l.name for l in labs}
+        v2ex_posts = (
+            session.query(V2EXPost)
+            .filter(V2EXPost.lab_id.in_(lab_ids))
+            .order_by(V2EXPost.posted_at.desc())
+            .limit(15)
+            .all()
+        )
+        if v2ex_posts:
+            for post in v2ex_posts:
+                lab_label = lab_name_by_id.get(post.lab_id, "?")
+                lines.append(
+                    f"  {_fmt_date(post.posted_at)}  [{lab_label}]  "
+                    f"{post.title[:60]}  "
+                    f"({post.replies} replies, /{post.node_name or '?'})"
+                )
+        else:
+            lines.append("  No V2EX posts linked to these labs yet.")
+    except Exception as e:
+        lines.append(f"  Could not query V2EX posts: {e}")
+
     # Frontier Models comparison (flagship per lab)
     lines.append("")
     lines.append("FRONTIER MODELS (comparison)")
@@ -1264,6 +1291,30 @@ async def lab_pulse(lab: str) -> str:
                 lines.append("  No HN posts linked to this lab yet.")
         except Exception as e:
             lines.append(f"  Could not query HN posts: {e}")
+
+        # V2EX discussion (Chinese dev community)
+        lines.append("")
+        lines.append("V2EX DISCUSSION (Chinese dev community)")
+        lines.append("-" * 30)
+        try:
+            v2ex_posts = (
+                session.query(V2EXPost)
+                .filter(V2EXPost.lab_id == lab_obj.id)
+                .order_by(V2EXPost.posted_at.desc())
+                .limit(10)
+                .all()
+            )
+            if v2ex_posts:
+                for post in v2ex_posts:
+                    lines.append(
+                        f"  {_fmt_date(post.posted_at)}  "
+                        f"{post.title[:70]}  "
+                        f"({post.replies} replies, /{post.node_name or '?'})"
+                    )
+            else:
+                lines.append("  No V2EX posts linked to this lab yet.")
+        except Exception as e:
+            lines.append(f"  Could not query V2EX posts: {e}")
 
         # Key lab events (curated intelligence)
         lines.append("")
@@ -2012,16 +2063,38 @@ async def submit_lab_event(
     lab: str, event_type: str, title: str,
     summary: str = None, source_url: str = None, event_date: str = None,
 ) -> str:
-    """Record a significant lab event (product launch, model release, capability, API change).
+    """Record a significant lab event — something that moved the practical frontier.
 
-    Use this to curate intelligence about what labs are shipping — from HN posts,
-    blog announcements, or other sources.
+    EDITORIAL FILTER — only record events where the capability surface area changed:
+    "Yesterday you couldn't do X, today you can."
 
-    Event types: product_launch, model_launch, capability, api_change, pricing_change, protocol, deprecation, other
+    YES — qualifies:
+      - New product or feature shipped (Cowork, Claude Code Remote Control, ChatGPT Health)
+      - New model released (Opus 4.6, Gemini 3 Deep Think, Voxtral Mini 4B)
+      - New capability enabled (offline mode, swarm orchestration, infra support)
+      - API or platform change that affects what developers can build (Gemini API key policy)
+      - New integration that opens a new surface (Gemini in Gmail, Gemini in Chrome)
+      - Deprecation that removes capability (GPT-4o retirement)
+
+    NO — does not qualify:
+      - Funding rounds, valuations, investments
+      - Politics, government bans, military disputes
+      - Safety pledges, constitutions, policy statements
+      - Business model changes (ads, pricing tiers) unless they unlock new capability
+      - Impressive demos of existing capability (GPT solves physics)
+      - Distribution/adoption news (Claude inside Microsoft)
+      - Community hacks or workarounds (Llama on single GPU)
+      - IP disputes, distillation claims, legal drama
+      - Opinion pieces, benchmarks, market reactions
+
+    The test: would someone building on this ecosystem need to update their mental model
+    of what's possible? If yes, record it. If it's just interesting news, skip it.
+
+    Event types: product_launch, model_launch, capability, api_change, deprecation, protocol, other
     """
     VALID_EVENT_TYPES = {
         "product_launch", "model_launch", "capability", "api_change",
-        "pricing_change", "protocol", "deprecation", "other",
+        "protocol", "deprecation", "other",
     }
     if event_type not in VALID_EVENT_TYPES:
         return f"Invalid event_type '{event_type}'. Must be one of: {', '.join(sorted(VALID_EVENT_TYPES))}"
@@ -3817,6 +3890,31 @@ async def topic(query: str) -> str:
                 )
         else:
             lines.append("  No HN posts found matching this topic.")
+    finally:
+        session.close()
+
+    # 3b. V2EX DISCUSSION (Chinese dev community)
+    lines.append("")
+    lines.append("V2EX DISCUSSION (Chinese dev community)")
+    lines.append("-" * 40)
+    session = SessionLocal()
+    try:
+        v2ex_posts = (
+            session.query(V2EXPost)
+            .filter(V2EXPost.title.ilike(f"%{query}%"))
+            .order_by(V2EXPost.posted_at.desc())
+            .limit(10)
+            .all()
+        )
+        if v2ex_posts:
+            for post in v2ex_posts:
+                lines.append(
+                    f"  {post.replies:>5} replies  "
+                    f"{_fmt_date(post.posted_at)}  {post.title[:70]}  "
+                    f"(/{post.node_name or '?'})"
+                )
+        else:
+            lines.append("  No V2EX posts found matching this topic.")
     finally:
         session.close()
 

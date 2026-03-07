@@ -21,6 +21,9 @@ PROVIDER_TO_LAB = {
     "meta-llama": "meta-ai",
     "mistralai": "mistral-ai",
     "cohere": "cohere",
+    "deepseek": "deepseek",
+    "qwen": "qwen",
+    "zhipuai": "zhipu-ai",
 }
 
 # Skip models matching these patterns (test, free-tier duplicates, very old).
