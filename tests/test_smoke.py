@@ -213,3 +213,40 @@ class TestInputLimits:
         fn = _tool_fn(accept_candidate)
         result = asyncio.run(fn(candidate_id=99999, category="evil_category"))
         assert "Invalid category" in result
+
+
+# ---------------------------------------------------------------------------
+# PR #25: Feedback rename + lab intelligence
+# ---------------------------------------------------------------------------
+
+def test_feedback_tools_registered():
+    """New feedback tool names are registered."""
+    from app.mcp.server import _TOOLS
+    assert "submit_feedback" in _TOOLS
+    assert "upvote_feedback" in _TOOLS
+    assert "list_feedback" in _TOOLS
+    assert "amend_feedback" in _TOOLS
+
+
+def test_feedback_aliases_registered():
+    """Old correction tool names still work as aliases."""
+    from app.mcp.server import _TOOLS
+    assert "submit_correction" in _TOOLS
+    assert "upvote_correction" in _TOOLS
+    assert "list_corrections" in _TOOLS
+    assert "amend_correction" in _TOOLS
+
+
+def test_lab_intelligence_tools_registered():
+    """Lab intelligence tools are registered."""
+    from app.mcp.server import _TOOLS
+    assert "lab_models" in _TOOLS
+    assert "submit_lab_event" in _TOOLS
+    assert "list_lab_events" in _TOOLS
+
+
+def test_new_models_import():
+    """FrontierModel and LabEvent import without error."""
+    from app.models import FrontierModel, LabEvent
+    assert FrontierModel.__tablename__ == "frontier_models"
+    assert LabEvent.__tablename__ == "lab_events"
