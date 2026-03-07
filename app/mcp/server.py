@@ -3347,26 +3347,64 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
 
 
 # ---------------------------------------------------------------------------
-# JSON-RPC tool registry (uses FunctionTool public attrs, not FastMCP internals)
+# JSON-RPC tool registry — works across FastMCP versions
+#
+# Newer FastMCP (>=2.14) returns FunctionTool from @mcp.tool();
+# older versions return the plain function. We handle both.
 # ---------------------------------------------------------------------------
 
-_TOOLS = {
-    t.name: t for t in [
-        about, describe_schema, query, whats_new, project_pulse, lab_pulse,
-        trending, hype_check, submit_correction, upvote_correction,
-        list_corrections, lifecycle_map, hype_landscape, sniff_projects,
-        accept_candidate, set_tier, movers, compare, related, market_map,
-        radar, explain, topic, scout, deep_dive,
-    ]
-}
+import inspect
+
+_PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
+
+_TOOL_LIST = [
+    about, describe_schema, query, whats_new, project_pulse, lab_pulse,
+    trending, hype_check, submit_correction, upvote_correction,
+    list_corrections, lifecycle_map, hype_landscape, sniff_projects,
+    accept_candidate, set_tier, movers, compare, related, market_map,
+    radar, explain, topic, scout, deep_dive,
+]
+
+
+def _tool_name(t) -> str:
+    return getattr(t, "name", None) or t.__name__
+
+
+def _tool_fn(t):
+    return getattr(t, "fn", t)
+
+
+_TOOLS = {_tool_name(t): t for t in _TOOL_LIST}
 
 
 def _tool_definitions() -> list[dict]:
-    """Build JSON-RPC tool definitions from FunctionTool objects."""
-    return [
-        {"name": t.name, "description": t.description, "inputSchema": t.parameters}
-        for t in _TOOLS.values()
-    ]
+    """Build JSON-RPC tool definitions, using inspect as fallback for schemas."""
+    defs = []
+    for t in _TOOL_LIST:
+        name = _tool_name(t)
+        fn = _tool_fn(t)
+
+        # FunctionTool exposes .parameters; plain functions need inspect
+        schema = getattr(t, "parameters", None)
+        if schema is None:
+            sig = inspect.signature(fn)
+            props = {}
+            required = []
+            for pname, param in sig.parameters.items():
+                ann = param.annotation if param.annotation is not inspect.Parameter.empty else str
+                prop = {"type": _PY_TO_JSON.get(ann, "string")}
+                if param.default is inspect.Parameter.empty:
+                    required.append(pname)
+                elif param.default is not None:
+                    prop["default"] = param.default
+                props[pname] = prop
+            schema = {"type": "object", "properties": props}
+            if required:
+                schema["required"] = required
+
+        desc = getattr(t, "description", None) or (fn.__doc__ or "").strip()
+        defs.append({"name": name, "description": desc, "inputSchema": schema})
+    return defs
 
 
 def mount_mcp(app):
@@ -3435,7 +3473,7 @@ def mount_mcp(app):
                     },
                 })
             try:
-                result = await tool.fn(**tool_args)
+                result = await _tool_fn(tool)(**tool_args)
                 return JSONResponse({
                     "jsonrpc": "2.0",
                     "id": req_id,
