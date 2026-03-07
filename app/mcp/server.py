@@ -139,10 +139,12 @@ async def _semantic_project_search(query_text: str, limit: int = 5) -> list[dict
     from app.embeddings import is_enabled, embed_one
 
     if not is_enabled():
+        logger.warning("Semantic search skipped: OPENAI_API_KEY not set")
         return []
 
     vec = await embed_one(query_text)
     if vec is None:
+        logger.warning("Semantic search skipped: embed_one() returned None (API call failed)")
         return []
 
     try:
