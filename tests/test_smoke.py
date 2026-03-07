@@ -29,6 +29,13 @@ def test_pitch_tools_registered():
     assert "upvote_pitch" in _TOOLS
 
 
+def test_amend_tools_registered():
+    """Amendment tools are registered."""
+    from app.mcp.server import _TOOLS
+    assert "amend_correction" in _TOOLS
+    assert "amend_pitch" in _TOOLS
+
+
 def test_tool_definitions_build():
     """Tool definitions build correctly for JSON-RPC endpoint."""
     from app.mcp.server import _tool_definitions
