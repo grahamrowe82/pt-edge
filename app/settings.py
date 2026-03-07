@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     API_TOKEN: str = "dev-token"
     GITHUB_TOKEN: str = ""
     GITHUB_RATE_LIMIT: float = 10.0  # requests per second
+    DATABASE_URL_READONLY: str = ""  # separate read-only connection for query(); falls back to DATABASE_URL
     OPENAI_API_KEY: str = ""  # empty = embeddings disabled, everything still works
 
     model_config = {"env_file": ".env", "case_sensitive": True}

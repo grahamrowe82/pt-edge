@@ -11,7 +11,7 @@ from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.db import SessionLocal, engine
+from app.db import SessionLocal, engine, readonly_engine
 from app.models import (
     Lab, Project, GitHubSnapshot, DownloadSnapshot,
     Release, HNPost, Correction, SyncLog, Methodology,
@@ -512,24 +512,44 @@ async def describe_schema() -> str:
 async def query(sql: str) -> str:
     """Execute a read-only SQL query. Only SELECT statements are allowed. Returns JSON array."""
     sql_stripped = sql.strip()
-    if not re.match(r"(?i)^\s*SELECT\b", sql_stripped):
+
+    # Block semicolons (no stacked queries)
+    if ";" in sql_stripped.rstrip(";"):  # allow trailing semicolon only
+        return json.dumps({"error": "Multiple statements not allowed."})
+    sql_stripped = sql_stripped.rstrip(";").strip()
+
+    # Strip SQL comments before validation to prevent obfuscation
+    sql_clean = re.sub(r"/\*.*?\*/", " ", sql_stripped, flags=re.DOTALL)  # block comments
+    sql_clean = re.sub(r"--[^\n]*", " ", sql_clean)  # line comments
+
+    # Must start with SELECT (or WITH for CTEs)
+    if not re.match(r"(?i)^\s*(SELECT|WITH)\b", sql_clean):
         return json.dumps({"error": "Only SELECT queries are allowed."})
 
-    # Block dangerous patterns
+    # Block dangerous keywords and Postgres admin functions
     forbidden = re.compile(
-        r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE)\b",
+        r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE"
+        r"|COPY|DO|CALL|EXECUTE"
+        r"|pg_read_file|pg_write_file|pg_read_binary_file"
+        r"|lo_import|lo_export|lo_get|lo_put"
+        r"|set_config|pg_reload_conf|pg_terminate_backend)\b",
         re.IGNORECASE,
     )
-    if forbidden.search(sql_stripped):
+    if forbidden.search(sql_clean):
         return json.dumps({"error": "Query contains forbidden keywords."})
 
     try:
-        with engine.connect() as conn:
+        with readonly_engine.connect() as conn:
+            # 5-second statement timeout — Postgres kills the query server-side
+            conn.execute(text("SET LOCAL statement_timeout = '5000'"))
             result = conn.execute(text(sql_stripped))
             rows = [_row_to_dict(r) for r in result.fetchmany(1000)]
             return json.dumps(rows, default=_serialize)
     except Exception as e:
-        return json.dumps({"error": str(e)[:1000]})
+        err = str(e)[:1000]
+        if "canceling statement" in err:
+            return json.dumps({"error": "Query timed out (5 second limit)."})
+        return json.dumps({"error": err})
 
 
 # ---------------------------------------------------------------------------
@@ -1249,6 +1269,14 @@ async def submit_correction(
     topic: str, correction: str, context: str = None
 ) -> str:
     """Submit a practitioner correction about an AI topic or project."""
+    # Input length limits
+    if len(topic) > 300:
+        return "Topic must be 300 characters or fewer."
+    if len(correction) > 5000:
+        return "Correction must be 5,000 characters or fewer."
+    if context and len(context) > 2000:
+        return "Context must be 2,000 characters or fewer."
+
     session = SessionLocal()
     try:
         c = Correction(
@@ -1285,6 +1313,17 @@ async def upvote_correction(correction_id: int) -> str:
     """Confirm someone else's correction by upvoting it."""
     session = SessionLocal()
     try:
+        # Rate limit: max 5 upvotes per correction per day
+        recent = session.execute(text(
+            "SELECT COUNT(*) FROM tool_usage "
+            "WHERE tool_name = 'upvote_correction' "
+            "AND params->>'correction_id' = :cid "
+            "AND created_at > NOW() - INTERVAL '24 hours'"
+        ), {"cid": str(correction_id)}).scalar()
+        if recent and recent >= 5:
+            session.close()
+            return f"Rate limit: correction #{correction_id} has been upvoted {recent} times in the last 24 hours (max 5/day)."
+
         c = session.query(Correction).filter(Correction.id == correction_id).first()
         if not c:
             session.close()
@@ -1560,10 +1599,16 @@ async def sniff_projects(limit: int = 20) -> str:
 # Tool 15: accept_candidate
 # ---------------------------------------------------------------------------
 
+VALID_CATEGORIES = {"tool", "model", "framework", "library", "agent", "eval", "dataset", "infra"}
+
+
 @mcp.tool()
 @track_usage
 async def accept_candidate(candidate_id: int, category: str = "tool", lab_slug: str = None) -> str:
     """Promote a candidate to a tracked project."""
+    if category not in VALID_CATEGORIES:
+        return f"Invalid category '{category}'. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}"
+
     session = SessionLocal()
     try:
         candidate = session.execute(text(
