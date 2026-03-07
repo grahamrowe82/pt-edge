@@ -3259,6 +3259,13 @@ async def topic(query: str) -> str:
                 f"(similarity: {r['similarity']:.0%})  {desc}"
             )
     else:
+        # Surface why semantic search didn't work
+        from app.embeddings import is_enabled as _emb_enabled
+        if not _emb_enabled():
+            lines.append("  ⚠ Semantic search unavailable (OPENAI_API_KEY not set on server).")
+            lines.append("  Falling back to keyword matching.")
+            lines.append("")
+
         # Fallback to keyword search if no embeddings
         session = SessionLocal()
         try:
