@@ -43,10 +43,14 @@ def seed():
             conn.execute(
                 text("""
                     INSERT INTO projects (name, slug, category, lab_id, github_owner, github_repo,
-                                         pypi_package, npm_package, description, url)
+                                         pypi_package, npm_package, description, url, distribution_type, hf_model_id)
                     VALUES (:name, :slug, :category, :lab_id, :github_owner, :github_repo,
-                            :pypi_package, :npm_package, :description, :url)
-                    ON CONFLICT (slug) DO NOTHING
+                            :pypi_package, :npm_package, :description, :url, :distribution_type, :hf_model_id)
+                    ON CONFLICT (slug) DO UPDATE SET
+                        github_owner = EXCLUDED.github_owner,
+                        github_repo = EXCLUDED.github_repo,
+                        distribution_type = EXCLUDED.distribution_type,
+                        hf_model_id = EXCLUDED.hf_model_id
                 """),
                 {
                     "name": p["name"],
@@ -59,6 +63,8 @@ def seed():
                     "npm_package": p.get("npm_package"),
                     "description": p.get("description"),
                     "url": p.get("url"),
+                    "distribution_type": p.get("distribution_type", "package"),
+                    "hf_model_id": p.get("hf_model_id"),
                 },
             )
         conn.commit()

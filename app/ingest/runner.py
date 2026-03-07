@@ -4,6 +4,7 @@ import logging
 from app.ingest.downloads import ingest_downloads
 from app.ingest.github import ingest_github
 from app.ingest.hn import ingest_hn
+from app.ingest.huggingface import ingest_huggingface
 from app.ingest.releases import ingest_releases
 from app.ingest.trending import ingest_trending
 
@@ -19,6 +20,7 @@ async def run_all() -> dict:
     for name, coro in [
         ("github", ingest_github()),
         ("downloads", ingest_downloads()),
+        ("huggingface", ingest_huggingface()),
         ("releases", ingest_releases()),
         ("hn", ingest_hn()),
         ("trending", ingest_trending()),

@@ -1,3 +1,4 @@
+import difflib
 import json
 import re
 import logging
@@ -86,9 +87,14 @@ def _fmt_date(dt):
 
 
 def _fmt_version(version):
-    """Format a release version, avoiding double-v prefix."""
+    """Format a release version, avoiding double-v prefix and stripping monorepo package names."""
     if not version:
         return ""
+    # Strip monorepo package prefix: "langchain==0.3.28" → "0.3.28"
+    if "==" in version:
+        version = version.split("==", 1)[1]
+    elif "@" in version and not version.startswith("@"):
+        version = version.split("@", 1)[1]
     return f"v{version.lstrip('v')}"
 
 
@@ -138,14 +144,24 @@ def _find_project_or_suggest(session: Session, identifier: str) -> tuple[Project
     ).first()
     if project:
         return project, []
-    # Fuzzy fallback
+    # Substring fallback
     matches = session.query(Project).filter(
         (Project.slug.ilike(f"%{identifier}%")) |
         (Project.name.ilike(f"%{identifier}%"))
     ).limit(5).all()
     if len(matches) == 1:
         return matches[0], []
-    return None, [m.slug for m in matches]
+    if matches:
+        return None, [m.slug for m in matches]
+    # Edit-distance fallback for typos (e.g., "langchan" → "langchain")
+    all_slugs = [r[0] for r in session.query(Project.slug).all()]
+    close = difflib.get_close_matches(identifier.lower(), [s.lower() for s in all_slugs], n=3, cutoff=0.6)
+    if close:
+        matches = session.query(Project).filter(func.lower(Project.slug).in_(close)).all()
+        if len(matches) == 1:
+            return matches[0], []
+        return None, [m.slug for m in matches]
+    return None, []
 
 
 def _find_lab_or_suggest(session: Session, identifier: str) -> tuple[Lab | None, list[str]]:
@@ -167,7 +183,17 @@ def _find_lab_or_suggest(session: Session, identifier: str) -> tuple[Lab | None,
     ).limit(5).all()
     if len(matches) == 1:
         return matches[0], []
-    return None, [m.slug for m in matches]
+    if matches:
+        return None, [m.slug for m in matches]
+    # Edit-distance fallback
+    all_slugs = [r[0] for r in session.query(Lab.slug).all()]
+    close = difflib.get_close_matches(identifier.lower(), [s.lower() for s in all_slugs], n=3, cutoff=0.6)
+    if close:
+        matches = session.query(Lab).filter(func.lower(Lab.slug).in_(close)).all()
+        if len(matches) == 1:
+            return matches[0], []
+        return None, [m.slug for m in matches]
+    return None, []
 
 
 def _not_found_msg(entity_type, identifier, suggestions):
@@ -488,7 +514,7 @@ async def whats_new(days: int = 7) -> str:
                 if trending_rows:
                     for r in trending_rows:
                         has_baseline = r.get("has_7d_baseline", False)
-                        tier_badge = f"[T{r.get('tier', 4)}] " if r.get('tier') else ""
+                        tier_badge = f"[T{int(r.get('tier', 4))}] " if r.get('tier') else ""
                         lines.append(
                             f"  {tier_badge}{r['name']:<28} "
                             f"stars: {_fmt_number(r.get('stars_now'))} "
@@ -919,7 +945,7 @@ async def trending(category: str = None, window: str = "7d") -> str:
                     delta_30d = _fmt_delta_safe(r.get('stars_30d_delta'), r.get('has_30d_baseline', False))
                     lines.append(
                         f"  {i:<3} {str(r.get('name', '')):<24} "
-                        f"T{r.get('tier', 4):<4} "
+                        f"T{int(r.get('tier', 4)):<4} "
                         f"{str(r.get('lifecycle_stage', '')):<12} "
                         f"{str(r.get('category', '')):<10} "
                         f"{_fmt_number(r.get('stars')):<10} "
@@ -1270,7 +1296,7 @@ async def lifecycle_map(category: str = None, tier: int = None) -> str:
                 lines.append("  No lifecycle data available. Run view refresh first.")
                 return "\n".join(lines)
 
-            stage_order = ["emerging", "launching", "growing", "established", "fading", "dormant"]
+            stage_order = ["emerging", "launching", "growing", "established", "fading", "dormant", "unknown"]
             stage_descriptions = {
                 "emerging": "New projects, few releases, building initial traction",
                 "launching": "First releases within 90 days, downloads ramping up",
@@ -1278,6 +1304,7 @@ async def lifecycle_map(category: str = None, tier: int = None) -> str:
                 "established": "High adoption (>100K downloads/mo), stable, well-maintained",
                 "fading": "Declining activity -- commits slowing, releases drying up",
                 "dormant": "No recent commits or releases",
+                "unknown": "Insufficient data -- missing GitHub or download metrics",
             }
 
             grouped = {}
@@ -1295,7 +1322,7 @@ async def lifecycle_map(category: str = None, tier: int = None) -> str:
                 lines.append("-" * 30)
                 for r in projects:
                     lines.append(
-                        f"  [T{r.get('tier', 4)}] {r.get('name', ''):<24} "
+                        f"  [T{int(r.get('tier', 4))}] {r.get('name', ''):<24} "
                         f"[{r.get('category', '')}]  "
                         f"stars: {_fmt_number(r.get('stars'))}  "
                         f"DL/mo: {_fmt_number(r.get('monthly_downloads'))}  "
@@ -1538,6 +1565,320 @@ async def set_tier(project: str, tier: int) -> str:
         return f"Failed to set tier: {e}"
     finally:
         session.close()
+
+
+# ---------------------------------------------------------------------------
+# Tool 17: movers — second-derivative acceleration detector
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def movers(window: str = "7d", limit: int = 10) -> str:
+    """Show which projects are accelerating or decelerating — the biggest directional changes.
+
+    Compares the current window's star delta to the prior window's delta.
+    Requires 14+ days of snapshot data to work.
+    """
+    if window not in ("7d", "30d"):
+        return "Window must be '7d' or '30d'."
+
+    days = 7 if window == "7d" else 30
+    need_days = days * 2
+
+    lines = [
+        f"MOVERS (comparing last {days}d vs prior {days}d)",
+        "=" * 50,
+    ]
+
+    try:
+        with engine.connect() as conn:
+            # Check if we have enough snapshot history
+            span = conn.execute(text("""
+                SELECT MAX(snapshot_date) - MIN(snapshot_date) AS span
+                FROM github_snapshots
+            """))
+            span_row = span.fetchone()
+            if not span_row or (span_row[0] or 0) < need_days:
+                actual = int(span_row[0]) if span_row and span_row[0] else 0
+                lines.append("")
+                lines.append(f"  Need {need_days} days of snapshot data, have {actual} day(s).")
+                lines.append(f"  Check back when the dataset has {need_days}+ days of history.")
+                return "\n".join(lines)
+
+            rows = _safe_mv_query(conn, """
+                WITH snapshots_ranked AS (
+                    SELECT
+                        project_id,
+                        snapshot_date,
+                        stars,
+                        ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY snapshot_date DESC) AS rn
+                    FROM github_snapshots
+                    WHERE stars IS NOT NULL
+                ),
+                deltas AS (
+                    SELECT
+                        cur.project_id,
+                        cur.stars AS stars_now,
+                        cur.stars - mid.stars AS current_delta,
+                        mid.stars - prev.stars AS prior_delta,
+                        (cur.stars - mid.stars) - (mid.stars - prev.stars) AS acceleration
+                    FROM snapshots_ranked cur
+                    JOIN snapshots_ranked mid
+                        ON mid.project_id = cur.project_id AND mid.rn = :days + 1
+                    JOIN snapshots_ranked prev
+                        ON prev.project_id = cur.project_id AND prev.rn = :need_days + 1
+                    WHERE cur.rn = 1
+                )
+                SELECT
+                    p.name, p.slug,
+                    COALESCE(s.tier, 4) AS tier,
+                    d.stars_now, d.current_delta, d.prior_delta, d.acceleration
+                FROM deltas d
+                JOIN projects p ON p.id = d.project_id
+                LEFT JOIN mv_project_summary s ON s.slug = p.slug
+                ORDER BY d.acceleration DESC
+            """, {"days": days, "need_days": need_days})
+
+            if not rows:
+                lines.append("")
+                lines.append("  No mover data available yet.")
+                return "\n".join(lines)
+
+            accel = [r for r in rows if (r.get("acceleration") or 0) > 0][:limit]
+            decel = [r for r in rows if (r.get("acceleration") or 0) < 0]
+            decel = decel[-limit:][::-1]  # biggest negative last, then reverse for display
+
+            if accel:
+                lines.append("")
+                lines.append("ACCELERATING (gaining momentum)")
+                lines.append(f"  {'Project':<24} {'Tier':<5} {'Stars':<12} "
+                             f"{'This {days}d':<12} {'Prior {days}d':<12} {'Accel':<10}")
+                lines.append("  " + "-" * 80)
+                for r in accel:
+                    lines.append(
+                        f"  {str(r.get('name', '')):<24} "
+                        f"T{int(r.get('tier', 4)):<4} "
+                        f"{_fmt_number(r.get('stars_now')):<12} "
+                        f"{_fmt_delta(r.get('current_delta')):<12} "
+                        f"{_fmt_delta(r.get('prior_delta')):<12} "
+                        f"{_fmt_delta(r.get('acceleration')):<10}"
+                    )
+
+            if decel:
+                lines.append("")
+                lines.append("DECELERATING (losing momentum)")
+                lines.append(f"  {'Project':<24} {'Tier':<5} {'Stars':<12} "
+                             f"{'This {days}d':<12} {'Prior {days}d':<12} {'Accel':<10}")
+                lines.append("  " + "-" * 80)
+                for r in decel:
+                    lines.append(
+                        f"  {str(r.get('name', '')):<24} "
+                        f"T{int(r.get('tier', 4)):<4} "
+                        f"{_fmt_number(r.get('stars_now')):<12} "
+                        f"{_fmt_delta(r.get('current_delta')):<12} "
+                        f"{_fmt_delta(r.get('prior_delta')):<12} "
+                        f"{_fmt_delta(r.get('acceleration')):<10}"
+                    )
+
+            if not accel and not decel:
+                lines.append("")
+                lines.append("  No significant movers detected.")
+
+    except Exception as e:
+        lines.append(f"  Error: {e}")
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Tool 18: compare — side-by-side project comparison
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def compare(projects: str) -> str:
+    """Side-by-side comparison of 2-5 projects. Pass comma-separated names or slugs."""
+    names = [n.strip() for n in projects.split(",") if n.strip()]
+    if len(names) < 2:
+        return "Please provide at least 2 project names, separated by commas."
+    if len(names) > 5:
+        return "Maximum 5 projects for comparison. Please narrow your selection."
+
+    session = SessionLocal()
+    try:
+        found = []
+        for name in names:
+            proj, suggestions = _find_project_or_suggest(session, name)
+            if not proj:
+                return _not_found_msg("Project", name, suggestions)
+            found.append(proj)
+    finally:
+        session.close()
+
+    slugs = [p.slug for p in found]
+    display_names = [p.name for p in found]
+
+    try:
+        with engine.connect() as conn:
+            placeholders = ", ".join(f":s{i}" for i in range(len(slugs)))
+            params = {f"s{i}": s for i, s in enumerate(slugs)}
+
+            rows = _safe_mv_query(conn, f"""
+                SELECT s.slug, s.name, s.category,
+                       COALESCE(s.tier, 4) AS tier,
+                       s.lifecycle_stage, s.stars, s.forks,
+                       s.monthly_downloads, s.stars_7d_delta, s.stars_30d_delta,
+                       s.hype_ratio, s.hype_bucket,
+                       s.commits_30d,
+                       s.last_release_at, s.last_release_title,
+                       s.days_since_release,
+                       s.has_7d_baseline, s.has_30d_baseline
+                FROM mv_project_summary s
+                WHERE s.slug IN ({placeholders})
+            """, params)
+
+            # Index by slug for ordered output
+            by_slug = {r["slug"]: r for r in rows}
+
+        # Build comparison table
+        col_width = max(len(n) for n in display_names) + 2
+        col_width = max(col_width, 16)
+
+        header = f"{'':20}" + "".join(f"{n:<{col_width}}" for n in display_names)
+        lines = [
+            f"COMPARE: {' vs '.join(display_names)}",
+            "=" * len(header),
+            header,
+            "-" * len(header),
+        ]
+
+        def _row(label, key, fmt=None):
+            vals = []
+            for slug in slugs:
+                r = by_slug.get(slug, {})
+                v = r.get(key)
+                if fmt:
+                    v = fmt(v)
+                elif v is None:
+                    v = "n/a"
+                else:
+                    v = str(v)
+                vals.append(v)
+            lines.append(f"{label:20}" + "".join(f"{v:<{col_width}}" for v in vals))
+
+        _row("Category", "category")
+        _row("Tier", "tier", lambda v: f"T{int(v)}" if v is not None else "n/a")
+        _row("Stage", "lifecycle_stage")
+        _row("Stars", "stars", _fmt_number)
+        _row("Forks", "forks", _fmt_number)
+        _row("DL/mo", "monthly_downloads", _fmt_number)
+        _row("Stars 7d", "stars_7d_delta", lambda v: _fmt_delta_safe(v, True) if v is not None else "n/a")
+        _row("Stars 30d", "stars_30d_delta", lambda v: _fmt_delta_safe(v, True) if v is not None else "n/a")
+        _row("Hype Ratio", "hype_ratio", _fmt_ratio)
+        _row("Hype Bucket", "hype_bucket")
+        _row("Commits 30d", "commits_30d", _fmt_number)
+        _row("Last Release", "last_release_title", lambda v: _fmt_version(str(v)) if v else "n/a")
+        _row("Days Since Rel", "days_since_release", lambda v: str(int(v)) if v is not None else "n/a")
+
+        # Add missing projects warning
+        missing = [s for s in slugs if s not in by_slug]
+        if missing:
+            lines.append("")
+            lines.append(f"Note: No summary data for: {', '.join(missing)}. Views may need refreshing.")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error comparing projects: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Tool 19: related — HN co-occurrence analysis
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def related(project: str) -> str:
+    """Show which other tracked projects appear most often alongside this one in HN discussions."""
+    session = SessionLocal()
+    try:
+        proj, suggestions = _find_project_or_suggest(session, project)
+        if not proj:
+            return _not_found_msg("Project", project, suggestions)
+        proj_id = proj.id
+        proj_name = proj.name
+        proj_slug = proj.slug
+
+        # Get all tracked project names/slugs for matching
+        all_projects = session.query(Project.id, Project.name, Project.slug).filter(
+            Project.is_active.is_(True),
+            Project.id != proj_id,
+        ).all()
+    finally:
+        session.close()
+
+    try:
+        with engine.connect() as conn:
+            # Get HN post titles/URLs for this project
+            result = conn.execute(text("""
+                SELECT id, title FROM hn_posts WHERE project_id = :pid
+            """), {"pid": proj_id})
+            hn_posts = [dict(r._mapping) for r in result]
+
+            if not hn_posts:
+                return (
+                    f"No HN posts found for {proj_name}.\n"
+                    "This project may not have been discussed on Hacker News yet,\n"
+                    "or HN data hasn't been ingested."
+                )
+
+            # For each HN post title, check which other tracked project names appear
+            co_counts: dict[int, int] = {}
+            for post in hn_posts:
+                title = (post.get("title") or "").lower()
+                for p in all_projects:
+                    # Match on name or slug (case-insensitive, word-ish boundary)
+                    name_lower = p.name.lower()
+                    slug_lower = p.slug.lower()
+                    if name_lower in title or slug_lower in title:
+                        co_counts[p.id] = co_counts.get(p.id, 0) + 1
+
+            if not co_counts:
+                return (
+                    f"RELATED TO: {proj_name}\n"
+                    f"{'=' * 40}\n\n"
+                    f"  Analyzed {len(hn_posts)} HN posts.\n"
+                    f"  No other tracked projects co-occur in the same post titles.\n"
+                    f"  This could mean the project occupies a unique niche,\n"
+                    f"  or the HN dataset is too small for overlap."
+                )
+
+            # Sort by co-occurrence count
+            sorted_co = sorted(co_counts.items(), key=lambda x: x[1], reverse=True)[:15]
+
+            # Look up names
+            proj_map = {p.id: (p.name, p.slug) for p in all_projects}
+
+            lines = [
+                f"RELATED TO: {proj_name}",
+                "=" * 40,
+                f"  Based on {len(hn_posts)} HN post titles",
+                "",
+                f"  {'#':<4} {'Project':<28} {'Co-occurrences':<16}",
+                "  " + "-" * 50,
+            ]
+            for i, (pid, count) in enumerate(sorted_co, 1):
+                pname, pslug = proj_map.get(pid, ("?", "?"))
+                lines.append(f"  {i:<4} {pname:<28} {count}")
+
+            lines.append("")
+            lines.append("  Projects that frequently appear in the same HN discussions")
+            lines.append("  often compete, integrate, or serve adjacent use cases.")
+
+            return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error analyzing related projects: {e}"
 
 
 # ---------------------------------------------------------------------------
