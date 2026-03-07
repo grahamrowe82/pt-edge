@@ -15,14 +15,18 @@ async def healthz():
 @app.get("/debug/embeddings")
 async def debug_embeddings():
     """Diagnostic endpoint — test embedding pipeline end-to-end."""
-    from app.embeddings import is_enabled, embed_one, MODEL, DIMENSIONS
+    from app.embeddings import is_enabled, MODEL, DIMENSIONS
+    from app.settings import settings
     from app.db import engine
     from sqlalchemy import text
 
+    key = settings.OPENAI_API_KEY or ""
     result = {
         "enabled": is_enabled(),
         "model": MODEL,
         "dimensions": DIMENSIONS,
+        "key_prefix": key[:8] + "..." if len(key) > 8 else "(empty)",
+        "key_length": len(key),
     }
 
     # Check stored embeddings
@@ -35,16 +39,18 @@ async def debug_embeddings():
     except Exception as e:
         result["stored_embeddings_error"] = str(e)
 
-    # Try a live embedding call
+    # Try a live embedding call — raw, to capture actual errors
     if is_enabled():
         try:
-            vec = await embed_one("test query")
-            if vec:
-                result["live_embed"] = f"ok ({len(vec)} dims)"
-            else:
-                result["live_embed"] = "returned None"
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+            resp = await client.embeddings.create(
+                input=["test query"], model=MODEL, dimensions=DIMENSIONS,
+            )
+            vec = resp.data[0].embedding
+            result["live_embed"] = f"ok ({len(vec)} dims)"
         except Exception as e:
-            result["live_embed_error"] = str(e)
+            result["live_embed_error"] = f"{type(e).__name__}: {e}"
     else:
         result["live_embed"] = "skipped (not enabled)"
 
