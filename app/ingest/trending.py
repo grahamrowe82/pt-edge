@@ -84,6 +84,7 @@ async def ingest_trending() -> dict:
                             "description": (repo.get("description") or "")[:500],
                             "stars": repo.get("stargazers_count", 0),
                             "language": repo.get("language"),
+                            "topics": repo.get("topics") or [],
                             "source": "trending",
                             "source_detail": f"GitHub topic: {topic}",
                         })
@@ -101,9 +102,9 @@ async def ingest_trending() -> dict:
             conn.execute(
                 text("""
                     INSERT INTO project_candidates
-                        (github_url, github_owner, github_repo, name, description, stars, language, source, source_detail)
+                        (github_url, github_owner, github_repo, name, description, stars, language, topics, source, source_detail)
                     VALUES
-                        (:github_url, :github_owner, :github_repo, :name, :description, :stars, :language, :source, :source_detail)
+                        (:github_url, :github_owner, :github_repo, :name, :description, :stars, :language, :topics, :source, :source_detail)
                     ON CONFLICT (github_url) DO NOTHING
                 """),
                 candidates,

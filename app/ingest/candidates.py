@@ -127,7 +127,7 @@ async def ingest_candidate_velocity() -> dict:
         session.close()
 
     # Auto-promote candidates that cross thresholds
-    promoted = _auto_promote_candidates()
+    promoted = await _auto_promote_candidates()
 
     logger.info(
         f"Candidate velocity complete: {len(updates)} rescored, "
@@ -158,7 +158,7 @@ LANG_CATEGORY = {
 }
 
 
-def _auto_promote_candidates() -> list[dict]:
+async def _auto_promote_candidates() -> list[dict]:
     """Promote pending candidates that cross star thresholds.
 
     Returns list of {"slug": ..., "stars": ..., "source": ...} for each promoted project.
@@ -166,7 +166,7 @@ def _auto_promote_candidates() -> list[dict]:
     with engine.connect() as conn:
         rows = conn.execute(text("""
             SELECT id, github_url, github_owner, github_repo, name, description,
-                   stars, language, source
+                   stars, language, topics, source
             FROM project_candidates
             WHERE status = 'pending'
               AND stars IS NOT NULL
@@ -210,6 +210,7 @@ def _auto_promote_candidates() -> list[dict]:
 
             # Create project — default to binary distribution (most HN/trending
             # discoveries are apps, not pip-installable packages)
+            candidate_topics = list(c.get("topics") or [])
             project = Project(
                 slug=slug,
                 name=c.get("name") or c.get("github_repo") or slug,
@@ -218,6 +219,7 @@ def _auto_promote_candidates() -> list[dict]:
                 github_repo=c.get("github_repo"),
                 url=c.get("github_url"),
                 description=(c.get("description") or "")[:500],
+                topics=candidate_topics if candidate_topics else None,
                 distribution_type="binary",
                 is_active=True,
             )
@@ -234,6 +236,11 @@ def _auto_promote_candidates() -> list[dict]:
                 "slug": slug,
                 "stars": c.get("stars"),
                 "source": c.get("source"),
+                "name": project.name,
+                "description": project.description,
+                "topics": candidate_topics,
+                "category": category,
+                "language": c.get("language"),
             })
             logger.info(
                 f"Auto-promoted: {slug} ({c.get('stars'):,} stars, source={c.get('source')})"
@@ -246,5 +253,31 @@ def _auto_promote_candidates() -> list[dict]:
 
     if promoted:
         logger.info(f"Auto-promoted {len(promoted)} candidates to tracked projects")
+        await _embed_promoted_projects(promoted)
 
     return promoted
+
+
+async def _embed_promoted_projects(promoted: list[dict]) -> None:
+    """Generate embeddings for newly promoted projects. Optional — skips if no API key."""
+    from app.embeddings import is_enabled, build_project_text, embed_batch
+
+    if not is_enabled():
+        return
+
+    texts = [
+        build_project_text(p["name"], p["description"], p["topics"], p["category"], p["language"])
+        for p in promoted
+    ]
+    vectors = await embed_batch(texts)
+
+    with engine.connect() as conn:
+        for p, vec in zip(promoted, vectors):
+            if vec is not None:
+                conn.execute(text("""
+                    UPDATE projects SET embedding = :vec WHERE slug = :slug
+                """), {"vec": str(vec), "slug": p["slug"]})
+        conn.commit()
+
+    embedded = sum(1 for v in vectors if v is not None)
+    logger.info(f"Embedded {embedded}/{len(promoted)} promoted projects")

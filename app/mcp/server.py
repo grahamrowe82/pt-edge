@@ -14,7 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.db import SessionLocal, engine
 from app.models import (
     Lab, Project, GitHubSnapshot, DownloadSnapshot,
-    Release, HNPost, Correction, SyncLog,
+    Release, HNPost, Correction, SyncLog, Methodology,
 )
 from app.mcp.tracking import track_usage
 from app.settings import settings
@@ -134,22 +134,62 @@ def _safe_mv_query(conn, sql, params=None):
         raise
 
 
-def _find_project_or_suggest(session: Session, identifier: str) -> tuple[Project | None, list[str]]:
-    """Find a project by slug or name. Returns (project, suggestions) with fuzzy fallback."""
+async def _semantic_project_search(query_text: str, limit: int = 5) -> list[dict]:
+    """Find projects by semantic similarity. Returns [{slug, name, similarity}, ...]"""
+    from app.embeddings import is_enabled, embed_one
+
+    if not is_enabled():
+        return []
+
+    vec = await embed_one(query_text)
+    if vec is None:
+        return []
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT slug, name, description, category,
+                       1 - (embedding <=> :vec) AS similarity
+                FROM projects
+                WHERE embedding IS NOT NULL
+                ORDER BY embedding <=> :vec
+                LIMIT :limit
+            """), {"vec": str(vec), "limit": limit}).fetchall()
+
+            results = []
+            for r in rows:
+                m = r._mapping
+                sim = float(m["similarity"])
+                if sim > 0.3:  # threshold — below this is noise
+                    results.append({
+                        "slug": m["slug"],
+                        "name": m["name"],
+                        "description": m["description"],
+                        "category": m["category"],
+                        "similarity": round(sim, 3),
+                    })
+            return results
+    except Exception as e:
+        logger.error(f"Semantic search error: {e}")
+        return []
+
+
+async def _find_project_or_suggest(session: Session, identifier: str) -> tuple[Project | None, list[str]]:
+    """Find a project by slug or name. Returns (project, suggestions) with fuzzy + semantic fallback."""
     identifier = identifier.strip()
-    # Exact slug match
+    # 1. Exact slug match
     project = session.query(Project).filter(
         func.lower(Project.slug) == identifier.lower()
     ).first()
     if project:
         return project, []
-    # Exact name match
+    # 2. Exact name match
     project = session.query(Project).filter(
         func.lower(Project.name) == identifier.lower()
     ).first()
     if project:
         return project, []
-    # Substring fallback
+    # 3. Substring fallback
     matches = session.query(Project).filter(
         (Project.slug.ilike(f"%{identifier}%")) |
         (Project.name.ilike(f"%{identifier}%"))
@@ -158,7 +198,7 @@ def _find_project_or_suggest(session: Session, identifier: str) -> tuple[Project
         return matches[0], []
     if matches:
         return None, [m.slug for m in matches]
-    # Edit-distance fallback for typos (e.g., "langchan" → "langchain")
+    # 4. Edit-distance fallback for typos (e.g., "langchan" → "langchain")
     all_slugs = [r[0] for r in session.query(Project.slug).all()]
     close = difflib.get_close_matches(identifier.lower(), [s.lower() for s in all_slugs], n=3, cutoff=0.6)
     if close:
@@ -166,6 +206,14 @@ def _find_project_or_suggest(session: Session, identifier: str) -> tuple[Project
         if len(matches) == 1:
             return matches[0], []
         return None, [m.slug for m in matches]
+    # 5. Semantic fallback — find conceptually related projects
+    semantic = await _semantic_project_search(identifier, limit=3)
+    if semantic:
+        if len(semantic) == 1:
+            match = session.query(Project).filter(Project.slug == semantic[0]["slug"]).first()
+            if match:
+                return match, []
+        return None, [s["slug"] for s in semantic]
     return None, []
 
 
@@ -303,6 +351,7 @@ async def about() -> str:
         "- Daily ingests pull GitHub stats, package downloads, releases, and HN posts",
         "- Materialized views compute derived metrics: momentum, hype ratio, tiers, lifecycle",
         "- MCP tools let you query this data naturally in conversation",
+        "- Semantic search via embeddings enables conceptual queries (e.g. 'vector databases')",
         "- Corrections system lets practitioners push back on bad takes",
         "- Project sniffing auto-discovers new AI projects from HN and GitHub trending",
         "",
@@ -337,6 +386,7 @@ async def about() -> str:
         "  radar()                          -- velocity alerts + HN buzz for unknowns",
         "  sniff_projects(limit)            -- auto-discovered project candidates",
         "  accept_candidate(id, category)   -- promote a candidate to tracked",
+        "  topic(query)                     -- what's happening with a topic across ecosystem",
         "",
         "Community:",
         "  submit_correction(topic, text)   -- flag something that's wrong",
@@ -579,7 +629,7 @@ async def project_pulse(project: str) -> str:
     """Deep dive on a specific project. Accepts slug or name."""
     session = SessionLocal()
     try:
-        proj, suggestions = _find_project_or_suggest(session, project)
+        proj, suggestions = await _find_project_or_suggest(session, project)
         if not proj:
             return _not_found_msg("Project", project, suggestions)
 
@@ -1032,7 +1082,7 @@ async def hype_check(project: str) -> str:
     """Stars vs downloads reality check for a project."""
     session = SessionLocal()
     try:
-        proj, suggestions = _find_project_or_suggest(session, project)
+        proj, suggestions = await _find_project_or_suggest(session, project)
         if not proj:
             return _not_found_msg("Project", project, suggestions)
 
@@ -1588,7 +1638,7 @@ async def set_tier(project: str, tier: int) -> str:
 
     session = SessionLocal()
     try:
-        proj, suggestions = _find_project_or_suggest(session, project)
+        proj, suggestions = await _find_project_or_suggest(session, project)
         if not proj:
             return _not_found_msg("Project", project, suggestions)
 
@@ -1752,7 +1802,7 @@ async def compare(projects: str) -> str:
     try:
         found = []
         for name in names:
-            proj, suggestions = _find_project_or_suggest(session, name)
+            proj, suggestions = await _find_project_or_suggest(session, name)
             if not proj:
                 return _not_found_msg("Project", name, suggestions)
             found.append(proj)
@@ -1846,7 +1896,7 @@ async def related(project: str) -> str:
     """Show which other tracked projects appear most often alongside this one in HN discussions."""
     session = SessionLocal()
     try:
-        proj, suggestions = _find_project_or_suggest(session, project)
+        proj, suggestions = await _find_project_or_suggest(session, project)
         if not proj:
             return _not_found_msg("Project", project, suggestions)
         proj_id = proj.id
@@ -2485,6 +2535,38 @@ async def explain(topic: str = None) -> str:
                     lines.append(f"  explain('{sm['topic']}')  — {sm['title']}")
                 return "\n".join(lines)
 
+            # Semantic fallback — find methodology entries by meaning
+            from app.embeddings import is_enabled, embed_one
+            if is_enabled():
+                vec = await embed_one(topic.strip())
+                if vec is not None:
+                    sem_rows = conn.execute(text("""
+                        SELECT topic, title, summary,
+                               1 - (embedding <=> :vec) AS similarity
+                        FROM methodology
+                        WHERE embedding IS NOT NULL
+                        ORDER BY embedding <=> :vec
+                        LIMIT 3
+                    """), {"vec": str(vec)}).fetchall()
+
+                    sem_matches = [
+                        r._mapping for r in sem_rows
+                        if float(r._mapping["similarity"]) > 0.3
+                    ]
+                    if sem_matches:
+                        lines = [
+                            f"No exact match for '{topic}', but found semantically related entries:",
+                            "",
+                        ]
+                        for sm in sem_matches:
+                            lines.append(
+                                f"  explain('{sm['topic']}')  — {sm['title']} "
+                                f"(similarity: {float(sm['similarity']):.0%})"
+                            )
+                            lines.append(f"    {sm['summary'][:100]}...")
+                            lines.append("")
+                        return "\n".join(lines)
+
             return (
                 f"No methodology entry found for '{topic}'. "
                 f"Call explain() with no arguments to see all available topics."
@@ -2492,6 +2574,170 @@ async def explain(topic: str = None) -> str:
 
     except Exception as e:
         return f"Error querying methodology: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Tool 23: topic
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def topic(query: str) -> str:
+    """What's happening with a topic across the entire ecosystem?
+
+    Searches tracked projects, candidates, and HN posts semantically.
+    Use for conceptual queries like 'MCP', 'vector databases', 'code generation'.
+    """
+    lines = [
+        f"TOPIC: {query}",
+        "=" * 60,
+    ]
+
+    candidate_rows = []
+    hn_posts = []
+
+    # 1. TRACKED PROJECTS — semantic search
+    semantic_results = await _semantic_project_search(query, limit=10)
+
+    lines.append("")
+    lines.append("TRACKED PROJECTS (by semantic similarity)")
+    lines.append("-" * 40)
+
+    if semantic_results:
+        for r in semantic_results:
+            desc = (r.get("description") or "")[:80]
+            lines.append(
+                f"  [{r['category']}] {r['name']:<28} "
+                f"(similarity: {r['similarity']:.0%})  {desc}"
+            )
+    else:
+        # Fallback to keyword search if no embeddings
+        session = SessionLocal()
+        try:
+            keyword_matches = session.query(Project).filter(
+                (Project.name.ilike(f"%{query}%")) |
+                (Project.description.ilike(f"%{query}%")) |
+                (Project.slug.ilike(f"%{query}%"))
+            ).limit(10).all()
+            if keyword_matches:
+                for p in keyword_matches:
+                    desc = (p.description or "")[:80]
+                    lines.append(f"  [{p.category}] {p.name:<28} {desc}")
+            else:
+                lines.append("  No matching tracked projects found.")
+        finally:
+            session.close()
+
+    # Also search by topic array
+    try:
+        with engine.connect() as conn:
+            topic_rows = conn.execute(text("""
+                SELECT slug, name, category, description, topics
+                FROM projects
+                WHERE topics IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1 FROM unnest(topics) t
+                      WHERE t ILIKE '%' || :q || '%'
+                  )
+                ORDER BY name
+                LIMIT 10
+            """), {"q": query.strip()}).fetchall()
+
+            # Deduplicate against semantic results
+            seen_slugs = {r["slug"] for r in semantic_results} if semantic_results else set()
+            topic_matches = [
+                r._mapping for r in topic_rows
+                if r._mapping["slug"] not in seen_slugs
+            ]
+
+            if topic_matches:
+                lines.append("")
+                lines.append("PROJECTS WITH MATCHING TOPICS")
+                lines.append("-" * 40)
+                for m in topic_matches:
+                    topics_str = ", ".join(m["topics"][:5]) if m["topics"] else ""
+                    lines.append(
+                        f"  [{m['category']}] {m['name']:<28} topics: {topics_str}"
+                    )
+    except Exception as e:
+        logger.debug(f"Topic array search error: {e}")
+
+    # 2. CANDIDATES — keyword + topic search
+    lines.append("")
+    lines.append("PENDING CANDIDATES")
+    lines.append("-" * 40)
+    try:
+        with engine.connect() as conn:
+            candidate_rows = conn.execute(text("""
+                SELECT name, description, stars, language, topics, source
+                FROM project_candidates
+                WHERE status = 'pending'
+                  AND (
+                      name ILIKE '%' || :q || '%'
+                      OR description ILIKE '%' || :q || '%'
+                      OR EXISTS (
+                          SELECT 1 FROM unnest(topics) t
+                          WHERE t ILIKE '%' || :q || '%'
+                      )
+                  )
+                ORDER BY stars DESC NULLS LAST
+                LIMIT 10
+            """), {"q": query.strip()}).fetchall()
+
+            if candidate_rows:
+                for r in candidate_rows:
+                    m = r._mapping
+                    topics_str = ""
+                    if m.get("topics"):
+                        topics_str = f" [{', '.join(m['topics'][:3])}]"
+                    lines.append(
+                        f"  {m['name'] or '?':<28} "
+                        f"stars: {_fmt_number(m.get('stars'))}  "
+                        f"source: {m.get('source')}{topics_str}"
+                    )
+            else:
+                lines.append("  No matching candidates.")
+    except Exception as e:
+        lines.append(f"  Could not query candidates: {e}")
+
+    # 3. HN DISCUSSION
+    lines.append("")
+    lines.append("RECENT HN DISCUSSION")
+    lines.append("-" * 40)
+    session = SessionLocal()
+    try:
+        hn_posts = (
+            session.query(HNPost)
+            .filter(HNPost.title.ilike(f"%{query}%"))
+            .order_by(HNPost.posted_at.desc())
+            .limit(10)
+            .all()
+        )
+        if hn_posts:
+            for post in hn_posts:
+                lines.append(
+                    f"  {post.points:>5} pts  {post.num_comments:>4} comments  "
+                    f"{_fmt_date(post.posted_at)}  {post.title[:70]}"
+                )
+        else:
+            lines.append("  No HN posts found matching this topic.")
+    finally:
+        session.close()
+
+    # 4. NARRATIVE SUMMARY
+    lines.append("")
+    lines.append("SUMMARY")
+    lines.append("-" * 40)
+    tracked_count = len(semantic_results) if semantic_results else 0
+    candidate_count = len(candidate_rows)
+    hn_count = len(hn_posts)
+    lines.append(
+        f"  {tracked_count} related tracked projects, "
+        f"{candidate_count} pending candidates, "
+        f"{hn_count} HN posts"
+    )
+
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

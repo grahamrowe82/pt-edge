@@ -784,5 +784,20 @@ def seed():
     print(f"Seeded {len(ENTRIES)} methodology entries")
 
 
-if __name__ == "__main__":
+async def seed_with_embeddings():
+    """Seed methodology entries and generate embeddings if API key is set."""
     seed()
+
+    from app.embeddings import is_enabled
+    if not is_enabled():
+        print("OPENAI_API_KEY not set — skipping embedding generation.")
+        return
+
+    from app.backfill_embeddings import backfill_methodology
+    count = await backfill_methodology(force=True)
+    print(f"Generated embeddings for {count} methodology entries.")
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(seed_with_embeddings())
