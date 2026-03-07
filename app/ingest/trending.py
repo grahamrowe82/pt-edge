@@ -13,7 +13,12 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-TOPICS = ["machine-learning", "llm", "ai", "deep-learning", "generative-ai", "large-language-model"]
+TOPICS = [
+    "machine-learning", "llm", "ai", "deep-learning",
+    "generative-ai", "large-language-model",
+    "ai-agent", "chatbot", "autonomous-agent", "mcp",
+    "rag", "vector-database",
+]
 
 
 async def ingest_trending() -> dict:

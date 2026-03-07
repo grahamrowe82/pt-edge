@@ -19,6 +19,8 @@ SEARCH_TERMS = [
     "LLM", "GPT", "Claude", "Anthropic", "OpenAI", "Gemini",
     "AI model", "machine learning", "transformer model",
     "fine-tuning", "RAG", "vector database", "AI agent",
+    "AI assistant", "personal AI", "autonomous agent",
+    "MCP server", "open source AI",
 ]
 
 SECONDS_IN_7_DAYS = 7 * 24 * 60 * 60

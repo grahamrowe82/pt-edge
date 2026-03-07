@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from app.ingest.candidates import ingest_candidate_velocity
 from app.ingest.downloads import ingest_downloads
 from app.ingest.github import ingest_github
 from app.ingest.hn import ingest_hn
@@ -24,6 +25,7 @@ async def run_all() -> dict:
         ("releases", ingest_releases()),
         ("hn", ingest_hn()),
         ("trending", ingest_trending()),
+        ("candidate_velocity", ingest_candidate_velocity()),
     ]:
         try:
             results[name] = await coro
