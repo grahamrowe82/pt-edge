@@ -1053,3 +1053,4 @@ def mount_mcp(app):
     mcp_app = mcp.http_app(path="/stream")
     mcp_app.add_middleware(TokenAuthMiddleware)
     app.mount("/mcp", mcp_app)
+    app.router.lifespan_context = mcp_app.router.lifespan_context
