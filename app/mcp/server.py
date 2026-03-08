@@ -398,7 +398,7 @@ async def about() -> str:
         "  hn_pulse(query, days)            -- HN discourse intelligence + sentiment",
         "",
         "Community & Feedback:",
-        "  submit_feedback(topic, text, category)  -- report a bug, request a feature, share an observation",
+        "  submit_feedback(topic, text, category)  -- bug|feature|observation|insight (default: observation)",
         "  upvote_feedback(id)                     -- confirm someone else's feedback",
         "  list_feedback(topic, status, category)  -- browse feedback",
         "  amend_feedback(id, reason)              -- append a note to feedback",
@@ -1663,9 +1663,24 @@ async def hype_check(project: str) -> str:
 @mcp.tool()
 @track_usage
 async def submit_feedback(
-    topic: str, correction: str, context: str = None, category: str = "bug"
+    topic: str, correction: str, context: str = None, category: str = "observation"
 ) -> str:
-    """Submit feedback about an AI topic or project. Category: bug (default), feature, or observation."""
+    """Submit feedback about an AI topic or project.
+
+    CHOOSE THE RIGHT CATEGORY — do not default to 'bug':
+      bug         — something is BROKEN or returning WRONG DATA. A tool error,
+                    a calculation mistake, stale data. Only use if you can point
+                    to a specific thing that is objectively incorrect.
+      feature     — a concrete BUILDABLE thing. A new tool, a new data source,
+                    a new pipeline, a UI change. You could write a spec for it.
+      observation — strategic context, competitive analysis, positioning insight,
+                    architectural vision. Important thinking, but not a task.
+      insight     — analytical finding or ecosystem pattern worth preserving.
+                    Guidebook prose material. "The data shows X" or "Layer Y
+                    iterates faster than layer Z."
+
+    When in doubt, use 'observation' (not 'bug'). A brainstorm is never a bug.
+    """
     # Input length limits
     if len(topic) > 300:
         return "Topic must be 300 characters or fewer."
@@ -1674,7 +1689,7 @@ async def submit_feedback(
     if context and len(context) > 2000:
         return "Context must be 2,000 characters or fewer."
 
-    VALID_CATEGORIES = {"bug", "feature", "observation"}
+    VALID_CATEGORIES = {"bug", "feature", "observation", "insight"}
     if category not in VALID_CATEGORIES:
         return f"Invalid category '{category}'. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}"
 
@@ -2037,8 +2052,8 @@ async def amend_pitch(pitch_id: int, reason: str) -> str:
 # Backwards-compatible aliases — delegate to new feedback tools
 # Use _tool_fn() to unwrap the FunctionTool decorator and call the raw async fn.
 async def submit_correction(topic: str, correction: str, context: str = None) -> str:
-    """[Alias] Use submit_feedback() instead. Submits as category='bug'."""
-    return await _tool_fn(submit_feedback)(topic=topic, correction=correction, context=context, category="bug")
+    """[Alias] Use submit_feedback() instead. Submits as category='observation'."""
+    return await _tool_fn(submit_feedback)(topic=topic, correction=correction, context=context, category="observation")
 
 async def upvote_correction(correction_id: int) -> str:
     """[Alias] Use upvote_feedback() instead."""
