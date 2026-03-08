@@ -1,8 +1,8 @@
 """Ingest AI-related posts from V2EX (Chinese developer community).
 
-Polls AI-focused nodes (openai, claude, claudecode) and broader nodes
+Polls AI-focused nodes (openai, claude, claudecode) plus hot/latest feeds
 with client-side filtering. Mirrors the HN ingest pattern.
-Requires a V2EX Personal Access Token (v2 API, 600 req/hr).
+Uses V2EX API v1 (public, no auth required, 120 req/hr).
 """
 import asyncio
 import logging
@@ -21,36 +21,56 @@ from app.ingest.hn import (
 
 logger = logging.getLogger(__name__)
 
-V2EX_API_V2 = "https://www.v2ex.com/api/v2"
+V2EX_API = "https://www.v2ex.com/api"
 
 # AI-focused nodes — ingest everything, manageable volume
 TARGET_NODES = ["openai", "claude", "claudecode"]
 
-# Broader nodes — page 1 only, filter client-side
-BROAD_NODES = ["programmer", "create", "share"]
-
-# Combined filter terms for broad nodes (lowercase)
+# Combined filter terms for hot/latest scanning (lowercase)
 _BROAD_FILTER_TERMS = {t.lower() for t in SEARCH_TERMS} | set(LAB_ALIASES.keys())
+
+# v1 API rate limit: 120 req/hr. We make ~8 requests per cycle so 6s is safe.
+_REQUEST_DELAY = 6.0
 
 
 def _matches_broad_filter(title: str, content: str | None) -> bool:
-    """Check if a V2EX post from a broad node is AI-related."""
+    """Check if a V2EX post from hot/latest feed is AI-related."""
     text_lower = f"{title} {content or ''}".lower()
     return any(term in text_lower for term in _BROAD_FILTER_TERMS)
 
 
 async def fetch_node_topics(
-    client: httpx.AsyncClient, node_name: str, page: int = 1,
+    client: httpx.AsyncClient, node_name: str,
 ) -> list[dict]:
-    """Fetch one page of topics from a V2EX node."""
+    """Fetch recent topics from a V2EX node (v1 API, no auth)."""
     resp = await client.get(
-        f"{V2EX_API_V2}/nodes/{node_name}/topics",
-        params={"p": page},
+        f"{V2EX_API}/topics/show.json",
+        params={"node_name": node_name},
     )
     if resp.status_code == 200:
         data = resp.json()
-        return data if isinstance(data, list) else data.get("result", [])
-    logger.warning(f"V2EX API {resp.status_code} for node '{node_name}' page {page}")
+        return data if isinstance(data, list) else []
+    logger.warning(f"V2EX API {resp.status_code} for node '{node_name}'")
+    return []
+
+
+async def fetch_hot_topics(client: httpx.AsyncClient) -> list[dict]:
+    """Fetch hot topics across all of V2EX (v1 API, no auth)."""
+    resp = await client.get(f"{V2EX_API}/topics/hot.json")
+    if resp.status_code == 200:
+        data = resp.json()
+        return data if isinstance(data, list) else []
+    logger.warning(f"V2EX hot.json returned {resp.status_code}")
+    return []
+
+
+async def fetch_latest_topics(client: httpx.AsyncClient) -> list[dict]:
+    """Fetch latest topics across all of V2EX (v1 API, no auth)."""
+    resp = await client.get(f"{V2EX_API}/topics/latest.json")
+    if resp.status_code == 200:
+        data = resp.json()
+        return data if isinstance(data, list) else []
+    logger.warning(f"V2EX latest.json returned {resp.status_code}")
     return []
 
 
@@ -86,11 +106,7 @@ def _build_row(topic: dict, projects: list, lab_slug_to_id: dict) -> dict | None
 
 
 async def ingest_v2ex() -> dict:
-    """Fetch recent V2EX posts from AI-related nodes."""
-    if not settings.V2EX_TOKEN:
-        logger.info("V2EX ingest skipped (no V2EX_TOKEN)")
-        return {"skipped": "no V2EX_TOKEN"}
-
+    """Fetch recent V2EX posts from AI-related nodes + hot/latest feeds."""
     session = SessionLocal()
     projects = session.query(Project).filter(Project.is_active.is_(True)).all()
     labs = session.query(Lab).all()
@@ -102,31 +118,27 @@ async def ingest_v2ex() -> dict:
     seen_ids: set[int] = set()
     error_count = 0
 
-    headers = {
-        "Authorization": f"Bearer {settings.V2EX_TOKEN}",
-        "User-Agent": "pt-edge/1.0",
-    }
+    headers = {"User-Agent": "pt-edge/1.0"}
 
     async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
-        # Target nodes: pages 1-3
+        # Target nodes: fetch recent topics (v1 returns ~10-20 per node)
         for node in TARGET_NODES:
-            for page in range(1, 4):
-                try:
-                    topics = await fetch_node_topics(client, node, page)
-                    for t in topics:
-                        row = _build_row(t, projects, lab_slug_to_id)
-                        if row and row["v2ex_id"] not in seen_ids:
-                            seen_ids.add(row["v2ex_id"])
-                            all_posts.append(row)
-                except Exception as e:
-                    error_count += 1
-                    logger.error(f"V2EX fetch error ({node} p{page}): {e}")
-                await asyncio.sleep(1.5)
-
-        # Broad nodes: page 1 only, filter client-side
-        for node in BROAD_NODES:
             try:
-                topics = await fetch_node_topics(client, node, page=1)
+                topics = await fetch_node_topics(client, node)
+                for t in topics:
+                    row = _build_row(t, projects, lab_slug_to_id)
+                    if row and row["v2ex_id"] not in seen_ids:
+                        seen_ids.add(row["v2ex_id"])
+                        all_posts.append(row)
+            except Exception as e:
+                error_count += 1
+                logger.error(f"V2EX fetch error ({node}): {e}")
+            await asyncio.sleep(_REQUEST_DELAY)
+
+        # Hot + latest feeds: filter client-side for AI content
+        for label, fetcher in [("hot", fetch_hot_topics), ("latest", fetch_latest_topics)]:
+            try:
+                topics = await fetcher(client)
                 for t in topics:
                     title = t.get("title", "")
                     content = t.get("content", "")
@@ -137,8 +149,8 @@ async def ingest_v2ex() -> dict:
                             all_posts.append(row)
             except Exception as e:
                 error_count += 1
-                logger.error(f"V2EX fetch error ({node}): {e}")
-            await asyncio.sleep(1.5)
+                logger.error(f"V2EX fetch error ({label}): {e}")
+            await asyncio.sleep(_REQUEST_DELAY)
 
     # Batch insert
     new_count = 0
