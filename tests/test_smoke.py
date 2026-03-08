@@ -253,6 +253,31 @@ def test_new_models_import():
 
 
 # ---------------------------------------------------------------------------
+# Docker Hub ingest
+# ---------------------------------------------------------------------------
+
+def test_dockerhub_ingest_imports():
+    """Docker Hub ingest module imports without crashing."""
+    from app.ingest.dockerhub import ingest_dockerhub, fetch_dockerhub_pulls
+    assert callable(ingest_dockerhub)
+    assert callable(fetch_dockerhub_pulls)
+
+
+def test_docker_image_field():
+    """Project model has docker_image attribute."""
+    from app.models import Project
+    assert hasattr(Project, "docker_image")
+
+
+def test_dockerhub_in_runner():
+    """Docker Hub ingest is registered in the runner pipeline."""
+    import inspect
+    from app.ingest import runner
+    source = inspect.getsource(runner.run_all)
+    assert "dockerhub" in source
+
+
+# ---------------------------------------------------------------------------
 # PR #26: V2EX ingest + Chinese lab coverage
 # ---------------------------------------------------------------------------
 

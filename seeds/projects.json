@@ -411,7 +411,8 @@
     "npm_package": null,
     "description": "High-throughput and memory-efficient LLM inference and serving engine",
     "url": "https://vllm.ai",
-    "distribution_type": "package"
+    "distribution_type": "package",
+    "docker_image": "vllm/vllm-openai"
   },
   {
     "name": "Ollama",
@@ -424,7 +425,8 @@
     "npm_package": null,
     "description": "Run large language models locally with a simple CLI",
     "url": "https://ollama.com",
-    "distribution_type": "binary"
+    "distribution_type": "binary",
+    "docker_image": "ollama/ollama"
   },
   {
     "name": "llama.cpp",
@@ -541,7 +543,8 @@
     "npm_package": null,
     "description": "Self-hosted OpenAI-compatible API for running models locally",
     "url": "https://localai.io",
-    "distribution_type": "binary"
+    "distribution_type": "binary",
+    "docker_image": "localai/localai"
   },
   {
     "name": "Jan",
@@ -697,7 +700,8 @@
     "npm_package": null,
     "description": "All-in-one AI desktop app with RAG, agents, and multi-model support",
     "url": "https://anythingllm.com",
-    "distribution_type": "binary"
+    "distribution_type": "binary",
+    "docker_image": "mintplexlabs/anythingllm"
   },
   {
     "name": "LibreChat",
@@ -931,7 +935,8 @@
     "npm_package": null,
     "description": "Open-source embedding database for AI applications",
     "url": "https://www.trychroma.com",
-    "distribution_type": "package"
+    "distribution_type": "package",
+    "docker_image": "chromadb/chroma"
   },
   {
     "name": "Qdrant",
@@ -944,7 +949,8 @@
     "npm_package": null,
     "description": "High-performance vector similarity search engine written in Rust",
     "url": "https://qdrant.tech",
-    "distribution_type": "package"
+    "distribution_type": "package",
+    "docker_image": "qdrant/qdrant"
   },
   {
     "name": "Weaviate",
@@ -957,7 +963,8 @@
     "npm_package": null,
     "description": "Open-source vector database for scalable AI-native applications",
     "url": "https://weaviate.io",
-    "distribution_type": "package"
+    "distribution_type": "package",
+    "docker_image": "semitechnologies/weaviate"
   },
   {
     "name": "pgvector",
@@ -996,7 +1003,8 @@
     "npm_package": null,
     "description": "Open-source vector database for scalable similarity search",
     "url": "https://milvus.io",
-    "distribution_type": "package"
+    "distribution_type": "package",
+    "docker_image": "milvusdb/milvus"
   },
   {
     "name": "Pinecone",

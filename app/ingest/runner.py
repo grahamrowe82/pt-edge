@@ -2,6 +2,7 @@ import asyncio
 import logging
 
 from app.ingest.candidates import ingest_candidate_velocity
+from app.ingest.dockerhub import ingest_dockerhub
 from app.ingest.downloads import ingest_downloads
 from app.ingest.github import ingest_github
 from app.ingest.hn import ingest_hn, backfill_hn_links, backfill_hn_lab_links
@@ -26,6 +27,7 @@ async def run_all() -> dict:
     for name, coro in [
         ("github", ingest_github()),
         ("downloads", ingest_downloads()),
+        ("dockerhub", ingest_dockerhub()),
         ("huggingface", ingest_huggingface()),
         ("releases", ingest_releases()),
         ("hn", ingest_hn()),
