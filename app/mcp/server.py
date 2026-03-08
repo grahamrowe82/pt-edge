@@ -1680,6 +1680,11 @@ async def submit_feedback(
                     iterates faster than layer Z."
 
     When in doubt, use 'observation' (not 'bug'). A brainstorm is never a bug.
+
+    PRIVACY: All submissions are PUBLIC and visible to anyone with access to
+    PT-Edge. Do NOT include: client names, pricing, revenue figures, personal
+    information, passwords, API keys, or anything commercially sensitive.
+    Redact before submitting.
     """
     # Input length limits
     if len(topic) > 300:
