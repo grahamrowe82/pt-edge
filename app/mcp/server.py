@@ -3938,6 +3938,45 @@ async def topic(query: str) -> str:
     finally:
         session.close()
 
+    # 3c. NEWSLETTER COVERAGE — semantic search across extracted topics
+    lines.append("")
+    lines.append("NEWSLETTER COVERAGE")
+    lines.append("-" * 40)
+    nl_found = False
+    try:
+        from app.embeddings import is_enabled, embed_one
+        if is_enabled():
+            nl_vec = await embed_one(query)
+            if nl_vec:
+                with engine.connect() as conn:
+                    nl_rows = conn.execute(text("""
+                        SELECT title, summary, sentiment, feed_slug,
+                               published_at,
+                               1 - (embedding <=> :vec) AS similarity
+                        FROM newsletter_mentions
+                        WHERE embedding IS NOT NULL
+                        ORDER BY embedding <=> :vec
+                        LIMIT 10
+                    """), {"vec": str(nl_vec)}).fetchall()
+                    for r in nl_rows:
+                        m = r._mapping
+                        sim = float(m["similarity"])
+                        if sim < 0.3:
+                            continue
+                        nl_found = True
+                        sentiment_badge = f" [{m['sentiment']}]" if m.get("sentiment") else ""
+                        lines.append(
+                            f"  {_fmt_date(m.get('published_at'))}  "
+                            f"({m['feed_slug']}) {m['title'][:70]}{sentiment_badge}  "
+                            f"(similarity: {sim:.0%})"
+                        )
+                        if m.get("summary"):
+                            lines.append(f"    {m['summary'][:200]}")
+    except Exception as e:
+        logger.debug(f"Newsletter search error: {e}")
+    if not nl_found:
+        lines.append("  No newsletter coverage found for this topic.")
+
     # 4. METHODOLOGY — semantic search across explanations
     lines.append("")
     lines.append("RELATED METHODOLOGY")

@@ -16,6 +16,7 @@ from app.embeddings import (
     is_enabled,
     build_project_text,
     build_methodology_text,
+    build_newsletter_text,
     embed_batch,
 )
 
@@ -118,6 +119,52 @@ async def backfill_methodology(force: bool = False) -> int:
     return count
 
 
+async def backfill_newsletters(force: bool = False) -> int:
+    """Generate embeddings for newsletter topics that have summaries."""
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT id, title, summary, mentions
+            FROM newsletter_mentions
+            WHERE summary IS NOT NULL
+            {"AND embedding IS NULL" if not force else ""}
+            ORDER BY id
+        """)).fetchall()
+
+    if not rows:
+        logger.info("No newsletter topics need embeddings.")
+        return 0
+
+    logger.info(f"Generating embeddings for {len(rows)} newsletter topics...")
+
+    texts = []
+    ids = []
+    for r in rows:
+        m = r._mapping
+        mentions = m["mentions"] if isinstance(m["mentions"], list) else []
+        text_input = build_newsletter_text(
+            title=m["title"],
+            summary=m["summary"],
+            mentions=mentions,
+        )
+        texts.append(text_input)
+        ids.append(m["id"])
+
+    vectors = await embed_batch(texts)
+
+    count = 0
+    with engine.connect() as conn:
+        for nid, vec in zip(ids, vectors):
+            if vec is not None:
+                conn.execute(text("""
+                    UPDATE newsletter_mentions SET embedding = :vec WHERE id = :nid
+                """), {"vec": str(vec), "nid": nid})
+                count += 1
+        conn.commit()
+
+    logger.info(f"Embedded {count}/{len(rows)} newsletter topics.")
+    return count
+
+
 async def main():
     if not is_enabled():
         logger.error(
@@ -129,8 +176,12 @@ async def main():
 
     projects = await backfill_projects(force=force)
     methodology = await backfill_methodology(force=force)
+    newsletters = await backfill_newsletters(force=force)
 
-    logger.info(f"Backfill complete: {projects} projects, {methodology} methodology entries.")
+    logger.info(
+        f"Backfill complete: {projects} projects, {methodology} methodology, "
+        f"{newsletters} newsletter topics."
+    )
 
 
 if __name__ == "__main__":

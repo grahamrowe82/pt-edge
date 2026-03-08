@@ -61,6 +61,22 @@ def build_methodology_text(
     return f"{title}. {summary}. Category: {category}. Topic: {topic}."
 
 
+def build_newsletter_text(
+    title: str,
+    summary: str | None,
+    mentions: list[dict] | None,
+) -> str:
+    """What goes into a newsletter topic embedding. Uses title + summary + mention names."""
+    parts = [title]
+    if summary:
+        parts.append(summary)
+    if mentions:
+        names = [m.get("name", "") for m in mentions if m.get("name")]
+        if names:
+            parts.append(f"Mentions: {', '.join(names)}")
+    return ". ".join(parts) + "."
+
+
 async def embed_one(text: str) -> Optional[list[float]]:
     """Embed a single text. Returns None if disabled or on error."""
     if not is_enabled():

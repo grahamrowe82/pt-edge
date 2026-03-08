@@ -21,6 +21,7 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
+from app.embeddings import is_enabled as embeddings_enabled, build_newsletter_text, embed_batch
 from app.models import Project, Lab, SyncLog
 from app.settings import settings
 
@@ -328,6 +329,7 @@ async def ingest_newsletters() -> dict:
     total_fetched = 0
     error_count = 0
     llm_calls = 0
+    embed_queue = []  # [(entry_url, topic_index, text_to_embed), ...]
 
     for feed in FEEDS:
         logger.info(f"  Fetching {feed['slug']}...")
@@ -415,6 +417,17 @@ async def ingest_newsletters() -> dict:
                                 },
                             )
                             feed_new += 1
+                            # Queue for embedding if summary exists
+                            if topic.get("summary") and embeddings_enabled():
+                                embed_queue.append((
+                                    entry["url"],
+                                    idx,
+                                    build_newsletter_text(
+                                        title=topic.get("title", entry["title"]),
+                                        summary=topic["summary"],
+                                        mentions=resolved_mentions,
+                                    ),
+                                ))
                         except Exception as e:
                             logger.error(f"Insert error for {entry['url'][:80]} topic {idx}: {e}")
                             error_count += 1
@@ -439,6 +452,27 @@ async def ingest_newsletters() -> dict:
         session.commit()
     finally:
         session.close()
+
+    # Batch-embed new topic summaries
+    embed_count = 0
+    if embed_queue:
+        logger.info(f"  Embedding {len(embed_queue)} newsletter topics...")
+        texts = [t for _, _, t in embed_queue]
+        vectors = await embed_batch(texts)
+        with engine.connect() as conn:
+            for (url, tidx, _), vec in zip(embed_queue, vectors):
+                if vec is not None:
+                    conn.execute(
+                        text("""
+                            UPDATE newsletter_mentions
+                            SET embedding = :vec
+                            WHERE entry_url = :url AND topic_index = :tidx
+                        """),
+                        {"vec": str(vec), "url": url, "tidx": tidx},
+                    )
+                    embed_count += 1
+            conn.commit()
+        logger.info(f"  Embedded {embed_count}/{len(embed_queue)} topics")
 
     logger.info(
         f"Newsletter ingest complete: {total_new} new topic rows from "

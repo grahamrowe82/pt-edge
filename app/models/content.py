@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+from pgvector.sqlalchemy import Vector
 
 from app.models.base import Base
 
@@ -75,3 +76,4 @@ class NewsletterMention(Base):
     mentions: Mapped[list | None] = mapped_column(JSONB, default=list)
     raw_content: Mapped[str | None] = mapped_column(Text)
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    embedding = mapped_column(Vector(1536), nullable=True)
