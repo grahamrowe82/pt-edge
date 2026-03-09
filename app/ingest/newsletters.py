@@ -32,11 +32,16 @@ logger = logging.getLogger(__name__)
 # Feeds with max_age_days will skip entries older than that threshold.
 
 FEEDS = [
-    {"slug": "simon-willison",  "url": "https://simonwillison.net/atom/everything/"},
-    {"slug": "latent-space",    "url": "https://www.latent.space/feed"},
-    {"slug": "zvi",             "url": "https://thezvi.substack.com/feed"},
-    {"slug": "openai-news",     "url": "https://openai.com/blog/rss.xml",  "max_age_days": 90},
-    {"slug": "google-ai",       "url": "https://blog.google/technology/ai/rss/"},
+    # AI infrastructure & tooling
+    {"slug": "simon-willison",      "url": "https://simonwillison.net/atom/everything/"},
+    {"slug": "latent-space",        "url": "https://www.latent.space/feed"},
+    {"slug": "zvi",                 "url": "https://thezvi.substack.com/feed"},
+    {"slug": "openai-news",         "url": "https://openai.com/blog/rss.xml",  "max_age_days": 90},
+    {"slug": "google-ai",           "url": "https://blog.google/technology/ai/rss/"},
+    # AI adoption & business application
+    {"slug": "oneusefulthing",      "url": "https://www.oneusefulthing.org/feed"},
+    {"slug": "ben-evans",           "url": "https://www.ben-evans.com/benedictevans?format=rss"},
+    {"slug": "pragmatic-engineer",  "url": "https://newsletter.pragmaticengineer.com/feed"},
 ]
 # Removed: bens-bites (malformed RSS), ai-news-swyx (feed stub, 1 placeholder entry)
 
@@ -187,6 +192,10 @@ async def _extract_topics(entry: dict) -> list[dict]:
     For single-topic entries this is a list of one.
     """
     if not settings.ANTHROPIC_API_KEY:
+        return []
+
+    # Skip stubs — paywalled entries with too little content to extract from
+    if len(entry.get("content", "")) < 500:
         return []
 
     prompt = EXTRACTION_PROMPT.format(
