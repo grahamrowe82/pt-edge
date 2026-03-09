@@ -331,6 +331,130 @@ async def ingest_newsletters() -> dict:
     llm_calls = 0
     embed_queue = []  # [(entry_url, topic_index, text_to_embed), ...]
 
+    # ── Self-healing: re-extract hollow rows from previous failed runs ──
+    # Hollow rows = topic_index 0, have raw_content, but no summary (LLM was unavailable)
+    healed = 0
+    if settings.ANTHROPIC_API_KEY:
+        with engine.connect() as conn:
+            hollow_rows = conn.execute(text("""
+                SELECT id, feed_slug, entry_url, title, published_at, raw_content
+                FROM newsletter_mentions
+                WHERE summary IS NULL
+                  AND raw_content IS NOT NULL
+                  AND topic_index = 0
+                ORDER BY published_at DESC
+                LIMIT 50
+            """)).fetchall()
+
+        if hollow_rows:
+            logger.info(f"  Healing {len(hollow_rows)} hollow rows from previous runs...")
+
+        for row in hollow_rows:
+            m = row._mapping
+            entry = {
+                "url": m["entry_url"],
+                "title": m["title"],
+                "content": m["raw_content"],
+                "published": None,
+            }
+            topics = await _extract_topics(entry)
+            if not topics:
+                continue  # LLM still failing — leave for next run
+            llm_calls += 1
+
+            with engine.connect() as conn:
+                # Delete the hollow row, then insert extracted topics
+                conn.execute(
+                    text("DELETE FROM newsletter_mentions WHERE entry_url = :url"),
+                    {"url": m["entry_url"]},
+                )
+                for idx, topic in enumerate(topics):
+                    resolved_mentions = _resolve_mention_ids(
+                        topic.get("mentions", []),
+                        project_name_to_id,
+                        lab_slug_to_id,
+                    )
+                    try:
+                        conn.execute(
+                            text("""
+                                INSERT INTO newsletter_mentions
+                                    (feed_slug, entry_url, topic_index, title,
+                                     published_at, summary, sentiment,
+                                     mentions, raw_content)
+                                VALUES
+                                    (:feed_slug, :entry_url, :topic_index, :title,
+                                     :published_at, :summary, :sentiment,
+                                     :mentions, :raw_content)
+                                ON CONFLICT (entry_url, topic_index) DO NOTHING
+                            """),
+                            {
+                                "feed_slug": m["feed_slug"],
+                                "entry_url": m["entry_url"],
+                                "topic_index": idx,
+                                "title": topic.get("title", m["title"]),
+                                "published_at": m["published_at"],
+                                "summary": topic.get("summary"),
+                                "sentiment": topic.get("sentiment"),
+                                "mentions": json.dumps(resolved_mentions),
+                                "raw_content": m["raw_content"] if idx == 0 else None,
+                            },
+                        )
+                        if topic.get("summary") and embeddings_enabled():
+                            embed_queue.append((
+                                m["entry_url"],
+                                idx,
+                                build_newsletter_text(
+                                    title=topic.get("title", m["title"]),
+                                    summary=topic["summary"],
+                                    mentions=resolved_mentions,
+                                ),
+                            ))
+                    except Exception as e:
+                        logger.error(f"Heal insert error for {m['entry_url'][:80]} topic {idx}: {e}")
+                        error_count += 1
+                conn.commit()
+            healed += 1
+
+        if healed:
+            logger.info(f"  Healed {healed}/{len(hollow_rows)} entries")
+
+    # ── Self-healing: embed rows missing embeddings ──
+    embed_healed = 0
+    if embeddings_enabled():
+        with engine.connect() as conn:
+            unembedded = conn.execute(text("""
+                SELECT id, title, summary, mentions
+                FROM newsletter_mentions
+                WHERE summary IS NOT NULL AND embedding IS NULL
+                ORDER BY id
+            """)).fetchall()
+
+        if unembedded:
+            logger.info(f"  Embedding {len(unembedded)} previously unembedded topics...")
+            texts = []
+            ids = []
+            for r in unembedded:
+                rm = r._mapping
+                mentions = rm["mentions"] if isinstance(rm["mentions"], list) else []
+                texts.append(build_newsletter_text(
+                    title=rm["title"],
+                    summary=rm["summary"],
+                    mentions=mentions,
+                ))
+                ids.append(rm["id"])
+            vectors = await embed_batch(texts)
+            with engine.connect() as conn:
+                for nid, vec in zip(ids, vectors):
+                    if vec is not None:
+                        conn.execute(
+                            text("UPDATE newsletter_mentions SET embedding = :vec WHERE id = :nid"),
+                            {"vec": str(vec), "nid": nid},
+                        )
+                        embed_healed += 1
+                conn.commit()
+            logger.info(f"  Embedded {embed_healed}/{len(unembedded)} topics")
+
+    # ── Normal ingest: fetch new RSS entries ──
     for feed in FEEDS:
         logger.info(f"  Fetching {feed['slug']}...")
         entries = _fetch_entries(feed)
@@ -477,10 +601,14 @@ async def ingest_newsletters() -> dict:
     logger.info(
         f"Newsletter ingest complete: {total_new} new topic rows from "
         f"{total_fetched} fetched, {llm_calls} LLM calls, {error_count} errors"
+        f"{f', healed {healed} entries' if healed else ''}"
+        f"{f', backfill-embedded {embed_healed}' if embed_healed else ''}"
     )
     return {
         "success": total_new,
         "fetched": total_fetched,
         "llm_calls": llm_calls,
         "errors": error_count,
+        "healed": healed,
+        "embed_healed": embed_healed,
     }
