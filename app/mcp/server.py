@@ -1,7 +1,10 @@
 import difflib
+import hmac
 import json
 import re
 import logging
+import time
+from collections import defaultdict
 from datetime import date, datetime, timezone, timedelta
 from itertools import groupby
 
@@ -4850,13 +4853,28 @@ async def deep_dive(identifier: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+# Simple in-memory rate limiter (per-IP, 60 requests/minute)
+_RATE_LIMIT = 60
+_RATE_WINDOW = 60
+_rate_buckets: dict[str, list[float]] = defaultdict(list)
+
+
 class TokenAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        # Rate limit
+        ip = request.client.host if request.client else "unknown"
+        now = time.monotonic()
+        bucket = _rate_buckets[ip]
+        _rate_buckets[ip] = bucket = [t for t in bucket if now - t < _RATE_WINDOW]
+        if len(bucket) >= _RATE_LIMIT:
+            return Response(status_code=429, content="Rate limit exceeded")
+        bucket.append(now)
+        # Auth
         token = request.query_params.get("token", "")
         if not token:
             auth = request.headers.get("Authorization", "")
             token = auth.removeprefix("Bearer ") if auth.startswith("Bearer ") else ""
-        if token != settings.API_TOKEN:
+        if not hmac.compare_digest(token, settings.API_TOKEN):
             return Response(status_code=401, content="Unauthorized")
         return await call_next(request)
 
@@ -4944,7 +4962,7 @@ def mount_mcp(app):
         if not token:
             auth = request.headers.get("Authorization", "")
             token = auth.removeprefix("Bearer ") if auth.startswith("Bearer ") else ""
-        if token != settings.API_TOKEN:
+        if not hmac.compare_digest(token, settings.API_TOKEN):
             return None
         return token
 
@@ -5002,11 +5020,12 @@ def mount_mcp(app):
                     },
                 })
             except Exception as e:
+                logger.exception(f"MCP tool {tool_name} failed: {e}")
                 return JSONResponse({
                     "jsonrpc": "2.0",
                     "id": req_id,
                     "result": {
-                        "content": [{"type": "text", "text": f"Error: {e}"}],
+                        "content": [{"type": "text", "text": "Internal error"}],
                         "isError": True,
                     },
                 })
