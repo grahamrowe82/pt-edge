@@ -17,6 +17,7 @@ from app.embeddings import (
     build_project_text,
     build_methodology_text,
     build_newsletter_text,
+    build_release_text,
     embed_batch,
 )
 
@@ -119,6 +120,53 @@ async def backfill_methodology(force: bool = False) -> int:
     return count
 
 
+async def backfill_releases(force: bool = False) -> int:
+    """Generate embeddings for releases that have summaries."""
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT r.id, p.name as project_name, r.version, r.title, r.summary
+            FROM releases r
+            JOIN projects p ON p.id = r.project_id
+            WHERE r.summary IS NOT NULL
+            {"AND r.embedding IS NULL" if not force else ""}
+            ORDER BY r.id
+        """)).fetchall()
+
+    if not rows:
+        logger.info("No releases need embeddings.")
+        return 0
+
+    logger.info(f"Generating embeddings for {len(rows)} releases...")
+
+    texts = []
+    ids = []
+    for r in rows:
+        m = r._mapping
+        text_input = build_release_text(
+            project_name=m["project_name"],
+            version=m["version"],
+            title=m["title"],
+            summary=m["summary"],
+        )
+        texts.append(text_input)
+        ids.append(m["id"])
+
+    vectors = await embed_batch(texts)
+
+    count = 0
+    with engine.connect() as conn:
+        for rid, vec in zip(ids, vectors):
+            if vec is not None:
+                conn.execute(text("""
+                    UPDATE releases SET embedding = :vec WHERE id = :rid
+                """), {"vec": str(vec), "rid": rid})
+                count += 1
+        conn.commit()
+
+    logger.info(f"Embedded {count}/{len(rows)} releases.")
+    return count
+
+
 async def backfill_newsletters(force: bool = False) -> int:
     """Generate embeddings for newsletter topics that have summaries."""
     with engine.connect() as conn:
@@ -176,11 +224,12 @@ async def main():
 
     projects = await backfill_projects(force=force)
     methodology = await backfill_methodology(force=force)
+    releases = await backfill_releases(force=force)
     newsletters = await backfill_newsletters(force=force)
 
     logger.info(
         f"Backfill complete: {projects} projects, {methodology} methodology, "
-        f"{newsletters} newsletter topics."
+        f"{releases} releases, {newsletters} newsletter topics."
     )
 
 

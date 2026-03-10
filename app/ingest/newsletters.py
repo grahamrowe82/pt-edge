@@ -352,7 +352,7 @@ async def ingest_newsletters() -> dict:
                   AND raw_content IS NOT NULL
                   AND topic_index = 0
                 ORDER BY published_at DESC
-                LIMIT 50
+                LIMIT 500
             """)).fetchall()
 
         if hollow_rows:

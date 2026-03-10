@@ -26,6 +26,7 @@ class Release(Base):
     released_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     source: Mapped[str] = mapped_column(String(50), default="github")  # github, blog, changelog
+    embedding = mapped_column(Vector(1536), nullable=True)
 
 
 class HNPost(Base):

@@ -61,6 +61,22 @@ def build_methodology_text(
     return f"{title}. {summary}. Category: {category}. Topic: {topic}."
 
 
+def build_release_text(
+    project_name: str,
+    version: str | None,
+    title: str,
+    summary: str | None,
+) -> str:
+    """What goes into a release embedding. Uses project + version + title + summary."""
+    parts = [project_name]
+    if version:
+        parts[0] += f" {version}"
+    parts.append(title)
+    if summary:
+        parts.append(summary)
+    return ". ".join(parts) + "."
+
+
 def build_newsletter_text(
     title: str,
     summary: str | None,
