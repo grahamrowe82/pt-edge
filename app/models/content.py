@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
 
@@ -77,4 +77,25 @@ class NewsletterMention(Base):
     mentions: Mapped[list | None] = mapped_column(JSONB, default=list)
     raw_content: Mapped[str | None] = mapped_column(Text)
     ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    embedding = mapped_column(Vector(1536), nullable=True)
+
+
+class MCPServer(Base):
+    __tablename__ = "mcp_servers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    github_owner: Mapped[str] = mapped_column(String, nullable=False)
+    github_repo: Mapped[str] = mapped_column(String, nullable=False)
+    full_name: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    stars: Mapped[int] = mapped_column(Integer, default=0)
+    forks: Mapped[int] = mapped_column(Integer, default=0)
+    language: Mapped[str | None] = mapped_column(String)
+    topics: Mapped[list | None] = mapped_column(ARRAY(Text))
+    license: Mapped[str | None] = mapped_column(String)
+    last_pushed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     embedding = mapped_column(Vector(1536), nullable=True)
