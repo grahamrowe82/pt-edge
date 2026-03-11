@@ -123,6 +123,26 @@ def build_ai_repo_text(
     return ". ".join(parts) + "."
 
 
+def build_public_api_text(
+    title: str,
+    description: str | None,
+    categories: list[str] | None,
+    provider: str | None,
+) -> str:
+    """What goes into a public API embedding for discovery search."""
+    import re
+    parts = [title or ""]
+    if description:
+        # Strip HTML tags and truncate — some APIs.guru entries have full docs
+        desc = re.sub(r"<[^>]+>", "", description)[:500]
+        parts[0] += f": {desc}"
+    if categories:
+        parts.append(f"Categories: {', '.join(categories)}")
+    if provider:
+        parts.append(f"Provider: {provider}")
+    return ". ".join(parts) + "."
+
+
 async def embed_one(text: str, dimensions: int = DIMENSIONS) -> Optional[list[float]]:
     """Embed a single text. Returns None if disabled or on error."""
     if not is_enabled():

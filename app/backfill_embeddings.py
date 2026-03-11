@@ -19,6 +19,7 @@ from app.embeddings import (
     build_newsletter_text,
     build_release_text,
     build_ai_repo_text,
+    build_public_api_text,
     embed_batch,
 )
 
@@ -304,6 +305,94 @@ async def backfill_ai_repos(force: bool = False) -> int:
     return count
 
 
+API_EMBED_DIM = 256
+
+
+async def backfill_public_apis(force: bool = False) -> int:
+    """Generate 256d embeddings for public APIs missing them."""
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT id, title, description, categories, provider
+            FROM public_apis
+            WHERE description IS NOT NULL
+            {"AND embedding IS NULL" if not force else ""}
+        """)).fetchall()
+
+    if not rows:
+        logger.info("No public APIs need embeddings.")
+        return 0
+
+    logger.info(f"Generating {API_EMBED_DIM}d embeddings for {len(rows)} public APIs...")
+
+    texts = []
+    ids = []
+    for r in rows:
+        m = r._mapping
+        t = build_public_api_text(
+            title=m["title"],
+            description=m["description"],
+            categories=list(m["categories"]) if m["categories"] else None,
+            provider=m["provider"],
+        )
+        texts.append(t)
+        ids.append(m["id"])
+
+    vectors = await embed_batch(texts, dimensions=API_EMBED_DIM)
+
+    tuples = [
+        (sid, str(vec))
+        for sid, vec in zip(ids, vectors)
+        if vec is not None
+    ]
+    if not tuples:
+        return 0
+
+    from psycopg2.extras import execute_values
+    CHUNK = 500
+    count = 0
+
+    for i in range(0, len(tuples), CHUNK):
+        chunk = tuples[i : i + CHUNK]
+        raw_conn = engine.raw_connection()
+        try:
+            cur = raw_conn.cursor()
+            cur.execute("""
+                CREATE TEMP TABLE _api_emb (
+                    id INTEGER PRIMARY KEY,
+                    embedding vector(256)
+                ) ON COMMIT DROP
+            """)
+            execute_values(
+                cur,
+                "INSERT INTO _api_emb (id, embedding) VALUES %s",
+                chunk,
+                template="(%s, %s)",
+                page_size=500,
+            )
+            cur.execute("""
+                UPDATE public_apis p
+                SET embedding = b.embedding
+                FROM _api_emb b
+                WHERE p.id = b.id
+            """)
+            count += cur.rowcount
+            raw_conn.commit()
+        except Exception as e:
+            try:
+                raw_conn.rollback()
+            except Exception:
+                pass
+            logger.error(f"API embedding write failed at chunk {i}: {e}")
+        finally:
+            try:
+                raw_conn.close()
+            except Exception:
+                pass
+
+    logger.info(f"Embedded {count}/{len(rows)} public APIs.")
+    return count
+
+
 async def main():
     if not is_enabled():
         logger.error(
@@ -318,11 +407,12 @@ async def main():
     releases = await backfill_releases(force=force)
     newsletters = await backfill_newsletters(force=force)
     ai_repos = await backfill_ai_repos(force=force)
+    public_apis = await backfill_public_apis(force=force)
 
     logger.info(
         f"Backfill complete: {projects} projects, {methodology} methodology, "
         f"{releases} releases, {newsletters} newsletter topics, "
-        f"{ai_repos} AI repos."
+        f"{ai_repos} AI repos, {public_apis} public APIs."
     )
 
 
