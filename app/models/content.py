@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
@@ -100,3 +100,7 @@ class AIRepo(Base):
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     embedding = mapped_column(Vector(256), nullable=True)
+    pypi_package: Mapped[str | None] = mapped_column(String(200))
+    npm_package: Mapped[str | None] = mapped_column(String(200))
+    downloads_monthly: Mapped[int] = mapped_column(BigInteger, default=0)
+    downloads_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
