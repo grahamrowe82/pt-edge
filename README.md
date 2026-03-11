@@ -37,7 +37,7 @@ PT-Edge is an MCP server that makes AI assistants less wrong about the current s
 PT-Edge uses the MCP Streamable HTTP transport. Connect via:
 
 ```
-https://pt-edge.onrender.com/mcp?token=YOUR_TOKEN
+https://mcp.phasetransitions.ai/mcp?token=YOUR_TOKEN
 ```
 
 Works with Claude Desktop, Claude.ai (web connector), and any MCP-compatible client.
