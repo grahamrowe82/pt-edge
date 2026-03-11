@@ -93,6 +93,23 @@ def build_newsletter_text(
     return ". ".join(parts) + "."
 
 
+def build_mcp_server_text(
+    name: str,
+    description: str | None,
+    topics: list[str] | None,
+    language: str | None,
+) -> str:
+    """What goes into an MCP server embedding for discovery search."""
+    parts = [name or ""]
+    if description:
+        parts[0] += f": {description}"
+    if topics:
+        parts.append(f"Topics: {', '.join(topics)}")
+    if language:
+        parts.append(f"Language: {language}")
+    return ". ".join(parts) + "."
+
+
 async def embed_one(text: str) -> Optional[list[float]]:
     """Embed a single text. Returns None if disabled or on error."""
     if not is_enabled():

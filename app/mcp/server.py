@@ -4869,6 +4869,146 @@ async def deep_dive(identifier: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# MCP server discovery
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+@track_usage
+async def find_mcp_server(query: str, limit: int = 5) -> str:
+    """Find MCP servers by describing what you need in plain English.
+    Searches thousands of indexed MCP server repos from GitHub.
+
+    Examples:
+      find_mcp_server("database query tool for postgres")
+      find_mcp_server("Jira issue tracker")
+      find_mcp_server("file system access")
+      find_mcp_server("web scraping and browser automation")
+    """
+    if not query or len(query) > 500:
+        return "Please provide a search query (max 500 characters)."
+    limit = min(max(1, limit), 20)
+
+    from math import log10
+    from app.embeddings import is_enabled, embed_one
+
+    lines = []
+    seen_ids: set[int] = set()
+    results: list[dict] = []
+
+    try:
+        # ---- Semantic search ----
+        if is_enabled():
+            vec = await embed_one(query)
+            if vec:
+                with engine.connect() as conn:
+                    rows = conn.execute(text("""
+                        SELECT id, full_name, name, description, stars, forks,
+                               language, topics, license, archived,
+                               1 - (embedding <=> :vec) AS similarity
+                        FROM mcp_servers
+                        WHERE embedding IS NOT NULL AND archived = false
+                        ORDER BY embedding <=> :vec
+                        LIMIT :lim
+                    """), {"vec": str(vec), "lim": limit * 3}).fetchall()
+
+                    for r in rows:
+                        m = r._mapping
+                        results.append({
+                            "id": m["id"],
+                            "full_name": m["full_name"],
+                            "name": m["name"],
+                            "description": m["description"],
+                            "stars": m["stars"],
+                            "forks": m["forks"],
+                            "language": m["language"],
+                            "topics": list(m["topics"]) if m["topics"] else [],
+                            "license": m["license"],
+                            "similarity": float(m["similarity"]),
+                        })
+                        seen_ids.add(m["id"])
+
+        # ---- Keyword fallback (catches exact name matches semantic might miss) ----
+        keyword = f"%{query.strip()[:100]}%"
+        with engine.connect() as conn:
+            kw_rows = conn.execute(text("""
+                SELECT id, full_name, name, description, stars, forks,
+                       language, topics, license
+                FROM mcp_servers
+                WHERE archived = false
+                  AND (name ILIKE :kw OR description ILIKE :kw
+                       OR full_name ILIKE :kw)
+                ORDER BY stars DESC
+                LIMIT :lim
+            """), {"kw": keyword, "lim": limit}).fetchall()
+
+            for r in kw_rows:
+                m = r._mapping
+                if m["id"] not in seen_ids:
+                    results.append({
+                        "id": m["id"],
+                        "full_name": m["full_name"],
+                        "name": m["name"],
+                        "description": m["description"],
+                        "stars": m["stars"],
+                        "forks": m["forks"],
+                        "language": m["language"],
+                        "topics": list(m["topics"]) if m["topics"] else [],
+                        "license": m["license"],
+                        "similarity": 0.5,  # baseline for keyword matches
+                    })
+                    seen_ids.add(m["id"])
+
+        if not results:
+            # Check if table has any data
+            with engine.connect() as conn:
+                count = conn.execute(text(
+                    "SELECT COUNT(*) FROM mcp_servers"
+                )).scalar()
+            if count == 0:
+                return "MCP server index is empty — the first ingest hasn't run yet."
+            return f"No MCP servers found matching '{query}'. Try broader terms."
+
+        # ---- Rank: blend semantic similarity with star-based quality signal ----
+        for r in results:
+            star_score = log10(max(r["stars"], 1) + 1) / 5.0  # normalize ~0-1
+            r["score"] = 0.7 * r["similarity"] + 0.3 * star_score
+
+        results.sort(key=lambda x: x["score"], reverse=True)
+        results = results[:limit]
+
+        # ---- Format output ----
+        with engine.connect() as conn:
+            total = conn.execute(text(
+                "SELECT COUNT(*) FROM mcp_servers WHERE archived = false"
+            )).scalar()
+
+        lines.append(f"MCP SERVER SEARCH: \"{query}\"")
+        lines.append(f"Searching {total:,} indexed MCP server repos")
+        lines.append("=" * 50)
+
+        for i, r in enumerate(results, 1):
+            lines.append("")
+            lang = f" · {r['language']}" if r['language'] else ""
+            lic = f" · {r['license']}" if r['license'] else ""
+            lines.append(
+                f"{i}. {r['full_name']}  "
+                f"(⭐ {r['stars']:,}{lang}{lic})"
+            )
+            if r["description"]:
+                lines.append(f"   {r['description'][:200]}")
+            if r["topics"]:
+                lines.append(f"   Topics: {', '.join(r['topics'][:8])}")
+            lines.append(f"   https://github.com/{r['full_name']}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"find_mcp_server failed: {e}")
+        return "Error searching MCP servers. Please try again."
+
+
+# ---------------------------------------------------------------------------
 # Auth middleware & mount
 # ---------------------------------------------------------------------------
 
@@ -4920,6 +5060,7 @@ _TOOL_LIST = [
     lifecycle_map, hype_landscape, sniff_projects,
     accept_candidate, set_tier, movers, compare, related, market_map,
     radar, explain, topic, scout, hn_pulse, deep_dive,
+    find_mcp_server,
 ]
 
 

@@ -12,7 +12,8 @@ from app.ingest.models import ingest_models
 from app.ingest.huggingface import ingest_huggingface
 from app.ingest.releases import ingest_releases
 from app.ingest.trending import ingest_trending
-from app.backfill_embeddings import backfill_projects, backfill_methodology
+from app.ingest.mcp_servers import ingest_mcp_servers
+from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_mcp_servers
 from app.embeddings import is_enabled
 from app.views.refresh import refresh_all_views
 
@@ -36,6 +37,7 @@ async def run_all() -> dict:
         ("trending", ingest_trending()),
         ("newsletters", ingest_newsletters()),
         ("candidate_velocity", ingest_candidate_velocity()),
+        ("mcp_servers", ingest_mcp_servers()),
     ]:
         try:
             results[name] = await coro
@@ -84,7 +86,8 @@ async def run_all() -> dict:
         try:
             proj_count = await backfill_projects()
             meth_count = await backfill_methodology()
-            results["embeddings"] = {"projects": proj_count, "methodology": meth_count}
+            mcp_count = await backfill_mcp_servers()
+            results["embeddings"] = {"projects": proj_count, "methodology": meth_count, "mcp_servers": mcp_count}
             logger.info(f"embeddings: {results['embeddings']}")
         except Exception as e:
             logger.exception(f"embeddings failed: {e}")
