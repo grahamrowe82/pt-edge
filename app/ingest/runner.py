@@ -13,6 +13,7 @@ from app.ingest.huggingface import ingest_huggingface
 from app.ingest.releases import ingest_releases
 from app.ingest.trending import ingest_trending
 from app.ingest.ai_repos import ingest_ai_repos
+from app.ingest.ai_repo_downloads import ingest_ai_repo_downloads
 from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos
 from app.embeddings import is_enabled
 from app.views.refresh import refresh_all_views
@@ -38,6 +39,7 @@ async def run_all() -> dict:
         ("newsletters", ingest_newsletters()),
         ("candidate_velocity", ingest_candidate_velocity()),
         ("ai_repos", ingest_ai_repos()),
+        ("ai_repo_downloads", ingest_ai_repo_downloads()),
     ]:
         try:
             results[name] = await coro
