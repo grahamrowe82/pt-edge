@@ -4875,6 +4875,15 @@ async def deep_dive(identifier: str) -> str:
 AI_REPO_EMBED_DIM = 256
 
 
+def _fmt_downloads(n: int) -> str:
+    """Format download count: 1234567 → '1.2M', 45000 → '45K'."""
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.0f}K"
+    return str(n)
+
+
 async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
     """Core search logic shared by find_ai_tool and find_mcp_server."""
     if not query or len(query) > 500:
@@ -4900,6 +4909,7 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
                     rows = conn.execute(text(f"""
                         SELECT id, full_name, name, description, stars, forks,
                                language, topics, license, archived, domain,
+                               downloads_monthly,
                                1 - (embedding <=> :vec) AS similarity
                         FROM ai_repos
                         WHERE embedding IS NOT NULL AND archived = false
@@ -4921,6 +4931,7 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
                             "topics": list(m["topics"]) if m["topics"] else [],
                             "license": m["license"],
                             "domain": m["domain"],
+                            "downloads_monthly": m["downloads_monthly"] or 0,
                             "similarity": float(m["similarity"]),
                         })
                         seen_ids.add(m["id"])
@@ -4930,7 +4941,7 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
         with engine.connect() as conn:
             kw_rows = conn.execute(text(f"""
                 SELECT id, full_name, name, description, stars, forks,
-                       language, topics, license, domain
+                       language, topics, license, domain, downloads_monthly
                 FROM ai_repos
                 WHERE archived = false
                   AND (name ILIKE :kw OR description ILIKE :kw
@@ -4954,6 +4965,7 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
                         "topics": list(m["topics"]) if m["topics"] else [],
                         "license": m["license"],
                         "domain": m["domain"],
+                        "downloads_monthly": m["downloads_monthly"] or 0,
                         "similarity": 0.5,
                     })
                     seen_ids.add(m["id"])
@@ -4966,10 +4978,12 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
             scope = f" in domain '{domain}'" if domain else ""
             return f"No AI repos found matching '{query}'{scope}. Try broader terms."
 
-        # ---- Rank: blend semantic similarity with star-based quality signal ----
+        # ---- Rank: blend semantic similarity, stars, and downloads ----
         for r in results:
             star_score = log10(max(r["stars"], 1) + 1) / 5.0
-            r["score"] = 0.7 * r["similarity"] + 0.3 * star_score
+            dl = r.get("downloads_monthly") or 0
+            download_score = log10(max(dl, 1) + 1) / 7.0
+            r["score"] = 0.6 * r["similarity"] + 0.2 * star_score + 0.2 * download_score
 
         results.sort(key=lambda x: x["score"], reverse=True)
         results = results[:limit]
@@ -4991,12 +5005,14 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
 
         for i, r in enumerate(results, 1):
             lines.append("")
+            dl = r.get("downloads_monthly") or 0
+            dl_str = f" | {_fmt_downloads(dl)}/mo" if dl > 0 else ""
             lang = f" · {r['language']}" if r['language'] else ""
             lic = f" · {r['license']}" if r['license'] else ""
             dom = f" [{r['domain']}]" if not domain else ""
             lines.append(
                 f"{i}. {r['full_name']}{dom}  "
-                f"(⭐ {r['stars']:,}{lang}{lic})"
+                f"(⭐ {r['stars']:,}{dl_str}{lang}{lic})"
             )
             if r["description"]:
                 lines.append(f"   {r['description'][:200]}")
