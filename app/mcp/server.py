@@ -5061,6 +5061,152 @@ async def find_mcp_server(query: str, limit: int = 5) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Public API search
+# ---------------------------------------------------------------------------
+
+API_EMBED_DIM = 256
+
+
+async def _search_public_apis(query: str, category: str = "", limit: int = 5) -> str:
+    """Core search logic for public API discovery."""
+    if not query or len(query) > 500:
+        return "Please provide a search query (max 500 characters)."
+    limit = min(max(1, limit), 20)
+    category = category.strip().lower()
+
+    from math import log10
+    from app.embeddings import is_enabled, embed_one
+
+    lines = []
+    seen_ids: set[int] = set()
+    results: list[dict] = []
+    cat_filter = "AND :cat = ANY(categories)" if category else ""
+    params_base: dict = {"cat": category} if category else {}
+
+    try:
+        # ---- Semantic search ----
+        if is_enabled():
+            vec = await embed_one(query, dimensions=API_EMBED_DIM)
+            if vec:
+                with engine.connect() as conn:
+                    rows = conn.execute(text(f"""
+                        SELECT id, provider, service_name, title, description,
+                               categories, openapi_version, spec_url,
+                               1 - (embedding <=> :vec) AS similarity
+                        FROM public_apis
+                        WHERE embedding IS NOT NULL
+                        {cat_filter}
+                        ORDER BY embedding <=> :vec
+                        LIMIT :lim
+                    """), {**params_base, "vec": str(vec), "lim": limit * 3}).fetchall()
+
+                    for r in rows:
+                        m = r._mapping
+                        results.append({
+                            "id": m["id"],
+                            "provider": m["provider"],
+                            "service_name": m["service_name"],
+                            "title": m["title"],
+                            "description": m["description"],
+                            "categories": list(m["categories"]) if m["categories"] else [],
+                            "openapi_version": m["openapi_version"],
+                            "spec_url": m["spec_url"],
+                            "similarity": float(m["similarity"]),
+                        })
+                        seen_ids.add(m["id"])
+
+        # ---- Keyword fallback ----
+        keyword = f"%{query.strip()[:100]}%"
+        with engine.connect() as conn:
+            kw_rows = conn.execute(text(f"""
+                SELECT id, provider, service_name, title, description,
+                       categories, openapi_version, spec_url
+                FROM public_apis
+                WHERE (title ILIKE :kw OR description ILIKE :kw
+                       OR provider ILIKE :kw)
+                  {cat_filter}
+                LIMIT :lim
+            """), {**params_base, "kw": keyword, "lim": limit}).fetchall()
+
+            for r in kw_rows:
+                m = r._mapping
+                if m["id"] not in seen_ids:
+                    results.append({
+                        "id": m["id"],
+                        "provider": m["provider"],
+                        "service_name": m["service_name"],
+                        "title": m["title"],
+                        "description": m["description"],
+                        "categories": list(m["categories"]) if m["categories"] else [],
+                        "openapi_version": m["openapi_version"],
+                        "spec_url": m["spec_url"],
+                        "similarity": 0.5,
+                    })
+                    seen_ids.add(m["id"])
+
+        if not results:
+            with engine.connect() as conn:
+                count = conn.execute(text("SELECT COUNT(*) FROM public_apis")).scalar()
+            if count == 0:
+                return "Public API index is empty — the first ingest hasn't run yet."
+            scope = f" in category '{category}'" if category else ""
+            return f"No APIs found matching '{query}'{scope}. Try broader terms."
+
+        # ---- Rank: pure semantic similarity (no popularity signal) ----
+        results.sort(key=lambda x: x["similarity"], reverse=True)
+        results = results[:limit]
+
+        # ---- Format output ----
+        with engine.connect() as conn:
+            total = conn.execute(text("SELECT COUNT(*) FROM public_apis")).scalar()
+        lines.append(f"PUBLIC API SEARCH: \"{query}\"")
+        if category:
+            lines.append(f"Category filter: {category}")
+        lines.append(f"Searching {total:,} indexed APIs")
+        lines.append("=" * 50)
+
+        for i, r in enumerate(results, 1):
+            lines.append("")
+            # Build display key: "provider" or "provider:service"
+            key = r["provider"]
+            if r["service_name"]:
+                key += f":{r['service_name']}"
+            cats = f"  [{', '.join(r['categories'])}]" if r["categories"] else ""
+            ver = f"OpenAPI {r['openapi_version']}" if r["openapi_version"] else ""
+            lines.append(f"{i}. {r['title']} ({key}){cats}")
+            if r["description"]:
+                lines.append(f"   {r['description'][:200]}")
+            if r["spec_url"]:
+                lines.append(f"   Spec: {r['spec_url']}")
+            if ver:
+                lines.append(f"   {ver}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"_search_public_apis failed: {e}")
+        return "Error searching public APIs. Please try again."
+
+
+@mcp.tool()
+@track_usage
+async def find_public_api(query: str, category: str = "", limit: int = 5) -> str:
+    """Find public REST APIs by describing what you need in plain English.
+    Searches ~2,500 indexed APIs from the APIs.guru directory.
+
+    Optional category filter: financial, cloud, analytics, social, media,
+    machine_learning, security, ecommerce, iot, messaging, etc.
+
+    Examples:
+      find_public_api("payment processing")
+      find_public_api("weather forecast data")
+      find_public_api("send SMS messages", category="messaging")
+      find_public_api("image recognition", category="machine_learning")
+    """
+    return await _search_public_apis(query=query, category=category, limit=limit)
+
+
+# ---------------------------------------------------------------------------
 # Auth middleware & mount
 # ---------------------------------------------------------------------------
 
@@ -5112,7 +5258,7 @@ _TOOL_LIST = [
     lifecycle_map, hype_landscape, sniff_projects,
     accept_candidate, set_tier, movers, compare, related, market_map,
     radar, explain, topic, scout, hn_pulse, deep_dive,
-    find_ai_tool, find_mcp_server,
+    find_ai_tool, find_mcp_server, find_public_api,
 ]
 
 

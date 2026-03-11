@@ -104,3 +104,23 @@ class AIRepo(Base):
     npm_package: Mapped[str | None] = mapped_column(String(200))
     downloads_monthly: Mapped[int] = mapped_column(BigInteger, default=0)
     downloads_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PublicAPI(Base):
+    __tablename__ = "public_apis"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provider: Mapped[str] = mapped_column(String, nullable=False)
+    service_name: Mapped[str] = mapped_column(String, nullable=False, default="")
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    categories: Mapped[list | None] = mapped_column(ARRAY(Text))
+    openapi_version: Mapped[str | None] = mapped_column(String(20))
+    spec_url: Mapped[str | None] = mapped_column(Text)
+    logo_url: Mapped[str | None] = mapped_column(Text)
+    contact_url: Mapped[str | None] = mapped_column(Text)
+    api_version: Mapped[str | None] = mapped_column(String(50))
+    added_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    embedding = mapped_column(Vector(256), nullable=True)
