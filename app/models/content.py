@@ -80,8 +80,8 @@ class NewsletterMention(Base):
     embedding = mapped_column(Vector(1536), nullable=True)
 
 
-class MCPServer(Base):
-    __tablename__ = "mcp_servers"
+class AIRepo(Base):
+    __tablename__ = "ai_repos"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     github_owner: Mapped[str] = mapped_column(String, nullable=False)
@@ -96,6 +96,7 @@ class MCPServer(Base):
     license: Mapped[str | None] = mapped_column(String)
     last_pushed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    domain: Mapped[str] = mapped_column(String(50), nullable=False, default="uncategorized")
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    embedding = mapped_column(Vector(1536), nullable=True)
+    embedding = mapped_column(Vector(256), nullable=True)

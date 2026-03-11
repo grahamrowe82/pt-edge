@@ -99,32 +99,45 @@ def build_mcp_server_text(
     topics: list[str] | None,
     language: str | None,
 ) -> str:
-    """What goes into an MCP server embedding for discovery search."""
+    """Legacy — use build_ai_repo_text instead."""
+    return build_ai_repo_text(name=name, description=description, topics=topics, language=language)
+
+
+def build_ai_repo_text(
+    name: str,
+    description: str | None,
+    topics: list[str] | None,
+    language: str | None,
+    domain: str | None = None,
+) -> str:
+    """What goes into an AI repo embedding for discovery search."""
     parts = [name or ""]
     if description:
         parts[0] += f": {description}"
     if topics:
         parts.append(f"Topics: {', '.join(topics)}")
+    if domain:
+        parts.append(f"Domain: {domain}")
     if language:
         parts.append(f"Language: {language}")
     return ". ".join(parts) + "."
 
 
-async def embed_one(text: str) -> Optional[list[float]]:
+async def embed_one(text: str, dimensions: int = DIMENSIONS) -> Optional[list[float]]:
     """Embed a single text. Returns None if disabled or on error."""
     if not is_enabled():
         return None
     try:
         from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        resp = await client.embeddings.create(input=[text], model=MODEL, dimensions=DIMENSIONS)
+        resp = await client.embeddings.create(input=[text], model=MODEL, dimensions=dimensions)
         return resp.data[0].embedding
     except Exception as e:
         logger.error(f"Embedding error: {e}")
         return None
 
 
-async def embed_batch(texts: list[str]) -> list[Optional[list[float]]]:
+async def embed_batch(texts: list[str], dimensions: int = DIMENSIONS) -> list[Optional[list[float]]]:
     """Embed multiple texts. Chunks to MAX_BATCH_SIZE. Returns aligned list."""
     if not is_enabled():
         return [None] * len(texts)
@@ -137,7 +150,7 @@ async def embed_batch(texts: list[str]) -> list[Optional[list[float]]]:
 
         for start in range(0, len(texts), MAX_BATCH_SIZE):
             chunk = texts[start:start + MAX_BATCH_SIZE]
-            resp = await client.embeddings.create(input=chunk, model=MODEL, dimensions=DIMENSIONS)
+            resp = await client.embeddings.create(input=chunk, model=MODEL, dimensions=dimensions)
             for item in resp.data:
                 results[start + item.index] = item.embedding
 

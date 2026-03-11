@@ -4869,25 +4869,18 @@ async def deep_dive(identifier: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# MCP server discovery
+# AI repo discovery
 # ---------------------------------------------------------------------------
 
+AI_REPO_EMBED_DIM = 256
 
-@mcp.tool()
-@track_usage
-async def find_mcp_server(query: str, limit: int = 5) -> str:
-    """Find MCP servers by describing what you need in plain English.
-    Searches thousands of indexed MCP server repos from GitHub.
 
-    Examples:
-      find_mcp_server("database query tool for postgres")
-      find_mcp_server("Jira issue tracker")
-      find_mcp_server("file system access")
-      find_mcp_server("web scraping and browser automation")
-    """
+async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
+    """Core search logic shared by find_ai_tool and find_mcp_server."""
     if not query or len(query) > 500:
         return "Please provide a search query (max 500 characters)."
     limit = min(max(1, limit), 20)
+    domain = domain.strip().lower()
 
     from math import log10
     from app.embeddings import is_enabled, embed_one
@@ -4895,22 +4888,25 @@ async def find_mcp_server(query: str, limit: int = 5) -> str:
     lines = []
     seen_ids: set[int] = set()
     results: list[dict] = []
+    domain_filter = "AND domain = :domain" if domain else ""
+    params_base: dict = {"domain": domain} if domain else {}
 
     try:
         # ---- Semantic search ----
         if is_enabled():
-            vec = await embed_one(query)
+            vec = await embed_one(query, dimensions=AI_REPO_EMBED_DIM)
             if vec:
                 with engine.connect() as conn:
-                    rows = conn.execute(text("""
+                    rows = conn.execute(text(f"""
                         SELECT id, full_name, name, description, stars, forks,
-                               language, topics, license, archived,
+                               language, topics, license, archived, domain,
                                1 - (embedding <=> :vec) AS similarity
-                        FROM mcp_servers
+                        FROM ai_repos
                         WHERE embedding IS NOT NULL AND archived = false
+                        {domain_filter}
                         ORDER BY embedding <=> :vec
                         LIMIT :lim
-                    """), {"vec": str(vec), "lim": limit * 3}).fetchall()
+                    """), {**params_base, "vec": str(vec), "lim": limit * 3}).fetchall()
 
                     for r in rows:
                         m = r._mapping
@@ -4924,23 +4920,25 @@ async def find_mcp_server(query: str, limit: int = 5) -> str:
                             "language": m["language"],
                             "topics": list(m["topics"]) if m["topics"] else [],
                             "license": m["license"],
+                            "domain": m["domain"],
                             "similarity": float(m["similarity"]),
                         })
                         seen_ids.add(m["id"])
 
-        # ---- Keyword fallback (catches exact name matches semantic might miss) ----
+        # ---- Keyword fallback ----
         keyword = f"%{query.strip()[:100]}%"
         with engine.connect() as conn:
-            kw_rows = conn.execute(text("""
+            kw_rows = conn.execute(text(f"""
                 SELECT id, full_name, name, description, stars, forks,
-                       language, topics, license
-                FROM mcp_servers
+                       language, topics, license, domain
+                FROM ai_repos
                 WHERE archived = false
                   AND (name ILIKE :kw OR description ILIKE :kw
                        OR full_name ILIKE :kw)
+                  {domain_filter}
                 ORDER BY stars DESC
                 LIMIT :lim
-            """), {"kw": keyword, "lim": limit}).fetchall()
+            """), {**params_base, "kw": keyword, "lim": limit}).fetchall()
 
             for r in kw_rows:
                 m = r._mapping
@@ -4955,23 +4953,22 @@ async def find_mcp_server(query: str, limit: int = 5) -> str:
                         "language": m["language"],
                         "topics": list(m["topics"]) if m["topics"] else [],
                         "license": m["license"],
-                        "similarity": 0.5,  # baseline for keyword matches
+                        "domain": m["domain"],
+                        "similarity": 0.5,
                     })
                     seen_ids.add(m["id"])
 
         if not results:
-            # Check if table has any data
             with engine.connect() as conn:
-                count = conn.execute(text(
-                    "SELECT COUNT(*) FROM mcp_servers"
-                )).scalar()
+                count = conn.execute(text("SELECT COUNT(*) FROM ai_repos")).scalar()
             if count == 0:
-                return "MCP server index is empty — the first ingest hasn't run yet."
-            return f"No MCP servers found matching '{query}'. Try broader terms."
+                return "AI repo index is empty — the first ingest hasn't run yet."
+            scope = f" in domain '{domain}'" if domain else ""
+            return f"No AI repos found matching '{query}'{scope}. Try broader terms."
 
         # ---- Rank: blend semantic similarity with star-based quality signal ----
         for r in results:
-            star_score = log10(max(r["stars"], 1) + 1) / 5.0  # normalize ~0-1
+            star_score = log10(max(r["stars"], 1) + 1) / 5.0
             r["score"] = 0.7 * r["similarity"] + 0.3 * star_score
 
         results.sort(key=lambda x: x["score"], reverse=True)
@@ -4979,20 +4976,26 @@ async def find_mcp_server(query: str, limit: int = 5) -> str:
 
         # ---- Format output ----
         with engine.connect() as conn:
-            total = conn.execute(text(
-                "SELECT COUNT(*) FROM mcp_servers WHERE archived = false"
-            )).scalar()
-
-        lines.append(f"MCP SERVER SEARCH: \"{query}\"")
-        lines.append(f"Searching {total:,} indexed MCP server repos")
-        lines.append("=" * 50)
+            if domain:
+                total = conn.execute(text(
+                    "SELECT COUNT(*) FROM ai_repos WHERE archived = false AND domain = :d"
+                ), {"d": domain}).scalar()
+                lines.append(f"AI REPO SEARCH: \"{query}\" (domain: {domain})")
+            else:
+                total = conn.execute(text(
+                    "SELECT COUNT(*) FROM ai_repos WHERE archived = false"
+                )).scalar()
+                lines.append(f"AI REPO SEARCH: \"{query}\"")
+            lines.append(f"Searching {total:,} indexed repos")
+            lines.append("=" * 50)
 
         for i, r in enumerate(results, 1):
             lines.append("")
             lang = f" · {r['language']}" if r['language'] else ""
             lic = f" · {r['license']}" if r['license'] else ""
+            dom = f" [{r['domain']}]" if not domain else ""
             lines.append(
-                f"{i}. {r['full_name']}  "
+                f"{i}. {r['full_name']}{dom}  "
                 f"(⭐ {r['stars']:,}{lang}{lic})"
             )
             if r["description"]:
@@ -5004,8 +5007,41 @@ async def find_mcp_server(query: str, limit: int = 5) -> str:
         return "\n".join(lines)
 
     except Exception as e:
-        logger.exception(f"find_mcp_server failed: {e}")
-        return "Error searching MCP servers. Please try again."
+        logger.exception(f"_search_ai_repos failed: {e}")
+        return "Error searching AI repos. Please try again."
+
+
+@mcp.tool()
+@track_usage
+async def find_ai_tool(query: str, domain: str = "", limit: int = 5) -> str:
+    """Find AI/ML tools and libraries by describing what you need in plain English.
+    Searches ~100K indexed AI repos from GitHub across domains like
+    MCP servers, AI agents, RAG, LLM tools, vector databases, and more.
+
+    Optional domain filter: mcp, agents, rag, llm-tools, generative-ai,
+    embeddings, vector-db, prompt-engineering, transformers, ml-frameworks
+
+    Examples:
+      find_ai_tool("database query tool for postgres", domain="mcp")
+      find_ai_tool("autonomous coding agent")
+      find_ai_tool("PDF document chunking for RAG pipeline")
+      find_ai_tool("vector similarity search engine", domain="vector-db")
+    """
+    return await _search_ai_repos(query=query, domain=domain, limit=limit)
+
+
+@mcp.tool()
+@track_usage
+async def find_mcp_server(query: str, limit: int = 5) -> str:
+    """Find MCP servers by describing what you need in plain English.
+    Convenience wrapper — searches only the 'mcp' domain.
+
+    Examples:
+      find_mcp_server("database query tool for postgres")
+      find_mcp_server("Jira issue tracker")
+      find_mcp_server("file system access")
+    """
+    return await _search_ai_repos(query=query, domain="mcp", limit=limit)
 
 
 # ---------------------------------------------------------------------------
@@ -5060,7 +5096,7 @@ _TOOL_LIST = [
     lifecycle_map, hype_landscape, sniff_projects,
     accept_candidate, set_tier, movers, compare, related, market_map,
     radar, explain, topic, scout, hn_pulse, deep_dive,
-    find_mcp_server,
+    find_ai_tool, find_mcp_server,
 ]
 
 

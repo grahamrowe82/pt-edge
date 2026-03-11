@@ -18,7 +18,7 @@ from app.embeddings import (
     build_methodology_text,
     build_newsletter_text,
     build_release_text,
-    build_mcp_server_text,
+    build_ai_repo_text,
     embed_batch,
 )
 
@@ -214,37 +214,41 @@ async def backfill_newsletters(force: bool = False) -> int:
     return count
 
 
-async def backfill_mcp_servers(force: bool = False) -> int:
-    """Generate embeddings for MCP servers missing them."""
+AI_REPO_EMBED_DIM = 256
+
+
+async def backfill_ai_repos(force: bool = False) -> int:
+    """Generate 256d embeddings for AI repos missing them."""
     with engine.connect() as conn:
         rows = conn.execute(text(f"""
-            SELECT id, name, description, topics, language
-            FROM mcp_servers
+            SELECT id, name, description, topics, language, domain
+            FROM ai_repos
             WHERE description IS NOT NULL
             {"AND embedding IS NULL" if not force else ""}
             ORDER BY stars DESC
         """)).fetchall()
 
     if not rows:
-        logger.info("No MCP servers need embeddings.")
+        logger.info("No AI repos need embeddings.")
         return 0
 
-    logger.info(f"Generating embeddings for {len(rows)} MCP servers...")
+    logger.info(f"Generating {AI_REPO_EMBED_DIM}d embeddings for {len(rows)} AI repos...")
 
     texts = []
     ids = []
     for r in rows:
         m = r._mapping
-        text_input = build_mcp_server_text(
+        text_input = build_ai_repo_text(
             name=m["name"],
             description=m["description"],
             topics=list(m["topics"]) if m["topics"] else None,
             language=m["language"],
+            domain=m["domain"],
         )
         texts.append(text_input)
         ids.append(m["id"])
 
-    vectors = await embed_batch(texts)
+    vectors = await embed_batch(texts, dimensions=AI_REPO_EMBED_DIM)
 
     tuples = [
         (sid, str(vec))
@@ -254,9 +258,8 @@ async def backfill_mcp_servers(force: bool = False) -> int:
     if not tuples:
         return 0
 
-    # Chunk writes — each vector is ~12KB so keep batches small to avoid SSL drops
     from psycopg2.extras import execute_values
-    CHUNK = 200
+    CHUNK = 500  # 256d vectors are ~2KB each — safe batch size
     count = 0
 
     for i in range(0, len(tuples), CHUNK):
@@ -267,7 +270,7 @@ async def backfill_mcp_servers(force: bool = False) -> int:
             cur.execute("""
                 CREATE TEMP TABLE _emb_batch (
                     id INTEGER PRIMARY KEY,
-                    embedding vector(1536)
+                    embedding vector(256)
                 ) ON COMMIT DROP
             """)
             execute_values(
@@ -275,10 +278,10 @@ async def backfill_mcp_servers(force: bool = False) -> int:
                 "INSERT INTO _emb_batch (id, embedding) VALUES %s",
                 chunk,
                 template="(%s, %s)",
-                page_size=200,
+                page_size=500,
             )
             cur.execute("""
-                UPDATE mcp_servers s
+                UPDATE ai_repos s
                 SET embedding = b.embedding
                 FROM _emb_batch b
                 WHERE s.id = b.id
@@ -297,7 +300,7 @@ async def backfill_mcp_servers(force: bool = False) -> int:
             except Exception:
                 pass
 
-    logger.info(f"Embedded {count}/{len(rows)} MCP servers.")
+    logger.info(f"Embedded {count}/{len(rows)} AI repos.")
     return count
 
 
@@ -314,12 +317,12 @@ async def main():
     methodology = await backfill_methodology(force=force)
     releases = await backfill_releases(force=force)
     newsletters = await backfill_newsletters(force=force)
-    mcp_servers = await backfill_mcp_servers(force=force)
+    ai_repos = await backfill_ai_repos(force=force)
 
     logger.info(
         f"Backfill complete: {projects} projects, {methodology} methodology, "
         f"{releases} releases, {newsletters} newsletter topics, "
-        f"{mcp_servers} MCP servers."
+        f"{ai_repos} AI repos."
     )
 
 
