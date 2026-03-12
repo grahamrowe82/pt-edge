@@ -16,6 +16,8 @@ VIEWS_IN_ORDER = [
     "mv_project_tier",     # base: no dependencies
     "mv_lifecycle",        # depends on: mv_momentum
     "mv_project_summary",  # depends on: mv_momentum, mv_hype_ratio, mv_project_tier, mv_lifecycle
+    "mv_usage_sessions",    # standalone: tool_usage only
+    "mv_usage_daily_summary",  # depends on: mv_usage_sessions
 ]
 
 
