@@ -6738,6 +6738,27 @@ def mount_mcp(app):
             return None
         return token
 
+    def _log_protocol_event(event_name: str, client_ip: str, user_agent: str):
+        """Log MCP protocol events (initialize, tools/list) to tool_usage."""
+        try:
+            from app.models import ToolUsage
+            session = SessionLocal()
+            usage = ToolUsage(
+                tool_name=event_name,
+                params={},
+                duration_ms=0,
+                success=True,
+                error_message=None,
+                result_size=0,
+                client_ip=client_ip or None,
+                user_agent=user_agent[:500] if user_agent and len(user_agent) > 500 else (user_agent or None),
+            )
+            session.add(usage)
+            session.commit()
+            session.close()
+        except Exception:
+            logger.debug(f"Failed to log protocol event {event_name}", exc_info=True)
+
     @app.post("/mcp")
     async def mcp_json_rpc(request: Request):
         """Simple JSON-RPC endpoint for Claude.ai web connector."""
@@ -6758,6 +6779,7 @@ def mount_mcp(app):
         req_id = body.get("id", 0)
 
         if method == "initialize":
+            _log_protocol_event("mcp.initialize", client_ip, user_agent)
             return JSONResponse({
                 "jsonrpc": "2.0",
                 "id": req_id,
@@ -6769,6 +6791,7 @@ def mount_mcp(app):
             })
 
         if method == "tools/list":
+            _log_protocol_event("mcp.tools_list", client_ip, user_agent)
             return JSONResponse({
                 "jsonrpc": "2.0",
                 "id": req_id,
