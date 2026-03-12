@@ -305,3 +305,83 @@ def test_chinese_labs_in_provider_map():
     assert "qwen" in PROVIDER_TO_LAB
     assert PROVIDER_TO_LAB["deepseek"] == "deepseek"
     assert PROVIDER_TO_LAB["qwen"] == "qwen"
+
+
+# ---------------------------------------------------------------------------
+# MCP Resources, Resource Templates, and Prompts
+# ---------------------------------------------------------------------------
+
+def test_prompts_list():
+    """MCP prompts/list returns 4 prompts."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.settings import settings
+
+    client = TestClient(app)
+    resp = client.post(
+        f"/mcp?token={settings.API_TOKEN}",
+        json={"jsonrpc": "2.0", "id": 10, "method": "prompts/list"},
+    )
+    assert resp.status_code == 200
+    prompts = resp.json()["result"]["prompts"]
+    names = [p["name"] for p in prompts]
+    assert "evaluate-technology" in names
+    assert "build-something" in names
+    assert "due-diligence" in names
+    assert "weekly-briefing" in names
+
+
+def test_resources_list():
+    """MCP resources/list returns 3 static resources."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.settings import settings
+
+    client = TestClient(app)
+    resp = client.post(
+        f"/mcp?token={settings.API_TOKEN}",
+        json={"jsonrpc": "2.0", "id": 11, "method": "resources/list"},
+    )
+    assert resp.status_code == 200
+    resources = resp.json()["result"]["resources"]
+    uris = [r["uri"] for r in resources]
+    assert "resource://pt-edge/methodology" in uris
+    assert "resource://pt-edge/categories" in uris
+    assert "resource://pt-edge/coverage" in uris
+
+
+def test_resource_templates_list():
+    """MCP resources/templates/list returns 3 templates."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.settings import settings
+
+    client = TestClient(app)
+    resp = client.post(
+        f"/mcp?token={settings.API_TOKEN}",
+        json={"jsonrpc": "2.0", "id": 12, "method": "resources/templates/list"},
+    )
+    assert resp.status_code == 200
+    templates = resp.json()["result"]["resourceTemplates"]
+    assert len(templates) == 3
+    names = [t["name"] for t in templates]
+    assert "project" in names
+    assert "lab" in names
+    assert "category" in names
+
+
+def test_initialize_advertises_capabilities():
+    """MCP initialize includes resources and prompts capabilities."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.settings import settings
+
+    client = TestClient(app)
+    resp = client.post(
+        f"/mcp?token={settings.API_TOKEN}",
+        json={"jsonrpc": "2.0", "id": 13, "method": "initialize"},
+    )
+    assert resp.status_code == 200
+    caps = resp.json()["result"]["capabilities"]
+    assert "resources" in caps
+    assert "prompts" in caps

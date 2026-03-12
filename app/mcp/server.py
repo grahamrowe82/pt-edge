@@ -9,7 +9,6 @@ from datetime import date, datetime, timezone, timedelta
 from itertools import groupby
 
 from fastapi import Request, Response
-from fastmcp import FastMCP
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -24,7 +23,7 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("pt-edge")
+from app.mcp.instance import mcp
 
 TIER_LABELS = {1: "Foundational", 2: "Major", 3: "Notable", 4: "Emerging"}
 
@@ -6321,7 +6320,7 @@ def mount_mcp(app):
                 "id": req_id,
                 "result": {
                     "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}},
+                    "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
                     "serverInfo": {"name": "pt-edge", "version": "1.0.0"},
                 },
             })
@@ -6367,6 +6366,45 @@ def mount_mcp(app):
                     },
                 })
 
+        # ---- Resources & Prompts ----
+
+        if method == "resources/list":
+            from app.mcp.resources import RESOURCES
+            return JSONResponse({
+                "jsonrpc": "2.0", "id": req_id,
+                "result": {"resources": RESOURCES},
+            })
+
+        if method == "resources/templates/list":
+            from app.mcp.resources import RESOURCE_TEMPLATES
+            return JSONResponse({
+                "jsonrpc": "2.0", "id": req_id,
+                "result": {"resourceTemplates": RESOURCE_TEMPLATES},
+            })
+
+        if method == "resources/read":
+            from app.mcp.resources import read_resource
+            result = await read_resource(params.get("uri", ""))
+            return JSONResponse({
+                "jsonrpc": "2.0", "id": req_id,
+                "result": result,
+            })
+
+        if method == "prompts/list":
+            from app.mcp.prompts import PROMPTS
+            return JSONResponse({
+                "jsonrpc": "2.0", "id": req_id,
+                "result": {"prompts": PROMPTS},
+            })
+
+        if method == "prompts/get":
+            from app.mcp.prompts import get_prompt
+            result = await get_prompt(params.get("name", ""), params.get("arguments", {}))
+            return JSONResponse({
+                "jsonrpc": "2.0", "id": req_id,
+                "result": result,
+            })
+
         return JSONResponse({
             "jsonrpc": "2.0",
             "id": req_id,
@@ -6374,6 +6412,10 @@ def mount_mcp(app):
         })
 
     # ---- Streamable HTTP transport (for Claude Desktop / SDK) ----
+    # Trigger resource and prompt registration before mounting
+    from app.mcp import resources as _resources  # noqa: F401
+    from app.mcp import prompts as _prompts  # noqa: F401
+
     mcp_app = mcp.http_app(path="/stream")
     mcp_app.add_middleware(TokenAuthMiddleware)
     app.mount("/mcp", mcp_app)
