@@ -228,6 +228,7 @@ async def ingest_hf_models(batch_limit: int = 50000) -> dict:
             rows.append(parsed)
 
     if len(rows) > batch_limit:
+        logger.warning(f"Truncating {len(rows)} models to batch_limit={batch_limit}")
         rows = rows[:batch_limit]
 
     logger.info(f"Parsed {len(rows)} models with >={MIN_DOWNLOADS} downloads")

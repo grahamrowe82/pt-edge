@@ -33,6 +33,7 @@ async def run_all() -> dict:
     logger.info("Starting full ingest cycle")
 
     for name, coro in [
+        # Phase 1: Fast daily-critical (< 5 min each)
         ("github", ingest_github()),
         ("downloads", ingest_downloads()),
         ("dockerhub", ingest_dockerhub()),
@@ -43,13 +44,14 @@ async def run_all() -> dict:
         ("trending", ingest_trending()),
         ("newsletters", ingest_newsletters()),
         ("candidate_velocity", ingest_candidate_velocity()),
-        ("ai_repos", ingest_ai_repos()),
-        ("ai_repo_downloads", ingest_ai_repo_downloads()),
+        # Phase 2: Slow discovery indexes (minutes to hours)
+        ("hf_datasets", ingest_hf_datasets()),
+        ("hf_models", ingest_hf_models()),
         ("public_apis", ingest_public_apis()),
         ("api_specs", ingest_api_specs()),
         ("package_deps", ingest_package_deps()),
-        ("hf_datasets", ingest_hf_datasets()),
-        ("hf_models", ingest_hf_models()),
+        ("ai_repo_downloads", ingest_ai_repo_downloads()),
+        ("ai_repos", ingest_ai_repos()),  # Slowest — last
     ]:
         try:
             results[name] = await coro
