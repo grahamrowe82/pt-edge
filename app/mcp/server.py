@@ -6639,6 +6639,11 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
             token = auth.removeprefix("Bearer ") if auth.startswith("Bearer ") else ""
         if not hmac.compare_digest(token, settings.API_TOKEN):
             return Response(status_code=401, content="Unauthorized")
+        # Set request context for tool usage tracking
+        from app.mcp.tracking import set_request_context
+        client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or ip
+        user_agent = request.headers.get("User-Agent", "")
+        set_request_context(client_ip, user_agent)
         return await call_next(request)
 
 
@@ -6739,6 +6744,13 @@ def mount_mcp(app):
         token = _check_token(request)
         if not token:
             return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+
+        # Set request context for tool usage tracking
+        from app.mcp.tracking import set_request_context
+        raw_ip = request.client.host if request.client else "unknown"
+        client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or raw_ip
+        user_agent = request.headers.get("User-Agent", "")
+        set_request_context(client_ip, user_agent)
 
         body = await request.json()
         method = body.get("method")
