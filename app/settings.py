@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""  # empty = embeddings disabled, everything still works
     ANTHROPIC_API_KEY: str = ""  # for newsletter LLM extraction; empty = entries stored without summaries
     V2EX_TOKEN: str = ""  # Personal Access Token from v2ex.com; empty = V2EX ingest skipped
+    RENDER_API_KEY: str = ""  # Render API key for MCP integration; not used by app code
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 
