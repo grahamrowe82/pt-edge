@@ -15,6 +15,8 @@ from app.ingest.trending import ingest_trending
 from app.ingest.ai_repos import ingest_ai_repos
 from app.ingest.ai_repo_downloads import ingest_ai_repo_downloads
 from app.ingest.public_apis import ingest_public_apis
+from app.ingest.api_specs import ingest_api_specs
+from app.ingest.package_deps import ingest_package_deps
 from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis
 from app.embeddings import is_enabled
 from app.views.refresh import refresh_all_views
@@ -42,6 +44,8 @@ async def run_all() -> dict:
         ("ai_repos", ingest_ai_repos()),
         ("ai_repo_downloads", ingest_ai_repo_downloads()),
         ("public_apis", ingest_public_apis()),
+        ("api_specs", ingest_api_specs()),
+        ("package_deps", ingest_package_deps()),
     ]:
         try:
             results[name] = await coro

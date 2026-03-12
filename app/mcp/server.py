@@ -5207,6 +5207,533 @@ async def find_public_api(query: str, category: str = "", limit: int = 5) -> str
 
 
 # ---------------------------------------------------------------------------
+# Spec-to-scaffold bridge
+# ---------------------------------------------------------------------------
+
+
+def _parse_spec_overview(spec: dict) -> dict:
+    """Extract structured overview from an OpenAPI/Swagger spec."""
+    result: dict = {}
+
+    # Detect spec version
+    oas_version = spec.get("openapi", "")
+    swagger_version = spec.get("swagger", "")
+    result["spec_version"] = f"OpenAPI {oas_version}" if oas_version else f"Swagger {swagger_version}"
+
+    info = spec.get("info", {})
+    result["title"] = info.get("title", "Unknown")
+    result["version"] = info.get("version", "")
+    desc = info.get("description", "")
+    result["description"] = desc[:500] if desc else ""
+
+    # Base URL
+    if oas_version:
+        servers = spec.get("servers") or []
+        result["base_url"] = servers[0]["url"] if servers else ""
+    else:
+        host = spec.get("host", "")
+        base_path = spec.get("basePath", "")
+        schemes = spec.get("schemes", ["https"])
+        scheme = schemes[0] if schemes else "https"
+        result["base_url"] = f"{scheme}://{host}{base_path}" if host else ""
+
+    # Auth methods
+    auth_methods = []
+    if oas_version:
+        schemes_dict = (spec.get("components") or {}).get("securitySchemes") or {}
+    else:
+        schemes_dict = spec.get("securityDefinitions") or {}
+
+    for name, scheme_def in schemes_dict.items():
+        if isinstance(scheme_def, dict):
+            stype = scheme_def.get("type", "")
+            sin = scheme_def.get("in", "")
+            flow = scheme_def.get("flow") or scheme_def.get("flows", "")
+            desc_short = f"{stype}"
+            if sin:
+                desc_short += f" (in {sin})"
+            if isinstance(flow, str) and flow:
+                desc_short += f" [{flow}]"
+            elif isinstance(flow, dict):
+                desc_short += f" [{', '.join(flow.keys())}]"
+            auth_methods.append(f"{name}: {desc_short}")
+    result["auth_methods"] = auth_methods
+
+    # Endpoints
+    endpoints = []
+    paths = spec.get("paths") or {}
+    for path, methods in paths.items():
+        if not isinstance(methods, dict):
+            continue
+        for method, op in methods.items():
+            if method.startswith("x-") or method == "parameters":
+                continue
+            if not isinstance(op, dict):
+                continue
+            summary = op.get("summary") or op.get("description", "")
+            endpoints.append({
+                "method": method.upper(),
+                "path": path,
+                "summary": summary[:150] if summary else "",
+            })
+    result["endpoints"] = endpoints
+    result["endpoint_count"] = len(endpoints)
+
+    return result
+
+
+def _flatten_schema(schema: dict | None, defs: dict, depth: int = 0, max_depth: int = 2) -> str:
+    """Render a JSON Schema into compact notation for Claude."""
+    if not schema or not isinstance(schema, dict):
+        return "any"
+
+    # Resolve $ref
+    ref = schema.get("$ref")
+    if ref:
+        parts = ref.rsplit("/", 1)
+        ref_name = parts[-1] if parts else ref
+        if depth >= max_depth:
+            return f"${ref_name}"
+        resolved = defs.get(ref_name, {})
+        return _flatten_schema(resolved, defs, depth + 1, max_depth)
+
+    stype = schema.get("type", "")
+
+    if stype == "object" or "properties" in schema:
+        props = schema.get("properties") or {}
+        if not props:
+            return "object"
+        if depth >= max_depth:
+            return "{...}"
+        fields = []
+        for k, v in list(props.items())[:15]:
+            fields.append(f"{k}: {_flatten_schema(v, defs, depth + 1, max_depth)}")
+        suffix = ", ..." if len(props) > 15 else ""
+        return "{" + ", ".join(fields) + suffix + "}"
+
+    if stype == "array":
+        items = schema.get("items", {})
+        return f"[{_flatten_schema(items, defs, depth + 1, max_depth)}]"
+
+    if "enum" in schema:
+        vals = schema["enum"][:5]
+        return f"enum({', '.join(repr(v) for v in vals)})"
+
+    if "oneOf" in schema or "anyOf" in schema:
+        variants = schema.get("oneOf") or schema.get("anyOf") or []
+        parts = [_flatten_schema(v, defs, depth + 1, max_depth) for v in variants[:3]]
+        return " | ".join(parts)
+
+    # Primitive
+    fmt = schema.get("format", "")
+    if fmt:
+        return f"{stype}({fmt})"
+    return stype or "any"
+
+
+def _get_defs(spec: dict) -> dict:
+    """Get schema definitions from OpenAPI 3 or Swagger 2."""
+    components = spec.get("components") or {}
+    schemas = components.get("schemas")
+    if schemas:
+        return schemas
+    return spec.get("definitions") or {}
+
+
+@mcp.tool()
+@track_usage
+async def get_api_spec(provider: str, service_name: str = "") -> str:
+    """Get the cached OpenAPI spec overview for a public API.
+
+    Returns: title, base URL, auth methods, and endpoint list.
+    Use after find_public_api() to inspect an API before generating code.
+
+    Args:
+        provider: The API provider (e.g. "stripe.com", "googleapis.com")
+        service_name: The service name if any (e.g. "youtube"). Empty string for single-service providers.
+
+    Examples:
+      get_api_spec("stripe.com")
+      get_api_spec("googleapis.com", "youtube")
+      get_api_spec("twilio.com", "api")
+    """
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text("""
+                SELECT provider, service_name, title, spec_json, spec_error, spec_url
+                FROM public_apis
+                WHERE provider = :provider AND service_name = :svc
+                LIMIT 1
+            """), {"provider": provider.strip(), "svc": service_name.strip()}).fetchone()
+
+        if not row:
+            return f"No API found for provider='{provider}', service_name='{service_name}'. Use find_public_api() to search first."
+
+        m = row._mapping
+
+        if m["spec_error"]:
+            return f"Spec fetch failed for {m['title']}: {m['spec_error']}\nSpec URL: {m['spec_url'] or 'none'}"
+
+        if not m["spec_json"]:
+            return (
+                f"Spec not yet cached for {m['title']}.\n"
+                f"Spec URL: {m['spec_url'] or 'none'}\n"
+                "The spec ingest job hasn't processed this API yet. "
+                "You can fetch the spec URL directly with webfetch if needed."
+            )
+
+        spec = m["spec_json"]
+        overview = _parse_spec_overview(spec)
+
+        lines = []
+        lines.append(f"API SPEC: {overview['title']} v{overview['version']}")
+        lines.append(f"Spec: {overview['spec_version']}")
+        lines.append("=" * 50)
+
+        if overview["description"]:
+            lines.append(f"\n{overview['description']}")
+
+        if overview["base_url"]:
+            lines.append(f"\nBase URL: {overview['base_url']}")
+
+        if overview["auth_methods"]:
+            lines.append(f"\nAuthentication ({len(overview['auth_methods'])} method{'s' if len(overview['auth_methods']) != 1 else ''}):")
+            for am in overview["auth_methods"]:
+                lines.append(f"  • {am}")
+
+        lines.append(f"\nEndpoints ({overview['endpoint_count']} total):")
+
+        for ep in overview["endpoints"][:50]:
+            summary = f"  — {ep['summary']}" if ep["summary"] else ""
+            lines.append(f"  {ep['method']:6s} {ep['path']}{summary}")
+
+        if overview["endpoint_count"] > 50:
+            lines.append(f"  ... and {overview['endpoint_count'] - 50} more")
+            lines.append("  Use get_api_endpoints() with path_filter to drill into specific paths.")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"get_api_spec failed: {e}")
+        return "Error retrieving API spec. Please try again."
+
+
+@mcp.tool()
+@track_usage
+async def get_api_endpoints(
+    provider: str,
+    service_name: str = "",
+    path_filter: str = "",
+) -> str:
+    """Get detailed endpoint schemas for a public API.
+
+    Returns request parameters, request body, and response schemas
+    for endpoints matching the path filter. Use after get_api_spec()
+    to get details on specific endpoints for code generation.
+
+    Args:
+        provider: The API provider (e.g. "stripe.com")
+        service_name: The service name if any (e.g. "youtube")
+        path_filter: Filter endpoints by path substring (e.g. "/charges", "/videos")
+
+    Examples:
+      get_api_endpoints("stripe.com", path_filter="/v1/charges")
+      get_api_endpoints("googleapis.com", "youtube", path_filter="/videos")
+    """
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text("""
+                SELECT provider, service_name, title, spec_json
+                FROM public_apis
+                WHERE provider = :provider AND service_name = :svc
+                  AND spec_json IS NOT NULL
+                LIMIT 1
+            """), {"provider": provider.strip(), "svc": service_name.strip()}).fetchone()
+
+        if not row:
+            return f"No cached spec for provider='{provider}', service_name='{service_name}'. Run get_api_spec() first."
+
+        m = row._mapping
+        spec = m["spec_json"]
+        defs = _get_defs(spec)
+        paths = spec.get("paths") or {}
+        path_filter_lower = path_filter.strip().lower()
+
+        lines = []
+        key = m["provider"]
+        if m["service_name"]:
+            key += f":{m['service_name']}"
+        lines.append(f"ENDPOINT DETAILS: {m['title']} ({key})")
+        if path_filter:
+            lines.append(f"Filter: {path_filter}")
+        lines.append("=" * 50)
+
+        count = 0
+        for path, methods in paths.items():
+            if path_filter_lower and path_filter_lower not in path.lower():
+                continue
+            if not isinstance(methods, dict):
+                continue
+            for method, op in methods.items():
+                if method.startswith("x-") or method == "parameters" or not isinstance(op, dict):
+                    continue
+                if count >= 20:
+                    lines.append(f"\n... capped at 20 endpoints. Narrow your path_filter.")
+                    return "\n".join(lines)
+
+                count += 1
+                summary = op.get("summary") or op.get("description", "")
+                lines.append(f"\n{'─' * 40}")
+                lines.append(f"{method.upper()} {path}")
+                if summary:
+                    lines.append(f"  {summary[:200]}")
+
+                # Parameters (path, query, header)
+                params = op.get("parameters") or []
+                path_params = methods.get("parameters") or []
+                all_params = path_params + params
+                if all_params:
+                    lines.append("  Parameters:")
+                    for p in all_params[:20]:
+                        if not isinstance(p, dict):
+                            continue
+                        pname = p.get("name", "?")
+                        pin = p.get("in", "?")
+                        preq = "required" if p.get("required") else "optional"
+                        ptype = _flatten_schema(p.get("schema", p), defs, max_depth=1)
+                        pdesc = p.get("description", "")[:80]
+                        lines.append(f"    {pname} ({pin}, {preq}): {ptype}")
+                        if pdesc:
+                            lines.append(f"      {pdesc}")
+
+                # Request body (OpenAPI 3)
+                req_body = op.get("requestBody")
+                if req_body and isinstance(req_body, dict):
+                    content = req_body.get("content") or {}
+                    for ct, ct_val in content.items():
+                        if not isinstance(ct_val, dict):
+                            continue
+                        schema = ct_val.get("schema", {})
+                        lines.append(f"  Request body ({ct}):")
+                        lines.append(f"    {_flatten_schema(schema, defs)}")
+                        break
+
+                # Response (show 200/201 success response)
+                responses = op.get("responses") or {}
+                for status in ("200", "201", "default"):
+                    resp = responses.get(status)
+                    if not resp or not isinstance(resp, dict):
+                        continue
+                    content = resp.get("content") or {}
+                    for ct, ct_val in content.items():
+                        if not isinstance(ct_val, dict):
+                            continue
+                        schema = ct_val.get("schema", {})
+                        lines.append(f"  Response {status} ({ct}):")
+                        lines.append(f"    {_flatten_schema(schema, defs)}")
+                        break
+                    if not content and "schema" in resp:
+                        lines.append(f"  Response {status}:")
+                        lines.append(f"    {_flatten_schema(resp['schema'], defs)}")
+                    break
+
+        if count == 0:
+            if path_filter:
+                return f"No endpoints matching '{path_filter}' in {m['title']}. Try a broader filter or omit path_filter."
+            return f"No endpoints found in spec for {m['title']}."
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"get_api_endpoints failed: {e}")
+        return "Error retrieving endpoint details. Please try again."
+
+
+# ---------------------------------------------------------------------------
+# Dependency graph intelligence
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+@track_usage
+async def get_dependencies(repo: str) -> str:
+    """Get the dependency list for an indexed AI/ML repo.
+
+    Shows direct runtime and dev dependencies from PyPI/npm.
+    Use after find_ai_tool() to compare dependency weight across tools.
+
+    Args:
+        repo: The GitHub owner/repo (e.g. "langchain-ai/langchain", "fastapi/fastapi")
+
+    Examples:
+      get_dependencies("langchain-ai/langchain")
+      get_dependencies("jlowin/fastmcp")
+    """
+    repo = repo.strip()
+    if "/" not in repo:
+        return "Please provide owner/repo format (e.g. 'langchain-ai/langchain')."
+
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text("""
+                SELECT r.id, r.full_name, r.pypi_package, r.npm_package,
+                       r.dependency_count, r.deps_fetched_at
+                FROM ai_repos r
+                WHERE r.full_name ILIKE :name
+                LIMIT 1
+            """), {"name": repo}).fetchone()
+
+        if not row:
+            return f"Repo '{repo}' not found in the AI repo index. Use find_ai_tool() to search."
+
+        m = row._mapping
+
+        if not m["pypi_package"] and not m["npm_package"]:
+            return (
+                f"No published package detected for {m['full_name']}. "
+                "Dependencies are only available for repos with detected PyPI/npm packages."
+            )
+
+        if not m["deps_fetched_at"]:
+            pkgs = []
+            if m["pypi_package"]:
+                pkgs.append(f"PyPI: {m['pypi_package']}")
+            if m["npm_package"]:
+                pkgs.append(f"npm: {m['npm_package']}")
+            return (
+                f"Dependencies not yet fetched for {m['full_name']} ({', '.join(pkgs)}). "
+                "The dependency ingest job hasn't processed this repo yet."
+            )
+
+        with engine.connect() as conn:
+            deps = conn.execute(text("""
+                SELECT dep_name, dep_spec, source, is_dev
+                FROM package_deps
+                WHERE repo_id = :rid
+                ORDER BY is_dev, source, dep_name
+            """), {"rid": m["id"]}).fetchall()
+
+        lines = []
+        lines.append(f"DEPENDENCIES: {m['full_name']}")
+        pkgs = []
+        if m["pypi_package"]:
+            pkgs.append(f"PyPI: {m['pypi_package']}")
+        if m["npm_package"]:
+            pkgs.append(f"npm: {m['npm_package']}")
+        lines.append(f"Packages: {', '.join(pkgs)}")
+        lines.append("=" * 50)
+
+        if not deps:
+            lines.append("\nNo dependencies found (standalone package).")
+            return "\n".join(lines)
+
+        pypi_runtime = [d._mapping for d in deps if d._mapping["source"] == "pypi" and not d._mapping["is_dev"]]
+        pypi_dev = [d._mapping for d in deps if d._mapping["source"] == "pypi" and d._mapping["is_dev"]]
+        npm_runtime = [d._mapping for d in deps if d._mapping["source"] == "npm" and not d._mapping["is_dev"]]
+        npm_dev = [d._mapping for d in deps if d._mapping["source"] == "npm" and d._mapping["is_dev"]]
+
+        for label, group in [
+            ("PyPI runtime", pypi_runtime),
+            ("PyPI dev/optional", pypi_dev),
+            ("npm runtime", npm_runtime),
+            ("npm dev", npm_dev),
+        ]:
+            if not group:
+                continue
+            lines.append(f"\n{label} ({len(group)}):")
+            for d in group:
+                spec = f" {d['dep_spec']}" if d["dep_spec"] else ""
+                lines.append(f"  • {d['dep_name']}{spec}")
+
+        total_runtime = len(pypi_runtime) + len(npm_runtime)
+        total_dev = len(pypi_dev) + len(npm_dev)
+        lines.append(f"\nTotal: {total_runtime} runtime, {total_dev} dev/optional")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"get_dependencies failed: {e}")
+        return "Error retrieving dependencies. Please try again."
+
+
+@mcp.tool()
+@track_usage
+async def find_dependents(package_name: str, source: str = "") -> str:
+    """Find indexed AI/ML repos that depend on a given package.
+
+    Reverse-lookup: "which repos in the index use this package?"
+    Useful for understanding ecosystem adoption of a library.
+
+    Args:
+        package_name: Package name (e.g. "fastapi", "express", "langchain")
+        source: Optional filter: "pypi" or "npm". Omit to search both.
+
+    Examples:
+      find_dependents("fastapi")
+      find_dependents("express", source="npm")
+      find_dependents("openai")
+    """
+    package_name = package_name.strip().lower()
+    if not package_name:
+        return "Please provide a package name."
+
+    source = source.strip().lower()
+    source_filter = "AND d.source = :src" if source in ("pypi", "npm") else ""
+    params: dict = {"pkg": package_name}
+    if source_filter:
+        params["src"] = source
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(f"""
+                SELECT r.full_name, r.stars, r.language, r.domain,
+                       r.downloads_monthly, d.source, d.dep_spec, d.is_dev
+                FROM package_deps d
+                JOIN ai_repos r ON r.id = d.repo_id
+                WHERE d.dep_name = :pkg
+                  {source_filter}
+                ORDER BY r.stars DESC
+                LIMIT 20
+            """), params).fetchall()
+
+        if not rows:
+            scope = f" ({source})" if source else ""
+            return f"No indexed repos found that depend on '{package_name}'{scope}."
+
+        lines = []
+        lines.append(f"DEPENDENTS OF: {package_name}")
+        if source:
+            lines.append(f"Source: {source}")
+        lines.append(f"Found {len(rows)} indexed repo{'s' if len(rows) != 1 else ''}")
+        lines.append("=" * 50)
+
+        for i, r in enumerate(rows, 1):
+            m = r._mapping
+            stars = f"⭐ {m['stars']:,}" if m["stars"] else ""
+            lang = m["language"] or ""
+            domain = f"[{m['domain']}]" if m["domain"] else ""
+            dev_marker = " (dev)" if m["is_dev"] else ""
+            spec = f" {m['dep_spec']}" if m["dep_spec"] else ""
+            dl = ""
+            if m["downloads_monthly"] and m["downloads_monthly"] > 0:
+                dl = f" | {_fmt_downloads(m['downloads_monthly'])}/mo"
+
+            lines.append(f"\n{i}. {m['full_name']} {domain}")
+            lines.append(f"   {stars}{dl} · {lang}")
+            lines.append(f"   Depends: {package_name}{spec}{dev_marker} ({m['source']})")
+            lines.append(f"   https://github.com/{m['full_name']}")
+
+        if len(rows) == 20:
+            lines.append("\n... showing top 20 by stars. There may be more.")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"find_dependents failed: {e}")
+        return "Error searching for dependents. Please try again."
+
+
+# ---------------------------------------------------------------------------
 # Auth middleware & mount
 # ---------------------------------------------------------------------------
 
@@ -5259,6 +5786,8 @@ _TOOL_LIST = [
     accept_candidate, set_tier, movers, compare, related, market_map,
     radar, explain, topic, scout, hn_pulse, deep_dive,
     find_ai_tool, find_mcp_server, find_public_api,
+    get_api_spec, get_api_endpoints,
+    get_dependencies, find_dependents,
 ]
 
 

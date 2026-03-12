@@ -104,6 +104,8 @@ class AIRepo(Base):
     npm_package: Mapped[str | None] = mapped_column(String(200))
     downloads_monthly: Mapped[int] = mapped_column(BigInteger, default=0)
     downloads_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    dependency_count: Mapped[int] = mapped_column(Integer, default=0)
+    deps_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class PublicAPI(Base):
@@ -124,3 +126,18 @@ class PublicAPI(Base):
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     embedding = mapped_column(Vector(256), nullable=True)
+    spec_json: Mapped[dict | None] = mapped_column(JSONB)
+    spec_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    spec_error: Mapped[str | None] = mapped_column(String(500))
+
+
+class PackageDep(Base):
+    __tablename__ = "package_deps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    repo_id: Mapped[int] = mapped_column(Integer, ForeignKey("ai_repos.id"), nullable=False)
+    dep_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    dep_spec: Mapped[str | None] = mapped_column(String(200))
+    source: Mapped[str] = mapped_column(String(10), nullable=False)
+    is_dev: Mapped[bool] = mapped_column(Boolean, default=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
