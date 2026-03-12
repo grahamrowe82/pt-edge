@@ -1,7 +1,7 @@
 from app.models.base import Base
 from app.models.core import Lab, Project, ProjectCandidate, FrontierModel, LabEvent
 from app.models.snapshots import GitHubSnapshot, DownloadSnapshot
-from app.models.content import Release, HNPost, V2EXPost, NewsletterMention, AIRepo, PublicAPI, PackageDep, HFDataset, HFModel
+from app.models.content import Release, HNPost, V2EXPost, NewsletterMention, AIRepo, PublicAPI, PackageDep, HFDataset, HFModel, BuilderTool
 from app.models.community import Correction, ArticlePitch
 from app.models.meta import ToolUsage, SyncLog, Methodology
 
@@ -28,4 +28,5 @@ __all__ = [
     "PackageDep",
     "HFDataset",
     "HFModel",
+    "BuilderTool",
 ]

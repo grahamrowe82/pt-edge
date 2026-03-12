@@ -163,6 +163,31 @@ class HFDataset(Base):
     embedding = mapped_column(Vector(256), nullable=True)
 
 
+class BuilderTool(Base):
+    __tablename__ = "builder_tools"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    category: Mapped[str | None] = mapped_column(String(100))
+    website: Mapped[str | None] = mapped_column(String(500))
+    description: Mapped[str | None] = mapped_column(Text)
+
+    # MCP status
+    mcp_status: Mapped[str] = mapped_column(String(20), nullable=False, default="unchecked")
+    mcp_type: Mapped[str | None] = mapped_column(String(30))
+    mcp_endpoint: Mapped[str | None] = mapped_column(Text)
+    mcp_repo_slug: Mapped[str | None] = mapped_column(String(300))
+    mcp_npm_package: Mapped[str | None] = mapped_column(String(300))
+    mcp_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Provenance
+    source: Mapped[str] = mapped_column(String(30), nullable=False, default="apis_guru")
+    source_ref: Mapped[str | None] = mapped_column(String(300))
+
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
 class HFModel(Base):
     __tablename__ = "hf_models"
 

@@ -5220,6 +5220,43 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5, offset:
         results = [r for r in results if r["similarity"] >= 0.3 or r["_name_boost"] > 0]
 
         if not results:
+            # Fallback: check builder_tools for hosted MCP endpoints
+            if domain in ("", "mcp"):
+                try:
+                    with engine.connect() as conn:
+                        bt_rows = conn.execute(text("""
+                            SELECT slug, name, category, mcp_status, mcp_type,
+                                   mcp_endpoint, mcp_repo_slug, mcp_npm_package
+                            FROM builder_tools
+                            WHERE (LOWER(slug) = LOWER(:kw) OR LOWER(name) ILIKE :kwp)
+                              AND mcp_status IN ('has_official', 'has_community')
+                            ORDER BY
+                                CASE mcp_status WHEN 'has_official' THEN 0 ELSE 1 END
+                            LIMIT 5
+                        """), {"kw": query.strip(), "kwp": f"%{query.strip()[:100]}%"}).fetchall()
+                    if bt_rows:
+                        bt_lines = []
+                        bt_lines.append(f"MCP SERVER SEARCH: \"{query}\"")
+                        bt_lines.append(f"No repos found in ai_repos index, but found in builder tools registry:")
+                        bt_lines.append("=" * 55)
+                        for i, r in enumerate(bt_rows, 1):
+                            m = r._mapping
+                            type_label = (m["mcp_type"] or "").replace("_", " ")
+                            bt_lines.append("")
+                            bt_lines.append(f"{i}. {m['name']} ({m['slug']})  [{type_label}]")
+                            if m["category"]:
+                                bt_lines.append(f"   Category: {m['category']}")
+                            if m["mcp_endpoint"]:
+                                bt_lines.append(f"   Hosted endpoint: {m['mcp_endpoint']}")
+                            if m["mcp_repo_slug"]:
+                                bt_lines.append(f"   Repo: https://github.com/{m['mcp_repo_slug']}")
+                            if m["mcp_npm_package"]:
+                                bt_lines.append(f"   npm: {m['mcp_npm_package']}")
+                        bt_lines.append("")
+                        bt_lines.append("-> Next: mcp_coverage() for full MCP adoption stats")
+                        return "\n".join(bt_lines)
+                except Exception:
+                    pass  # table may not exist yet; fall through
             scope = f" in domain '{domain}'" if domain else ""
             return f"No relevant results found for '{query}'{scope}. Try broader terms or a different domain."
 
@@ -5304,6 +5341,167 @@ async def find_mcp_server(query: str, limit: int = 5, offset: int = 0) -> str:
       find_mcp_server("file system access")
     """
     return await _search_ai_repos(query=query, domain="mcp", limit=limit, offset=offset)
+
+
+@mcp.tool()
+@track_usage
+async def mcp_coverage(category: str = "") -> str:
+    """MCP adoption across developer tools. Shows which tools have MCP servers
+    and which don't, broken down by category with coverage percentages.
+
+    Optional category filter to drill into a specific category.
+
+    Examples:
+      mcp_coverage()
+      mcp_coverage(category="financial")
+      mcp_coverage(category="cloud")
+    """
+    category = category.strip().lower()
+
+    try:
+        with engine.connect() as conn:
+            total = conn.execute(text(
+                "SELECT COUNT(*) FROM builder_tools"
+            )).scalar() or 0
+
+            if total == 0:
+                return "Builder tools index is empty — run the builder_tools ingest first."
+
+            cat_filter = "AND LOWER(category) = :cat" if category else ""
+            params = {"cat": category} if category else {}
+
+            # Coverage by category
+            cat_rows = conn.execute(text(f"""
+                SELECT
+                    COALESCE(category, 'uncategorized') AS cat,
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE mcp_status IN ('has_official', 'has_community')) AS has_mcp,
+                    COUNT(*) FILTER (WHERE mcp_status = 'has_official') AS official,
+                    COUNT(*) FILTER (WHERE mcp_status = 'has_community') AS community
+                FROM builder_tools
+                WHERE 1=1 {cat_filter}
+                GROUP BY COALESCE(category, 'uncategorized')
+                ORDER BY COUNT(*) FILTER (WHERE mcp_status IN ('has_official', 'has_community')) DESC,
+                         COUNT(*) DESC
+            """), params).fetchall()
+
+            # Tools with MCP servers
+            mcp_tools = conn.execute(text(f"""
+                SELECT slug, name, category, mcp_status, mcp_type,
+                       mcp_repo_slug, mcp_endpoint, mcp_npm_package
+                FROM builder_tools
+                WHERE mcp_status IN ('has_official', 'has_community')
+                {cat_filter}
+                ORDER BY
+                    CASE mcp_status WHEN 'has_official' THEN 0 ELSE 1 END,
+                    name
+                LIMIT 50
+            """), params).fetchall()
+
+            # Notable gaps: popular tools without MCP (by API count)
+            gap_sql = f"""
+                SELECT bt.slug, bt.name, bt.category,
+                       COUNT(pa.id) AS api_count
+                FROM builder_tools bt
+                JOIN public_apis pa ON pa.provider = bt.source_ref
+                WHERE bt.mcp_status = 'none_found'
+                {"AND LOWER(bt.category) = :cat" if category else ""}
+                GROUP BY bt.slug, bt.name, bt.category
+                ORDER BY COUNT(pa.id) DESC
+                LIMIT 15
+            """
+            gap_tools = conn.execute(text(gap_sql), params).fetchall()
+
+            # Recent additions (last 30 days)
+            recent = conn.execute(text(f"""
+                SELECT slug, name, category, mcp_type, mcp_repo_slug, mcp_endpoint
+                FROM builder_tools
+                WHERE mcp_status IN ('has_official', 'has_community')
+                  AND mcp_checked_at > NOW() - INTERVAL '30 days'
+                {cat_filter}
+                ORDER BY mcp_checked_at DESC
+                LIMIT 10
+            """), params).fetchall()
+
+        # ---- Format output ----
+        lines = []
+        lines.append("MCP COVERAGE REPORT")
+        if category:
+            lines.append(f"Category: {category}")
+        lines.append(f"Tracking {total:,} developer tools")
+        lines.append("=" * 55)
+
+        # Summary
+        total_has = sum(r._mapping["has_mcp"] for r in cat_rows)
+        total_all = sum(r._mapping["total"] for r in cat_rows)
+        pct = (total_has / total_all * 100) if total_all else 0
+        lines.append(f"\nOverall: {total_has}/{total_all} tools have MCP servers ({pct:.1f}%)")
+
+        # Per-category breakdown
+        lines.append("\nCOVERAGE BY CATEGORY")
+        lines.append("-" * 55)
+        for r in cat_rows[:20]:
+            m = r._mapping
+            cat_pct = (m["has_mcp"] / m["total"] * 100) if m["total"] else 0
+            bar_len = int(cat_pct / 5)  # 20-char bar
+            bar = "#" * bar_len + "." * (20 - bar_len)
+            off_label = ""
+            if m["official"] > 0:
+                off_label = f"  ({m['official']} official)"
+            lines.append(
+                f"  {m['cat']:<22} [{bar}] {cat_pct:4.0f}%  "
+                f"({m['has_mcp']}/{m['total']}){off_label}"
+            )
+
+        # Tools with MCP servers
+        if mcp_tools:
+            lines.append(f"\nTOOLS WITH MCP SERVERS ({len(mcp_tools)})")
+            lines.append("-" * 55)
+            for r in mcp_tools:
+                m = r._mapping
+                badge = "***" if m["mcp_status"] == "has_official" else "   "
+                type_label = (m["mcp_type"] or "").replace("_", " ")
+                ref = ""
+                if m["mcp_endpoint"]:
+                    ref = m["mcp_endpoint"]
+                elif m["mcp_repo_slug"]:
+                    ref = f"github.com/{m['mcp_repo_slug']}"
+                elif m["mcp_npm_package"]:
+                    ref = f"npm: {m['mcp_npm_package']}"
+                lines.append(f"  {badge} {m['name']:<25} {type_label:<18} {ref}")
+
+        # Notable gaps
+        if gap_tools:
+            lines.append(f"\nNOTABLE GAPS (popular tools without MCP)")
+            lines.append("-" * 55)
+            for r in gap_tools:
+                m = r._mapping
+                lines.append(
+                    f"  {m['name']:<25} [{m['category'] or '?':<15}] "
+                    f"({m['api_count']} APIs indexed)"
+                )
+
+        # Recent
+        if recent:
+            lines.append(f"\nRECENTLY FOUND (last 30 days)")
+            lines.append("-" * 55)
+            for r in recent:
+                m = r._mapping
+                ref = m["mcp_repo_slug"] or m["mcp_endpoint"] or ""
+                lines.append(f"  + {m['name']:<25} {(m['mcp_type'] or ''):<18} {ref}")
+
+        # Footer
+        lines.append("")
+        lines.append("*** = official MCP server from the tool vendor")
+        lines.append("")
+        lines.append("-> Next: find_mcp_server('{tool}') to search for a specific tool")
+        lines.append("-> Next: mcp_coverage(category='{cat}') to drill into a category")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"mcp_coverage failed: {e}")
+        return f"Error generating MCP coverage report: {e}"
 
 
 # ---------------------------------------------------------------------------
@@ -6465,7 +6663,7 @@ _TOOL_LIST = [
     lifecycle_map, hype_landscape, sniff_projects,
     accept_candidate, set_tier, movers, compare, related, market_map,
     radar, explain, topic, scout, hn_pulse, deep_dive,
-    find_ai_tool, find_mcp_server, find_public_api,
+    find_ai_tool, find_mcp_server, mcp_coverage, find_public_api,
     get_api_spec, get_api_endpoints,
     get_dependencies, find_dependents,
     find_dataset, find_model,
