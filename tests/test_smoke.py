@@ -687,3 +687,69 @@ def test_describe_schema_has_exclusion_list():
     assert "pg_stat_statements" in src
     assert "alembic_version" in src
     assert "_exclude_tables" in src
+
+
+# ---------------------------------------------------------------------------
+# Builder tools with MCP status tracking
+# ---------------------------------------------------------------------------
+
+
+def test_builder_tool_model_import():
+    """BuilderTool model imports and has correct tablename."""
+    from app.models import BuilderTool
+    assert BuilderTool.__tablename__ == "builder_tools"
+
+
+def test_builder_tool_fields():
+    """BuilderTool model has all required MCP status fields."""
+    from app.models import BuilderTool
+    for attr in ["slug", "name", "category", "mcp_status", "mcp_type",
+                 "mcp_endpoint", "mcp_repo_slug", "mcp_npm_package",
+                 "mcp_checked_at", "source", "source_ref"]:
+        assert hasattr(BuilderTool, attr), f"BuilderTool missing {attr}"
+
+
+def test_builder_tools_ingest_imports():
+    """Builder tools ingest module imports without crashing."""
+    from app.ingest.builder_tools import ingest_builder_tools, _CURATED_TOOLS
+    assert callable(ingest_builder_tools)
+    assert len(_CURATED_TOOLS) > 100
+
+
+def test_builder_tools_in_runner():
+    """Builder tools ingest is registered in the runner pipeline."""
+    import inspect
+    from app.ingest import runner
+    source = inspect.getsource(runner.run_all)
+    assert "builder_tools" in source
+
+
+def test_mcp_coverage_registered():
+    """mcp_coverage tool is registered in the tool list."""
+    from app.mcp.server import _TOOLS
+    assert "mcp_coverage" in _TOOLS
+
+
+class TestCuratedTools:
+    """Curated tool list has no duplicates and correct shape."""
+
+    def test_no_duplicate_slugs(self):
+        from app.ingest.builder_tools import _CURATED_TOOLS
+        slugs = [t[0] for t in _CURATED_TOOLS]
+        assert len(slugs) == len(set(slugs)), f"Duplicate slugs: {[s for s in slugs if slugs.count(s) > 1]}"
+
+    def test_all_tuples_have_five_fields(self):
+        from app.ingest.builder_tools import _CURATED_TOOLS
+        for t in _CURATED_TOOLS:
+            assert len(t) == 5, f"Bad tuple: {t}"
+
+    def test_key_tools_present(self):
+        from app.ingest.builder_tools import _CURATED_TOOLS
+        slugs = {t[0] for t in _CURATED_TOOLS}
+        for expected in ["stripe", "github", "aws", "supabase", "sentry", "render", "openai"]:
+            assert expected in slugs, f"Missing key tool: {expected}"
+
+    def test_categories_not_empty(self):
+        from app.ingest.builder_tools import _CURATED_TOOLS
+        for slug, name, cat, url, desc in _CURATED_TOOLS:
+            assert cat, f"{slug} has empty category"
