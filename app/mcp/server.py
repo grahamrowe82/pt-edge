@@ -352,14 +352,17 @@ async def about() -> str:
         "",
         "PT-Edge makes Claude less wrong about the current state of AI development.",
         "It tracks ~100 open-source AI projects across 10 labs, collecting real-time",
-        "signals from GitHub, PyPI, npm, and Hacker News.",
+        "signals from GitHub, PyPI, npm, Docker Hub, HuggingFace, and Hacker News.",
         "",
         "HOW IT WORKS",
         "-" * 30,
-        "- Daily ingests pull GitHub stats, package downloads, releases, and HN posts",
+        "- Daily ingests pull GitHub stats, package downloads, releases, HN/V2EX posts,",
+        "  HuggingFace models/datasets, public API specs, and npm registry MCP servers",
+        "- Five discovery indexes: AI repos, MCP servers, public APIs, HF datasets, HF models",
+        "- Hybrid search: semantic embeddings + keyword fallback + name-match boost + staleness",
+        "- All search tools support pagination via offset parameter",
         "- Materialized views compute derived metrics: momentum, hype ratio, tiers, lifecycle",
-        "- MCP tools let you query this data naturally in conversation",
-        "- Semantic search via embeddings enables conceptual queries (e.g. 'vector databases')",
+        "- MCP resources expose reference data; prompts encode compound query workflows",
         "- Corrections system lets practitioners push back on bad takes",
         "- Project sniffing auto-discovers new AI projects from HN and GitHub trending",
         "",
@@ -398,6 +401,19 @@ async def about() -> str:
         "  accept_candidate(id, category)   -- promote a candidate to tracked",
         "  topic(query)                     -- what's happening with a topic across ecosystem",
         "  hn_pulse(query, days)            -- HN discourse intelligence + sentiment",
+        "",
+        "AI Ecosystem Search (all support offset for pagination):",
+        "  find_ai_tool(query, domain, limit, offset)   -- ~100K indexed AI repos, hybrid search",
+        "  find_mcp_server(query, limit, offset)         -- MCP servers (GitHub + npm sources)",
+        "  find_public_api(query, category, limit, offset) -- ~2,500 REST APIs from APIs.guru",
+        "  find_dataset(query, task, language, limit, offset) -- ~42K HuggingFace datasets",
+        "  find_model(query, task, library, limit, offset)   -- ~18K HuggingFace models",
+        "",
+        "API Intelligence:",
+        "  get_api_spec(provider, service)          -- fetch OpenAPI spec overview",
+        "  get_api_endpoints(provider, path_filter) -- endpoint schemas for code gen",
+        "  get_dependencies(repo)                   -- dependency tree from PyPI/npm",
+        "  find_dependents(package, source)          -- reverse dependency lookup",
         "",
         "Community & Feedback:",
         "  submit_feedback(topic, text, category)  -- bug|feature|observation|insight (default: observation)",
@@ -563,6 +579,33 @@ async def about() -> str:
         "5. Use find_ai_tool() to discover things you DON'T already know about.",
         "   Your training data has a cutoff. PT-Edge's indexes are live. Search",
         "   broadly to catch tools and projects that emerged after your cutoff.",
+        "",
+        "6. Search results include STALENESS indicators. Repos not pushed in >12",
+        "   months are marked [STALE]. Factor this into recommendations.",
+        "",
+        "7. Use OFFSET to paginate. find_ai_tool('MCP', offset=5) shows results 6-10.",
+        "   Useful when the first page doesn't have what you need.",
+        "",
+        "MCP RESOURCES & PROMPTS",
+        "-" * 30,
+        "",
+        "PT-Edge also exposes structured data via MCP resources and prompts:",
+        "",
+        "Resources (reference data, always available):",
+        "  resource://pt-edge/methodology    -- tier system, hype ratio, lifecycle, data sources",
+        "  resource://pt-edge/categories     -- valid project categories",
+        "  resource://pt-edge/coverage       -- live data coverage stats + freshness",
+        "",
+        "Resource Templates (parameterised lookups):",
+        "  resource://pt-edge/project/{slug}     -- quick reference card for a project",
+        "  resource://pt-edge/lab/{slug}          -- lab overview with project list",
+        "  resource://pt-edge/category/{category} -- all projects in a category",
+        "",
+        "Prompts (compound query workflows):",
+        "  evaluate-technology(technology)   -- systematic technology evaluation",
+        "  build-something(task)             -- discovery sweep for implementation",
+        "  due-diligence(project)            -- comprehensive project health check",
+        "  weekly-briefing()                 -- weekly AI ecosystem briefing",
         "",
         "BUILT BY",
         "-" * 30,
@@ -4943,11 +4986,47 @@ def _fmt_downloads(n: int) -> str:
     return str(n)
 
 
-async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
+def _name_boost(
+    query: str, *fields: str,
+    exact_bonus: float = 0.15, partial_bonus: float = 0.08,
+) -> float:
+    """Score boost when query matches a name/title field."""
+    q = query.strip().lower()
+    if not q:
+        return 0.0
+    for f in fields:
+        fl = (f or "").lower()
+        if q == fl or fl.endswith(f"/{q}"):
+            return exact_bonus
+    for f in fields:
+        if q in (f or "").lower():
+            return partial_bonus
+    return 0.0
+
+
+def _freshness_indicator(dt) -> str:
+    """Return freshness string like 'last push 3 months ago' with stale warning."""
+    if dt is None:
+        return ""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    try:
+        delta = now - dt
+    except TypeError:
+        return ""
+    months = delta.days // 30
+    if months < 1:
+        return "last push < 1 month ago"
+    label = f"last push {months} month{'s' if months != 1 else ''} ago"
+    return f"{label} [STALE]" if months > 12 else label
+
+
+async def _search_ai_repos(query: str, domain: str = "", limit: int = 5, offset: int = 0) -> str:
     """Core search logic shared by find_ai_tool and find_mcp_server."""
     if not query or len(query) > 500:
         return "Please provide a search query (max 500 characters)."
     limit = min(max(1, limit), 20)
+    offset = min(max(0, offset), 100)
     domain = domain.strip().lower()
 
     from math import log10
@@ -4968,14 +5047,14 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
                     rows = conn.execute(text(f"""
                         SELECT id, full_name, name, description, stars, forks,
                                language, topics, license, archived, domain,
-                               downloads_monthly,
+                               downloads_monthly, last_pushed_at,
                                1 - (embedding <=> :vec) AS similarity
                         FROM ai_repos
                         WHERE embedding IS NOT NULL AND archived = false
                         {domain_filter}
                         ORDER BY embedding <=> :vec
                         LIMIT :lim
-                    """), {**params_base, "vec": str(vec), "lim": limit * 3}).fetchall()
+                    """), {**params_base, "vec": str(vec), "lim": (offset + limit) * 3}).fetchall()
 
                     for r in rows:
                         m = r._mapping
@@ -4991,6 +5070,7 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
                             "license": m["license"],
                             "domain": m["domain"],
                             "downloads_monthly": m["downloads_monthly"] or 0,
+                            "last_pushed_at": m["last_pushed_at"],
                             "similarity": float(m["similarity"]),
                         })
                         seen_ids.add(m["id"])
@@ -5000,7 +5080,8 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
         with engine.connect() as conn:
             kw_rows = conn.execute(text(f"""
                 SELECT id, full_name, name, description, stars, forks,
-                       language, topics, license, domain, downloads_monthly
+                       language, topics, license, domain, downloads_monthly,
+                       last_pushed_at
                 FROM ai_repos
                 WHERE archived = false
                   AND (name ILIKE :kw OR description ILIKE :kw
@@ -5008,7 +5089,7 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
                   {domain_filter}
                 ORDER BY stars DESC
                 LIMIT :lim
-            """), {**params_base, "kw": keyword, "lim": limit}).fetchall()
+            """), {**params_base, "kw": keyword, "lim": offset + limit}).fetchall()
 
             for r in kw_rows:
                 m = r._mapping
@@ -5025,6 +5106,7 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
                         "license": m["license"],
                         "domain": m["domain"],
                         "downloads_monthly": m["downloads_monthly"] or 0,
+                        "last_pushed_at": m["last_pushed_at"],
                         "similarity": 0.5,
                     })
                     seen_ids.add(m["id"])
@@ -5037,15 +5119,19 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
             scope = f" in domain '{domain}'" if domain else ""
             return f"No AI repos found matching '{query}'{scope}. Try broader terms."
 
-        # ---- Rank: blend semantic similarity, stars, and downloads ----
+        # ---- Rank: blend semantic similarity, stars, downloads, and name match ----
         for r in results:
             star_score = log10(max(r["stars"], 1) + 1) / 5.0
             dl = r.get("downloads_monthly") or 0
             download_score = log10(max(dl, 1) + 1) / 7.0
-            r["score"] = 0.6 * r["similarity"] + 0.2 * star_score + 0.2 * download_score
+            r["score"] = (0.6 * r["similarity"] + 0.2 * star_score + 0.2 * download_score
+                          + _name_boost(query, r["name"], r["full_name"]))
 
         results.sort(key=lambda x: x["score"], reverse=True)
-        results = results[:limit]
+        page = results[offset:offset + limit]
+
+        if not page and offset > 0:
+            return f"No more results at offset {offset}."
 
         # ---- Format output ----
         with engine.connect() as conn:
@@ -5060,9 +5146,11 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
                 )).scalar()
                 lines.append(f"AI REPO SEARCH: \"{query}\"")
             lines.append(f"Searching {total:,} indexed repos")
+            if offset > 0:
+                lines.append(f"Showing results {offset + 1}–{offset + len(page)}")
             lines.append("=" * 50)
 
-        for i, r in enumerate(results, 1):
+        for i, r in enumerate(page, offset + 1):
             lines.append("")
             dl = r.get("downloads_monthly") or 0
             dl_str = f" | {_fmt_downloads(dl)}/mo" if dl > 0 else ""
@@ -5077,6 +5165,9 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
                 lines.append(f"   {r['description'][:200]}")
             if r["topics"]:
                 lines.append(f"   Topics: {', '.join(r['topics'][:8])}")
+            freshness = _freshness_indicator(r.get("last_pushed_at"))
+            if freshness:
+                lines.append(f"   {freshness}")
             lines.append(f"   https://github.com/{r['full_name']}")
 
         return "\n".join(lines)
@@ -5088,7 +5179,7 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5) -> str:
 
 @mcp.tool()
 @track_usage
-async def find_ai_tool(query: str, domain: str = "", limit: int = 5) -> str:
+async def find_ai_tool(query: str, domain: str = "", limit: int = 5, offset: int = 0) -> str:
     """Find AI/ML tools and libraries by describing what you need in plain English.
     Searches ~100K indexed AI repos from GitHub across domains like
     MCP servers, AI agents, RAG, LLM tools, vector databases, and more.
@@ -5102,12 +5193,12 @@ async def find_ai_tool(query: str, domain: str = "", limit: int = 5) -> str:
       find_ai_tool("PDF document chunking for RAG pipeline")
       find_ai_tool("vector similarity search engine", domain="vector-db")
     """
-    return await _search_ai_repos(query=query, domain=domain, limit=limit)
+    return await _search_ai_repos(query=query, domain=domain, limit=limit, offset=offset)
 
 
 @mcp.tool()
 @track_usage
-async def find_mcp_server(query: str, limit: int = 5) -> str:
+async def find_mcp_server(query: str, limit: int = 5, offset: int = 0) -> str:
     """Find MCP servers by describing what you need in plain English.
     Convenience wrapper — searches only the 'mcp' domain.
 
@@ -5116,7 +5207,7 @@ async def find_mcp_server(query: str, limit: int = 5) -> str:
       find_mcp_server("Jira issue tracker")
       find_mcp_server("file system access")
     """
-    return await _search_ai_repos(query=query, domain="mcp", limit=limit)
+    return await _search_ai_repos(query=query, domain="mcp", limit=limit, offset=offset)
 
 
 # ---------------------------------------------------------------------------
@@ -5126,11 +5217,12 @@ async def find_mcp_server(query: str, limit: int = 5) -> str:
 API_EMBED_DIM = 256
 
 
-async def _search_public_apis(query: str, category: str = "", limit: int = 5) -> str:
+async def _search_public_apis(query: str, category: str = "", limit: int = 5, offset: int = 0) -> str:
     """Core search logic for public API discovery."""
     if not query or len(query) > 500:
         return "Please provide a search query (max 500 characters)."
     limit = min(max(1, limit), 20)
+    offset = min(max(0, offset), 100)
     category = category.strip().lower()
 
     from math import log10
@@ -5157,7 +5249,7 @@ async def _search_public_apis(query: str, category: str = "", limit: int = 5) ->
                         {cat_filter}
                         ORDER BY embedding <=> :vec
                         LIMIT :lim
-                    """), {**params_base, "vec": str(vec), "lim": limit * 3}).fetchall()
+                    """), {**params_base, "vec": str(vec), "lim": (offset + limit) * 3}).fetchall()
 
                     for r in rows:
                         m = r._mapping
@@ -5185,7 +5277,7 @@ async def _search_public_apis(query: str, category: str = "", limit: int = 5) ->
                        OR provider ILIKE :kw)
                   {cat_filter}
                 LIMIT :lim
-            """), {**params_base, "kw": keyword, "lim": limit}).fetchall()
+            """), {**params_base, "kw": keyword, "lim": offset + limit}).fetchall()
 
             for r in kw_rows:
                 m = r._mapping
@@ -5211,9 +5303,14 @@ async def _search_public_apis(query: str, category: str = "", limit: int = 5) ->
             scope = f" in category '{category}'" if category else ""
             return f"No APIs found matching '{query}'{scope}. Try broader terms."
 
-        # ---- Rank: pure semantic similarity (no popularity signal) ----
+        # ---- Rank: semantic similarity + name boost ----
+        for r in results:
+            r["similarity"] += _name_boost(query, r["title"], r["provider"])
         results.sort(key=lambda x: x["similarity"], reverse=True)
-        results = results[:limit]
+        page = results[offset:offset + limit]
+
+        if not page and offset > 0:
+            return f"No more results at offset {offset}."
 
         # ---- Format output ----
         with engine.connect() as conn:
@@ -5222,9 +5319,11 @@ async def _search_public_apis(query: str, category: str = "", limit: int = 5) ->
         if category:
             lines.append(f"Category filter: {category}")
         lines.append(f"Searching {total:,} indexed APIs")
+        if offset > 0:
+            lines.append(f"Showing results {offset + 1}–{offset + len(page)}")
         lines.append("=" * 50)
 
-        for i, r in enumerate(results, 1):
+        for i, r in enumerate(page, offset + 1):
             lines.append("")
             # Build display key: "provider" or "provider:service"
             key = r["provider"]
@@ -5249,7 +5348,7 @@ async def _search_public_apis(query: str, category: str = "", limit: int = 5) ->
 
 @mcp.tool()
 @track_usage
-async def find_public_api(query: str, category: str = "", limit: int = 5) -> str:
+async def find_public_api(query: str, category: str = "", limit: int = 5, offset: int = 0) -> str:
     """Find public REST APIs by describing what you need in plain English.
     Searches ~2,500 indexed APIs from the APIs.guru directory.
 
@@ -5262,7 +5361,7 @@ async def find_public_api(query: str, category: str = "", limit: int = 5) -> str
       find_public_api("send SMS messages", category="messaging")
       find_public_api("image recognition", category="machine_learning")
     """
-    return await _search_public_apis(query=query, category=category, limit=limit)
+    return await _search_public_apis(query=query, category=category, limit=limit, offset=offset)
 
 
 # ---------------------------------------------------------------------------
@@ -5813,12 +5912,13 @@ def _clean_hf_description(desc: str | None) -> str | None:
 
 async def _search_hf_datasets(
     query: str, task: str = "", language: str = "",
-    min_downloads: int = 0, limit: int = 5,
+    min_downloads: int = 0, limit: int = 5, offset: int = 0,
 ) -> str:
     """Core search logic for HuggingFace dataset discovery."""
     if not query or len(query) > 500:
         return "Please provide a search query (max 500 characters)."
     limit = min(max(1, limit), 20)
+    offset = min(max(0, offset), 100)
     task = task.strip().lower()
     language = language.strip().lower()
 
@@ -5852,13 +5952,14 @@ async def _search_hf_datasets(
                     rows = conn.execute(text(f"""
                         SELECT id, hf_id, pretty_name, description,
                                task_categories, languages, downloads, likes,
+                               last_modified,
                                1 - (embedding <=> :vec) AS similarity
                         FROM hf_datasets
                         WHERE embedding IS NOT NULL
                         {filter_sql}
                         ORDER BY embedding <=> :vec
                         LIMIT :lim
-                    """), {**params_base, "vec": str(vec), "lim": limit * 3}).fetchall()
+                    """), {**params_base, "vec": str(vec), "lim": (offset + limit) * 3}).fetchall()
 
                     for r in rows:
                         m = r._mapping
@@ -5871,6 +5972,7 @@ async def _search_hf_datasets(
                             "languages": list(m["languages"]) if m["languages"] else [],
                             "downloads": m["downloads"] or 0,
                             "likes": m["likes"] or 0,
+                            "last_modified": m["last_modified"],
                             "similarity": float(m["similarity"]),
                         })
                         seen_ids.add(m["id"])
@@ -5880,14 +5982,15 @@ async def _search_hf_datasets(
         with engine.connect() as conn:
             kw_rows = conn.execute(text(f"""
                 SELECT id, hf_id, pretty_name, description,
-                       task_categories, languages, downloads, likes
+                       task_categories, languages, downloads, likes,
+                       last_modified
                 FROM hf_datasets
                 WHERE (hf_id ILIKE :kw OR pretty_name ILIKE :kw
                        OR description ILIKE :kw)
                 {filter_sql}
                 ORDER BY downloads DESC
                 LIMIT :lim
-            """), {**params_base, "kw": keyword, "lim": limit}).fetchall()
+            """), {**params_base, "kw": keyword, "lim": offset + limit}).fetchall()
 
             for r in kw_rows:
                 m = r._mapping
@@ -5901,6 +6004,7 @@ async def _search_hf_datasets(
                         "languages": list(m["languages"]) if m["languages"] else [],
                         "downloads": m["downloads"] or 0,
                         "likes": m["likes"] or 0,
+                        "last_modified": m["last_modified"],
                         "similarity": 0.5,
                     })
                     seen_ids.add(m["id"])
@@ -5918,15 +6022,19 @@ async def _search_hf_datasets(
             scope = f" ({', '.join(scope_parts)})" if scope_parts else ""
             return f"No datasets found matching '{query}'{scope}. Try broader terms."
 
-        # ---- Rank: blend similarity + download popularity ----
+        # ---- Rank: blend similarity, download popularity, and name match ----
         from math import log10
         for r in results:
             dl_score = log10(max(r["downloads"], 1) + 1) / 7.0
             like_score = log10(max(r["likes"], 1) + 1) / 5.0
-            r["score"] = 0.6 * r["similarity"] + 0.25 * dl_score + 0.15 * like_score
+            r["score"] = (0.6 * r["similarity"] + 0.25 * dl_score + 0.15 * like_score
+                          + _name_boost(query, r["hf_id"], r["pretty_name"]))
 
         results.sort(key=lambda x: x["score"], reverse=True)
-        results = results[:limit]
+        page = results[offset:offset + limit]
+
+        if not page and offset > 0:
+            return f"No more results at offset {offset}."
 
         # ---- Format output ----
         with engine.connect() as conn:
@@ -5940,9 +6048,11 @@ async def _search_hf_datasets(
         if scope_parts:
             lines.append(f"Filters: {', '.join(scope_parts)}")
         lines.append(f"Searching {total:,} indexed datasets")
+        if offset > 0:
+            lines.append(f"Showing results {offset + 1}–{offset + len(page)}")
         lines.append("=" * 50)
 
-        for i, r in enumerate(results, 1):
+        for i, r in enumerate(page, offset + 1):
             lines.append("")
             name = r["pretty_name"] or r["hf_id"]
             dl_str = _fmt_downloads(r["downloads"])
@@ -5956,6 +6066,12 @@ async def _search_hf_datasets(
                 lines.append(f"   Tasks: {', '.join(r['task_categories'][:6])}")
             if r["languages"]:
                 lines.append(f"   Languages: {', '.join(r['languages'][:8])}")
+            lm = r.get("last_modified")
+            if lm:
+                try:
+                    lines.append(f"   Last modified: {lm.strftime('%Y-%m-%d')}")
+                except (AttributeError, ValueError):
+                    pass
             lines.append(f"   https://huggingface.co/datasets/{r['hf_id']}")
 
         return "\n".join(lines)
@@ -5969,7 +6085,7 @@ async def _search_hf_datasets(
 @track_usage
 async def find_dataset(
     query: str, task: str = "", language: str = "",
-    min_downloads: int = 0, limit: int = 5,
+    min_downloads: int = 0, limit: int = 5, offset: int = 0,
 ) -> str:
     """Find HuggingFace datasets by describing what you need in plain English.
     Searches indexed datasets from the HuggingFace Hub with download counts
@@ -5988,18 +6104,19 @@ async def find_dataset(
     """
     return await _search_hf_datasets(
         query=query, task=task, language=language,
-        min_downloads=min_downloads, limit=limit,
+        min_downloads=min_downloads, limit=limit, offset=offset,
     )
 
 
 async def _search_hf_models(
     query: str, task: str = "", library: str = "",
-    min_downloads: int = 0, limit: int = 5,
+    min_downloads: int = 0, limit: int = 5, offset: int = 0,
 ) -> str:
     """Core search logic for HuggingFace model discovery."""
     if not query or len(query) > 500:
         return "Please provide a search query (max 500 characters)."
     limit = min(max(1, limit), 20)
+    offset = min(max(0, offset), 100)
     task = task.strip().lower()
     library = library.strip().lower()
 
@@ -6033,14 +6150,14 @@ async def _search_hf_models(
                     rows = conn.execute(text(f"""
                         SELECT id, hf_id, pretty_name, description,
                                pipeline_tag, library_name, languages,
-                               downloads, likes,
+                               downloads, likes, last_modified,
                                1 - (embedding <=> :vec) AS similarity
                         FROM hf_models
                         WHERE embedding IS NOT NULL
                         {filter_sql}
                         ORDER BY embedding <=> :vec
                         LIMIT :lim
-                    """), {**params_base, "vec": str(vec), "lim": limit * 3}).fetchall()
+                    """), {**params_base, "vec": str(vec), "lim": (offset + limit) * 3}).fetchall()
 
                     for r in rows:
                         m = r._mapping
@@ -6054,6 +6171,7 @@ async def _search_hf_models(
                             "languages": list(m["languages"]) if m["languages"] else [],
                             "downloads": m["downloads"] or 0,
                             "likes": m["likes"] or 0,
+                            "last_modified": m["last_modified"],
                             "similarity": float(m["similarity"]),
                         })
                         seen_ids.add(m["id"])
@@ -6064,14 +6182,14 @@ async def _search_hf_models(
             kw_rows = conn.execute(text(f"""
                 SELECT id, hf_id, pretty_name, description,
                        pipeline_tag, library_name, languages,
-                       downloads, likes
+                       downloads, likes, last_modified
                 FROM hf_models
                 WHERE (hf_id ILIKE :kw OR pretty_name ILIKE :kw
                        OR description ILIKE :kw)
                 {filter_sql}
                 ORDER BY downloads DESC
                 LIMIT :lim
-            """), {**params_base, "kw": keyword, "lim": limit}).fetchall()
+            """), {**params_base, "kw": keyword, "lim": offset + limit}).fetchall()
 
             for r in kw_rows:
                 m = r._mapping
@@ -6086,6 +6204,7 @@ async def _search_hf_models(
                         "languages": list(m["languages"]) if m["languages"] else [],
                         "downloads": m["downloads"] or 0,
                         "likes": m["likes"] or 0,
+                        "last_modified": m["last_modified"],
                         "similarity": 0.5,
                     })
                     seen_ids.add(m["id"])
@@ -6103,14 +6222,18 @@ async def _search_hf_models(
             scope = f" ({', '.join(scope_parts)})" if scope_parts else ""
             return f"No models found matching '{query}'{scope}. Try broader terms."
 
-        # ---- Rank: blend similarity + download popularity ----
+        # ---- Rank: blend similarity, download popularity, and name match ----
         for r in results:
             dl_score = log10(max(r["downloads"], 1) + 1) / 9.0  # models have higher downloads
             like_score = log10(max(r["likes"], 1) + 1) / 5.0
-            r["score"] = 0.6 * r["similarity"] + 0.25 * dl_score + 0.15 * like_score
+            r["score"] = (0.6 * r["similarity"] + 0.25 * dl_score + 0.15 * like_score
+                          + _name_boost(query, r["hf_id"], r["pretty_name"]))
 
         results.sort(key=lambda x: x["score"], reverse=True)
-        results = results[:limit]
+        page = results[offset:offset + limit]
+
+        if not page and offset > 0:
+            return f"No more results at offset {offset}."
 
         # ---- Format output ----
         with engine.connect() as conn:
@@ -6124,9 +6247,11 @@ async def _search_hf_models(
         if scope_parts:
             lines.append(f"Filters: {', '.join(scope_parts)}")
         lines.append(f"Searching {total:,} indexed models")
+        if offset > 0:
+            lines.append(f"Showing results {offset + 1}–{offset + len(page)}")
         lines.append("=" * 50)
 
-        for i, r in enumerate(results, 1):
+        for i, r in enumerate(page, offset + 1):
             lines.append("")
             name = r["pretty_name"] or r["hf_id"]
             dl_str = _fmt_downloads(r["downloads"])
@@ -6143,6 +6268,12 @@ async def _search_hf_models(
                 lines.append(f"   {desc[:200]}")
             if r["languages"]:
                 lines.append(f"   Languages: {', '.join(r['languages'][:8])}")
+            lm = r.get("last_modified")
+            if lm:
+                try:
+                    lines.append(f"   Last modified: {lm.strftime('%Y-%m-%d')}")
+                except (AttributeError, ValueError):
+                    pass
             lines.append(f"   https://huggingface.co/{r['hf_id']}")
 
         return "\n".join(lines)
@@ -6156,7 +6287,7 @@ async def _search_hf_models(
 @track_usage
 async def find_model(
     query: str, task: str = "", library: str = "",
-    min_downloads: int = 0, limit: int = 5,
+    min_downloads: int = 0, limit: int = 5, offset: int = 0,
 ) -> str:
     """Find HuggingFace models by describing what you need in plain English.
     Searches indexed models from the HuggingFace Hub with download counts,
@@ -6176,7 +6307,7 @@ async def find_model(
     """
     return await _search_hf_models(
         query=query, task=task, library=library,
-        min_downloads=min_downloads, limit=limit,
+        min_downloads=min_downloads, limit=limit, offset=offset,
     )
 
 

@@ -19,6 +19,7 @@ from app.ingest.api_specs import ingest_api_specs
 from app.ingest.package_deps import ingest_package_deps
 from app.ingest.hf_datasets import ingest_hf_datasets
 from app.ingest.hf_models import ingest_hf_models
+from app.ingest.npm_mcp import ingest_npm_mcp
 from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis, backfill_hf_datasets, backfill_hf_models
 from app.embeddings import is_enabled
 from app.views.refresh import refresh_all_views
@@ -50,6 +51,7 @@ async def run_all() -> dict:
         ("public_apis", ingest_public_apis()),
         ("api_specs", ingest_api_specs()),
         ("package_deps", ingest_package_deps()),
+        ("npm_mcp", ingest_npm_mcp()),
         ("ai_repo_downloads", ingest_ai_repo_downloads()),
         ("ai_repos", ingest_ai_repos()),  # Slowest — last
     ]:

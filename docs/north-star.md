@@ -7,16 +7,17 @@ PT-Edge has five discovery indexes, each following the same pattern: ingest → 
 | Index | Source | Coverage | Search tool |
 |-------|--------|----------|-------------|
 | AI repos | GitHub API + adaptive sharding | ~11K repos, growing to 100K | `find_ai_tool()` |
-| MCP servers | Same index, domain filter | Subset of ai_repos with `mcp` topic | `find_mcp_server()` |
+| MCP servers | GitHub topics + npm registry | Subset of ai_repos with `mcp` domain (GitHub + npm sources) | `find_mcp_server()` |
 | Public APIs | APIs.guru catalog | ~2,500 REST APIs with OpenAPI specs | `find_public_api()` |
 | HF Datasets | HuggingFace Hub API | ~42K datasets (>100 downloads) | `find_dataset()` |
 | HF Models | HuggingFace Hub API | ~18K models (>1,000 downloads) | `find_model()` |
 
-Each index uses 256d Matryoshka embeddings (text-embedding-3-large), HNSW indexes, and hybrid semantic+keyword search. Package download data from PyPI/npm enriches the repo index as a ranking signal.
+Each index uses 256d Matryoshka embeddings (text-embedding-3-large), HNSW indexes, and hybrid semantic+keyword search with name-match boosting and staleness signals. Package download data from PyPI/npm enriches the repo index as a ranking signal. All search tools support pagination via `offset` parameter.
 
-Two capability upgrades sit on top of the indexes:
-- **Spec-to-scaffold bridge** (PR #42) — `fetch_api_spec()` and `scaffold_api_client()` fetch live OpenAPI specs and generate working client code
-- **Dependency graph** (PR #42) — `api_deps()` resolves package dependency trees from PyPI/npm for impact analysis
+Three capability layers sit on top of the indexes:
+- **Spec-to-scaffold bridge** (PR #42) — `get_api_spec()` and `get_api_endpoints()` fetch live OpenAPI specs; `get_dependencies()` resolves package trees
+- **MCP resources & prompts** (PR #47) — 3 static resources, 3 parameterised resource templates, and 4 compound query prompts that encode proven multi-tool workflows
+- **Multi-source discovery** — MCP servers are indexed from both GitHub topics and the npm registry (`npm_mcp` ingest), catching servers that lack GitHub topic tags
 
 The pattern is proven. One engineer, one cron job, one Postgres instance. The question is: what else deserves an index?
 
@@ -124,11 +125,15 @@ Everything built so far follows these rules. Future indexes should too.
 
 2. **Embed everything at 256d.** Matryoshka embeddings at 256d are the sweet spot for this corpus size. Cheaper to store, faster to index, and quality is indistinguishable from 1536d for top-5 retrieval on collections under 1M rows.
 
-3. **Hybrid search always.** Pure semantic misses exact-name queries. Pure keyword misses conceptual queries. Every search tool does both and merges.
+3. **Hybrid search always.** Pure semantic misses exact-name queries. Pure keyword misses conceptual queries. Every search tool does both and merges, with additive name-match boosting for exact and substring matches.
 
-4. **Popularity signals where they exist.** Stars, downloads, pull counts, citations — any proxy for "people actually use this" gets incorporated into ranking. Where no signal exists (APIs.guru), pure semantic similarity is fine for small corpora.
+4. **Popularity signals where they exist.** Stars, downloads, pull counts, citations — any proxy for "people actually use this" gets incorporated into ranking. Where no signal exists (APIs.guru), pure semantic similarity is fine for small corpora. Staleness signals (`last_pushed_at`) surface inactive repos so users can gauge project health at a glance.
 
 5. **Weekly refresh is fine.** The AI ecosystem moves fast, but metadata moves slowly. A repo's star count doesn't change meaningfully in 24 hours. Weekly ingest, daily for HN/V2EX discourse.
+
+6a. **Multi-source indexing.** Don't rely on a single discovery source. MCP servers are indexed from both GitHub topic tags and npm registry keywords, catching servers that only publish to one channel.
+
+6b. **Paginate everything.** All search tools expose an `offset` parameter. The first 5 results are usually enough, but deeper browsing should always be available.
 
 6. **The ingest should be boring.** If building an ingestion pipeline feels exciting, it's probably too complex. The excitement should come from the queries, not the plumbing.
 
