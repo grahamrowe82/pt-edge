@@ -13,7 +13,6 @@ from app.models import Project, Lab, GitHubSnapshot, DownloadSnapshot, SyncLog
 # Static Resources
 # ---------------------------------------------------------------------------
 
-@mcp.resource("resource://pt-edge/methodology")
 async def methodology_resource() -> str:
     """How PT-Edge metrics work: tier system, hype ratio, lifecycle stages, and data sources."""
     return "\n".join([
@@ -65,7 +64,6 @@ async def methodology_resource() -> str:
     ])
 
 
-@mcp.resource("resource://pt-edge/categories")
 async def categories_resource() -> str:
     """Valid project categories used by PT-Edge for classification."""
     categories = [
@@ -95,7 +93,6 @@ async def categories_resource() -> str:
     return "\n".join(lines)
 
 
-@mcp.resource("resource://pt-edge/coverage")
 async def coverage_resource() -> str:
     """Current PT-Edge data coverage: project count, snapshot depth, data freshness."""
     session = SessionLocal()
@@ -177,7 +174,6 @@ async def coverage_resource() -> str:
 # Resource Templates (parameterized)
 # ---------------------------------------------------------------------------
 
-@mcp.resource("resource://pt-edge/project/{slug}")
 async def project_resource(slug: str) -> str:
     """Quick reference card for a tracked project."""
     session = SessionLocal()
@@ -243,7 +239,6 @@ async def project_resource(slug: str) -> str:
         session.close()
 
 
-@mcp.resource("resource://pt-edge/lab/{slug}")
 async def lab_resource(slug: str) -> str:
     """Lab overview: basic info and list of tracked projects."""
     session = SessionLocal()
@@ -278,7 +273,6 @@ async def lab_resource(slug: str) -> str:
         session.close()
 
 
-@mcp.resource("resource://pt-edge/category/{category}")
 async def category_resource(category: str) -> str:
     """All projects in a specific category with key metrics."""
     valid = {"tool", "model", "framework", "library", "agent", "eval",
@@ -324,6 +318,14 @@ async def category_resource(category: str) -> str:
     finally:
         session.close()
 
+
+# Register with FastMCP for Streamable HTTP transport
+mcp.resource("resource://pt-edge/methodology")(methodology_resource)
+mcp.resource("resource://pt-edge/categories")(categories_resource)
+mcp.resource("resource://pt-edge/coverage")(coverage_resource)
+mcp.resource("resource://pt-edge/project/{slug}")(project_resource)
+mcp.resource("resource://pt-edge/lab/{slug}")(lab_resource)
+mcp.resource("resource://pt-edge/category/{category}")(category_resource)
 
 # ---------------------------------------------------------------------------
 # Registry for JSON-RPC handler

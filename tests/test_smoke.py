@@ -397,6 +397,83 @@ def test_prompt_content_format():
         assert len(content["text"]) > 0
 
 
+def test_resource_read_response_shape():
+    """resources/read returns contents with uri + text fields (MCP spec)."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.settings import settings
+
+    client = TestClient(app)
+    resp = client.post(
+        f"/mcp?token={settings.API_TOKEN}",
+        json={
+            "jsonrpc": "2.0", "id": 15, "method": "resources/read",
+            "params": {"uri": "resource://pt-edge/categories"},
+        },
+    )
+    assert resp.status_code == 200
+    contents = resp.json()["result"]["contents"]
+    assert len(contents) >= 1
+    for item in contents:
+        assert "uri" in item, "resources/read contents must include uri"
+        assert isinstance(item["uri"], str)
+        assert "text" in item, "resources/read contents must include text"
+        assert isinstance(item["text"], str)
+        assert len(item["text"]) > 0
+
+
+def test_tool_input_schemas_valid():
+    """Every tool inputSchema has type=object and properties (MCP spec)."""
+    from app.mcp.server import _tool_definitions
+    defs = _tool_definitions()
+    for d in defs:
+        schema = d["inputSchema"]
+        assert schema.get("type") == "object", (
+            f"Tool '{d['name']}' inputSchema.type must be 'object', got {schema.get('type')}"
+        )
+        assert "properties" in schema, (
+            f"Tool '{d['name']}' inputSchema must have 'properties'"
+        )
+
+
+def test_resource_template_uri_format():
+    """Resource template URIs use RFC 6570 {param} syntax, not :param."""
+    import re
+    from app.mcp.resources import RESOURCE_TEMPLATES
+    for tmpl in RESOURCE_TEMPLATES:
+        uri = tmpl["uriTemplate"]
+        # Must contain at least one {param}
+        assert re.search(r"\{\w+\}", uri), (
+            f"Template '{tmpl['name']}' uriTemplate must use {{param}} syntax: {uri}"
+        )
+        # Must not contain Express-style :param
+        assert not re.search(r":\w+", uri), (
+            f"Template '{tmpl['name']}' uriTemplate must not use :param syntax: {uri}"
+        )
+
+
+def test_prompt_arguments_match_handlers():
+    """PROMPTS argument names match the handler function signatures."""
+    import inspect
+    from app.mcp.prompts import PROMPTS, _PROMPT_HANDLERS
+
+    for prompt_def in PROMPTS:
+        name = prompt_def["name"]
+        handler = _PROMPT_HANDLERS.get(name)
+        assert handler is not None, f"Prompt '{name}' has no handler in _PROMPT_HANDLERS"
+
+        # Get expected args from PROMPTS registry
+        declared_args = {a["name"] for a in prompt_def.get("arguments", [])}
+        # Get actual args from handler function signature (skip 'self')
+        sig = inspect.signature(handler)
+        actual_args = set(sig.parameters.keys())
+
+        assert declared_args == actual_args, (
+            f"Prompt '{name}' argument mismatch: "
+            f"PROMPTS declares {declared_args}, handler accepts {actual_args}"
+        )
+
+
 def test_initialize_advertises_capabilities():
     """MCP initialize includes resources and prompts capabilities."""
     from fastapi.testclient import TestClient
