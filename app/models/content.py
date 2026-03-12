@@ -141,3 +141,44 @@ class PackageDep(Base):
     source: Mapped[str] = mapped_column(String(10), nullable=False)
     is_dev: Mapped[bool] = mapped_column(Boolean, default=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class HFDataset(Base):
+    __tablename__ = "hf_datasets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    hf_id: Mapped[str] = mapped_column(String(300), unique=True, nullable=False)
+    pretty_name: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    author: Mapped[str | None] = mapped_column(String(200))
+    tags: Mapped[list | None] = mapped_column(ARRAY(Text))
+    task_categories: Mapped[list | None] = mapped_column(ARRAY(Text))
+    languages: Mapped[list | None] = mapped_column(ARRAY(Text))
+    downloads: Mapped[int] = mapped_column(Integer, default=0)
+    likes: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_modified: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    embedding = mapped_column(Vector(256), nullable=True)
+
+
+class HFModel(Base):
+    __tablename__ = "hf_models"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    hf_id: Mapped[str] = mapped_column(String(300), unique=True, nullable=False)
+    pretty_name: Mapped[str | None] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    author: Mapped[str | None] = mapped_column(String(200))
+    tags: Mapped[list | None] = mapped_column(ARRAY(Text))
+    pipeline_tag: Mapped[str | None] = mapped_column(String(100))
+    library_name: Mapped[str | None] = mapped_column(String(100))
+    languages: Mapped[list | None] = mapped_column(ARRAY(Text))
+    downloads: Mapped[int] = mapped_column(Integer, default=0)
+    likes: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_modified: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    embedding = mapped_column(Vector(256), nullable=True)

@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 MODEL = "text-embedding-3-large"
 DIMENSIONS = 1536  # truncate to match existing pgvector columns
 MAX_BATCH_SIZE = 2048  # OpenAI batch limit
+MAX_TEXT_CHARS = 6000  # ~8191 tokens ≈ 6K chars conservative limit
 
 
 def is_enabled() -> bool:
@@ -143,6 +144,43 @@ def build_public_api_text(
     return ". ".join(parts) + "."
 
 
+def build_hf_dataset_text(
+    name: str,
+    description: str | None,
+    task_categories: list[str] | None,
+    languages: list[str] | None,
+) -> str:
+    """What goes into a HuggingFace dataset embedding for discovery search."""
+    parts = [name or ""]
+    if description:
+        parts[0] += f": {description[:500]}"
+    if task_categories:
+        parts.append(f"Tasks: {', '.join(task_categories)}")
+    if languages:
+        parts.append(f"Languages: {', '.join(languages)}")
+    return ". ".join(parts) + "."
+
+
+def build_hf_model_text(
+    name: str,
+    description: str | None,
+    pipeline_tag: str | None,
+    library_name: str | None,
+    languages: list[str] | None,
+) -> str:
+    """What goes into a HuggingFace model embedding for discovery search."""
+    parts = [name or ""]
+    if description:
+        parts[0] += f": {description[:500]}"
+    if pipeline_tag:
+        parts.append(f"Task: {pipeline_tag}")
+    if library_name:
+        parts.append(f"Library: {library_name}")
+    if languages:
+        parts.append(f"Languages: {', '.join(languages)}")
+    return ". ".join(parts) + "."
+
+
 async def embed_one(text: str, dimensions: int = DIMENSIONS) -> Optional[list[float]]:
     """Embed a single text. Returns None if disabled or on error."""
     if not is_enabled():
@@ -158,24 +196,39 @@ async def embed_one(text: str, dimensions: int = DIMENSIONS) -> Optional[list[fl
 
 
 async def embed_batch(texts: list[str], dimensions: int = DIMENSIONS) -> list[Optional[list[float]]]:
-    """Embed multiple texts. Chunks to MAX_BATCH_SIZE. Returns aligned list."""
+    """Embed multiple texts. Chunks to MAX_BATCH_SIZE. Returns aligned list.
+
+    Truncates texts beyond MAX_TEXT_CHARS. On chunk failure, retries
+    individually so only truly problematic texts get None.
+    """
     if not is_enabled():
         return [None] * len(texts)
 
-    results: list[Optional[list[float]]] = [None] * len(texts)
+    # Truncate overly long texts to avoid token limit errors
+    safe_texts = [t[:MAX_TEXT_CHARS] if len(t) > MAX_TEXT_CHARS else t for t in texts]
 
-    try:
-        from openai import AsyncOpenAI
-        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+    results: list[Optional[list[float]]] = [None] * len(safe_texts)
 
-        for start in range(0, len(texts), MAX_BATCH_SIZE):
-            chunk = texts[start:start + MAX_BATCH_SIZE]
+    from openai import AsyncOpenAI
+    client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+
+    for start in range(0, len(safe_texts), MAX_BATCH_SIZE):
+        chunk = safe_texts[start:start + MAX_BATCH_SIZE]
+        try:
             resp = await client.embeddings.create(input=chunk, model=MODEL, dimensions=dimensions)
             for item in resp.data:
                 results[start + item.index] = item.embedding
-
-    except Exception as e:
-        logger.error(f"Batch embedding error: {e}")
-        # results remain None for any unprocessed items
+        except Exception as e:
+            logger.warning(f"Batch chunk failed (offset {start}, size {len(chunk)}): {e}")
+            # Retry individually — isolate the bad text(s)
+            for i, text in enumerate(chunk):
+                try:
+                    resp = await client.embeddings.create(
+                        input=[text], model=MODEL, dimensions=dimensions,
+                    )
+                    results[start + i] = resp.data[0].embedding
+                except Exception as e2:
+                    logger.warning(f"Individual embed failed (index {start + i}): {e2}")
+                    # This text is truly un-embeddable — leave as None
 
     return results

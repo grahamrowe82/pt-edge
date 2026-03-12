@@ -5734,6 +5734,394 @@ async def find_dependents(package_name: str, source: str = "") -> str:
 
 
 # ---------------------------------------------------------------------------
+# HuggingFace search (datasets + models)
+# ---------------------------------------------------------------------------
+
+HF_EMBED_DIM = 256
+
+
+def _clean_hf_description(desc: str | None) -> str | None:
+    """Strip markdown/HTML cruft from HuggingFace card descriptions."""
+    if not desc:
+        return None
+    # Strip HTML tags
+    cleaned = re.sub(r"<[^>]+>", "", desc)
+    # Collapse markdown headings, extra whitespace
+    cleaned = re.sub(r"#+\s*", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned if cleaned else None
+
+
+async def _search_hf_datasets(
+    query: str, task: str = "", language: str = "",
+    min_downloads: int = 0, limit: int = 5,
+) -> str:
+    """Core search logic for HuggingFace dataset discovery."""
+    if not query or len(query) > 500:
+        return "Please provide a search query (max 500 characters)."
+    limit = min(max(1, limit), 20)
+    task = task.strip().lower()
+    language = language.strip().lower()
+
+    from math import log10
+    from app.embeddings import is_enabled, embed_one
+
+    lines = []
+    seen_ids: set[int] = set()
+    results: list[dict] = []
+
+    # Build optional filters
+    filters = []
+    params_base: dict = {}
+    if task:
+        filters.append("AND :task = ANY(task_categories)")
+        params_base["task"] = task
+    if language:
+        filters.append("AND :lang = ANY(languages)")
+        params_base["lang"] = language
+    if min_downloads > 0:
+        filters.append("AND downloads >= :min_dl")
+        params_base["min_dl"] = min_downloads
+    filter_sql = " ".join(filters)
+
+    try:
+        # ---- Semantic search ----
+        if is_enabled():
+            vec = await embed_one(query, dimensions=HF_EMBED_DIM)
+            if vec:
+                with engine.connect() as conn:
+                    rows = conn.execute(text(f"""
+                        SELECT id, hf_id, pretty_name, description,
+                               task_categories, languages, downloads, likes,
+                               1 - (embedding <=> :vec) AS similarity
+                        FROM hf_datasets
+                        WHERE embedding IS NOT NULL
+                        {filter_sql}
+                        ORDER BY embedding <=> :vec
+                        LIMIT :lim
+                    """), {**params_base, "vec": str(vec), "lim": limit * 3}).fetchall()
+
+                    for r in rows:
+                        m = r._mapping
+                        results.append({
+                            "id": m["id"],
+                            "hf_id": m["hf_id"],
+                            "pretty_name": m["pretty_name"],
+                            "description": m["description"],
+                            "task_categories": list(m["task_categories"]) if m["task_categories"] else [],
+                            "languages": list(m["languages"]) if m["languages"] else [],
+                            "downloads": m["downloads"] or 0,
+                            "likes": m["likes"] or 0,
+                            "similarity": float(m["similarity"]),
+                        })
+                        seen_ids.add(m["id"])
+
+        # ---- Keyword fallback ----
+        keyword = f"%{query.strip()[:100]}%"
+        with engine.connect() as conn:
+            kw_rows = conn.execute(text(f"""
+                SELECT id, hf_id, pretty_name, description,
+                       task_categories, languages, downloads, likes
+                FROM hf_datasets
+                WHERE (hf_id ILIKE :kw OR pretty_name ILIKE :kw
+                       OR description ILIKE :kw)
+                {filter_sql}
+                ORDER BY downloads DESC
+                LIMIT :lim
+            """), {**params_base, "kw": keyword, "lim": limit}).fetchall()
+
+            for r in kw_rows:
+                m = r._mapping
+                if m["id"] not in seen_ids:
+                    results.append({
+                        "id": m["id"],
+                        "hf_id": m["hf_id"],
+                        "pretty_name": m["pretty_name"],
+                        "description": m["description"],
+                        "task_categories": list(m["task_categories"]) if m["task_categories"] else [],
+                        "languages": list(m["languages"]) if m["languages"] else [],
+                        "downloads": m["downloads"] or 0,
+                        "likes": m["likes"] or 0,
+                        "similarity": 0.5,
+                    })
+                    seen_ids.add(m["id"])
+
+        if not results:
+            with engine.connect() as conn:
+                count = conn.execute(text("SELECT COUNT(*) FROM hf_datasets")).scalar()
+            if count == 0:
+                return "HF dataset index is empty — the first ingest hasn't run yet."
+            scope_parts = []
+            if task:
+                scope_parts.append(f"task '{task}'")
+            if language:
+                scope_parts.append(f"language '{language}'")
+            scope = f" ({', '.join(scope_parts)})" if scope_parts else ""
+            return f"No datasets found matching '{query}'{scope}. Try broader terms."
+
+        # ---- Rank: blend similarity + download popularity ----
+        from math import log10
+        for r in results:
+            dl_score = log10(max(r["downloads"], 1) + 1) / 7.0
+            like_score = log10(max(r["likes"], 1) + 1) / 5.0
+            r["score"] = 0.6 * r["similarity"] + 0.25 * dl_score + 0.15 * like_score
+
+        results.sort(key=lambda x: x["score"], reverse=True)
+        results = results[:limit]
+
+        # ---- Format output ----
+        with engine.connect() as conn:
+            total = conn.execute(text("SELECT COUNT(*) FROM hf_datasets")).scalar()
+        lines.append(f"DATASET SEARCH: \"{query}\"")
+        scope_parts = []
+        if task:
+            scope_parts.append(f"task: {task}")
+        if language:
+            scope_parts.append(f"language: {language}")
+        if scope_parts:
+            lines.append(f"Filters: {', '.join(scope_parts)}")
+        lines.append(f"Searching {total:,} indexed datasets")
+        lines.append("=" * 50)
+
+        for i, r in enumerate(results, 1):
+            lines.append("")
+            name = r["pretty_name"] or r["hf_id"]
+            dl_str = _fmt_downloads(r["downloads"])
+            likes_str = f"♥ {r['likes']}" if r["likes"] > 0 else ""
+            lines.append(f"{i}. {name}  (↓ {dl_str}{' | ' + likes_str if likes_str else ''})")
+            lines.append(f"   ID: {r['hf_id']}")
+            desc = _clean_hf_description(r["description"])
+            if desc:
+                lines.append(f"   {desc[:200]}")
+            if r["task_categories"]:
+                lines.append(f"   Tasks: {', '.join(r['task_categories'][:6])}")
+            if r["languages"]:
+                lines.append(f"   Languages: {', '.join(r['languages'][:8])}")
+            lines.append(f"   https://huggingface.co/datasets/{r['hf_id']}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"_search_hf_datasets failed: {e}")
+        return "Error searching datasets. Please try again."
+
+
+@mcp.tool()
+@track_usage
+async def find_dataset(
+    query: str, task: str = "", language: str = "",
+    min_downloads: int = 0, limit: int = 5,
+) -> str:
+    """Find HuggingFace datasets by describing what you need in plain English.
+    Searches indexed datasets from the HuggingFace Hub with download counts
+    and task/language metadata.
+
+    Optional filters:
+      task: text-classification, translation, summarization, question-answering, etc.
+      language: en, zh, fr, de, es, etc. (ISO 639-1 codes)
+      min_downloads: minimum download count threshold
+
+    Examples:
+      find_dataset("sentiment analysis training data", task="text-classification")
+      find_dataset("multilingual translation", language="zh")
+      find_dataset("code generation instruction tuning")
+      find_dataset("medical text", min_downloads=1000)
+    """
+    return await _search_hf_datasets(
+        query=query, task=task, language=language,
+        min_downloads=min_downloads, limit=limit,
+    )
+
+
+async def _search_hf_models(
+    query: str, task: str = "", library: str = "",
+    min_downloads: int = 0, limit: int = 5,
+) -> str:
+    """Core search logic for HuggingFace model discovery."""
+    if not query or len(query) > 500:
+        return "Please provide a search query (max 500 characters)."
+    limit = min(max(1, limit), 20)
+    task = task.strip().lower()
+    library = library.strip().lower()
+
+    from math import log10
+    from app.embeddings import is_enabled, embed_one
+
+    lines = []
+    seen_ids: set[int] = set()
+    results: list[dict] = []
+
+    # Build optional filters
+    filters = []
+    params_base: dict = {}
+    if task:
+        filters.append("AND pipeline_tag = :task")
+        params_base["task"] = task
+    if library:
+        filters.append("AND library_name = :lib")
+        params_base["lib"] = library
+    if min_downloads > 0:
+        filters.append("AND downloads >= :min_dl")
+        params_base["min_dl"] = min_downloads
+    filter_sql = " ".join(filters)
+
+    try:
+        # ---- Semantic search ----
+        if is_enabled():
+            vec = await embed_one(query, dimensions=HF_EMBED_DIM)
+            if vec:
+                with engine.connect() as conn:
+                    rows = conn.execute(text(f"""
+                        SELECT id, hf_id, pretty_name, description,
+                               pipeline_tag, library_name, languages,
+                               downloads, likes,
+                               1 - (embedding <=> :vec) AS similarity
+                        FROM hf_models
+                        WHERE embedding IS NOT NULL
+                        {filter_sql}
+                        ORDER BY embedding <=> :vec
+                        LIMIT :lim
+                    """), {**params_base, "vec": str(vec), "lim": limit * 3}).fetchall()
+
+                    for r in rows:
+                        m = r._mapping
+                        results.append({
+                            "id": m["id"],
+                            "hf_id": m["hf_id"],
+                            "pretty_name": m["pretty_name"],
+                            "description": m["description"],
+                            "pipeline_tag": m["pipeline_tag"],
+                            "library_name": m["library_name"],
+                            "languages": list(m["languages"]) if m["languages"] else [],
+                            "downloads": m["downloads"] or 0,
+                            "likes": m["likes"] or 0,
+                            "similarity": float(m["similarity"]),
+                        })
+                        seen_ids.add(m["id"])
+
+        # ---- Keyword fallback ----
+        keyword = f"%{query.strip()[:100]}%"
+        with engine.connect() as conn:
+            kw_rows = conn.execute(text(f"""
+                SELECT id, hf_id, pretty_name, description,
+                       pipeline_tag, library_name, languages,
+                       downloads, likes
+                FROM hf_models
+                WHERE (hf_id ILIKE :kw OR pretty_name ILIKE :kw
+                       OR description ILIKE :kw)
+                {filter_sql}
+                ORDER BY downloads DESC
+                LIMIT :lim
+            """), {**params_base, "kw": keyword, "lim": limit}).fetchall()
+
+            for r in kw_rows:
+                m = r._mapping
+                if m["id"] not in seen_ids:
+                    results.append({
+                        "id": m["id"],
+                        "hf_id": m["hf_id"],
+                        "pretty_name": m["pretty_name"],
+                        "description": m["description"],
+                        "pipeline_tag": m["pipeline_tag"],
+                        "library_name": m["library_name"],
+                        "languages": list(m["languages"]) if m["languages"] else [],
+                        "downloads": m["downloads"] or 0,
+                        "likes": m["likes"] or 0,
+                        "similarity": 0.5,
+                    })
+                    seen_ids.add(m["id"])
+
+        if not results:
+            with engine.connect() as conn:
+                count = conn.execute(text("SELECT COUNT(*) FROM hf_models")).scalar()
+            if count == 0:
+                return "HF model index is empty — the first ingest hasn't run yet."
+            scope_parts = []
+            if task:
+                scope_parts.append(f"task '{task}'")
+            if library:
+                scope_parts.append(f"library '{library}'")
+            scope = f" ({', '.join(scope_parts)})" if scope_parts else ""
+            return f"No models found matching '{query}'{scope}. Try broader terms."
+
+        # ---- Rank: blend similarity + download popularity ----
+        for r in results:
+            dl_score = log10(max(r["downloads"], 1) + 1) / 9.0  # models have higher downloads
+            like_score = log10(max(r["likes"], 1) + 1) / 5.0
+            r["score"] = 0.6 * r["similarity"] + 0.25 * dl_score + 0.15 * like_score
+
+        results.sort(key=lambda x: x["score"], reverse=True)
+        results = results[:limit]
+
+        # ---- Format output ----
+        with engine.connect() as conn:
+            total = conn.execute(text("SELECT COUNT(*) FROM hf_models")).scalar()
+        lines.append(f"MODEL SEARCH: \"{query}\"")
+        scope_parts = []
+        if task:
+            scope_parts.append(f"task: {task}")
+        if library:
+            scope_parts.append(f"library: {library}")
+        if scope_parts:
+            lines.append(f"Filters: {', '.join(scope_parts)}")
+        lines.append(f"Searching {total:,} indexed models")
+        lines.append("=" * 50)
+
+        for i, r in enumerate(results, 1):
+            lines.append("")
+            name = r["pretty_name"] or r["hf_id"]
+            dl_str = _fmt_downloads(r["downloads"])
+            likes_str = f"♥ {r['likes']}" if r["likes"] > 0 else ""
+            task_str = f" · {r['pipeline_tag']}" if r["pipeline_tag"] else ""
+            lib_str = f" · {r['library_name']}" if r["library_name"] else ""
+            lines.append(
+                f"{i}. {name}  "
+                f"(↓ {dl_str}{' | ' + likes_str if likes_str else ''}{task_str}{lib_str})"
+            )
+            lines.append(f"   ID: {r['hf_id']}")
+            desc = _clean_hf_description(r["description"])
+            if desc:
+                lines.append(f"   {desc[:200]}")
+            if r["languages"]:
+                lines.append(f"   Languages: {', '.join(r['languages'][:8])}")
+            lines.append(f"   https://huggingface.co/{r['hf_id']}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"_search_hf_models failed: {e}")
+        return "Error searching models. Please try again."
+
+
+@mcp.tool()
+@track_usage
+async def find_model(
+    query: str, task: str = "", library: str = "",
+    min_downloads: int = 0, limit: int = 5,
+) -> str:
+    """Find HuggingFace models by describing what you need in plain English.
+    Searches indexed models from the HuggingFace Hub with download counts,
+    pipeline tags, and library metadata.
+
+    Optional filters:
+      task: text-generation, text-classification, translation, image-classification,
+            feature-extraction, fill-mask, question-answering, summarization, etc.
+      library: transformers, diffusers, sentence-transformers, spacy, etc.
+      min_downloads: minimum download count threshold
+
+    Examples:
+      find_model("code completion small model", task="text-generation")
+      find_model("image segmentation", library="transformers")
+      find_model("sentence embeddings for RAG", task="feature-extraction")
+      find_model("text to speech", min_downloads=10000)
+    """
+    return await _search_hf_models(
+        query=query, task=task, library=library,
+        min_downloads=min_downloads, limit=limit,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Auth middleware & mount
 # ---------------------------------------------------------------------------
 
@@ -5788,6 +6176,7 @@ _TOOL_LIST = [
     find_ai_tool, find_mcp_server, find_public_api,
     get_api_spec, get_api_endpoints,
     get_dependencies, find_dependents,
+    find_dataset, find_model,
 ]
 
 
