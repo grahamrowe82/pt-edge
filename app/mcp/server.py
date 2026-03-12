@@ -508,7 +508,7 @@ async def about() -> str:
         "BUILT BY",
         "-" * 30,
         "Graham Rowe — Phase Transitions newsletter",
-        "Subscribe: phasetransitions.ai",
+        "Subscribe: phasetransitionsai.substack.com",
         "Contact: graham@phasetransitions.ai",
         "",
         "ONBOARDING",
