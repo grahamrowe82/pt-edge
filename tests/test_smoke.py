@@ -615,3 +615,75 @@ class TestExtractGithubSlug:
     def test_non_github_url(self):
         from app.ingest.npm_mcp import _extract_github_slug
         assert _extract_github_slug("https://gitlab.com/owner/repo") is None
+
+
+# ---------------------------------------------------------------------------
+# Audit fix tests
+# ---------------------------------------------------------------------------
+
+
+class TestStripSummary:
+    """_strip_summary cleans HTML/markdown artifacts from release summaries."""
+
+    def test_removes_html_tags(self):
+        from app.mcp.server import _strip_summary
+        assert "<details>" not in _strip_summary("<details><summary>Changelog</summary></details>")
+
+    def test_removes_markdown_headers(self):
+        from app.mcp.server import _strip_summary
+        result = _strip_summary("## Breaking Changes\nSome text")
+        assert result.startswith("Breaking Changes")
+
+    def test_removes_github_urls(self):
+        from app.mcp.server import _strip_summary
+        result = _strip_summary("Fixed bug https://github.com/owner/repo/issues/123 in parser")
+        assert "github.com" not in result
+
+    def test_truncates_at_sentence(self):
+        from app.mcp.server import _strip_summary
+        long_text = "First sentence. Second sentence. " + "x " * 100
+        result = _strip_summary(long_text, max_len=120)
+        assert len(result) <= 123  # allow for "..."
+
+    def test_truncates_at_word_boundary(self):
+        from app.mcp.server import _strip_summary
+        long_text = "Word " * 50  # 250 chars
+        result = _strip_summary(long_text, max_len=120)
+        assert result.endswith("...")
+        assert not result.rstrip("...").endswith("Wor")  # no mid-word cut
+
+    def test_empty_input(self):
+        from app.mcp.server import _strip_summary
+        assert _strip_summary("") == ""
+        assert _strip_summary(None) == ""
+
+    def test_short_input_unchanged(self):
+        from app.mcp.server import _strip_summary
+        assert _strip_summary("Simple release note") == "Simple release note"
+
+
+class TestFmtDeltaSafe:
+    """_fmt_delta_safe shows — for missing baselines."""
+
+    def test_no_baseline_returns_dash(self):
+        from app.mcp.server import _fmt_delta_safe
+        assert _fmt_delta_safe(100, False) == "—"
+
+    def test_with_baseline_formats_delta(self):
+        from app.mcp.server import _fmt_delta_safe
+        assert _fmt_delta_safe(100, True) == "+100"
+
+    def test_with_baseline_negative(self):
+        from app.mcp.server import _fmt_delta_safe
+        assert _fmt_delta_safe(-50, True) == "-50"
+
+
+def test_describe_schema_has_exclusion_list():
+    """describe_schema defines an exclusion list for system tables."""
+    import app.mcp.server as srv
+    # Read the source file to check for the exclusion list
+    import pathlib
+    src = pathlib.Path(srv.__file__).read_text()
+    assert "pg_stat_statements" in src
+    assert "alembic_version" in src
+    assert "_exclude_tables" in src
