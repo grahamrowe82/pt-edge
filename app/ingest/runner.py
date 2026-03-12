@@ -17,7 +17,9 @@ from app.ingest.ai_repo_downloads import ingest_ai_repo_downloads
 from app.ingest.public_apis import ingest_public_apis
 from app.ingest.api_specs import ingest_api_specs
 from app.ingest.package_deps import ingest_package_deps
-from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis
+from app.ingest.hf_datasets import ingest_hf_datasets
+from app.ingest.hf_models import ingest_hf_models
+from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis, backfill_hf_datasets, backfill_hf_models
 from app.embeddings import is_enabled
 from app.views.refresh import refresh_all_views
 
@@ -46,6 +48,8 @@ async def run_all() -> dict:
         ("public_apis", ingest_public_apis()),
         ("api_specs", ingest_api_specs()),
         ("package_deps", ingest_package_deps()),
+        ("hf_datasets", ingest_hf_datasets()),
+        ("hf_models", ingest_hf_models()),
     ]:
         try:
             results[name] = await coro
@@ -96,7 +100,13 @@ async def run_all() -> dict:
             meth_count = await backfill_methodology()
             ai_repo_count = await backfill_ai_repos()
             api_count = await backfill_public_apis()
-            results["embeddings"] = {"projects": proj_count, "methodology": meth_count, "ai_repos": ai_repo_count, "public_apis": api_count}
+            hf_ds_count = await backfill_hf_datasets()
+            hf_model_count = await backfill_hf_models()
+            results["embeddings"] = {
+                "projects": proj_count, "methodology": meth_count,
+                "ai_repos": ai_repo_count, "public_apis": api_count,
+                "hf_datasets": hf_ds_count, "hf_models": hf_model_count,
+            }
             logger.info(f"embeddings: {results['embeddings']}")
         except Exception as e:
             logger.exception(f"embeddings failed: {e}")

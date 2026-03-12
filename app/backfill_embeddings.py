@@ -20,6 +20,8 @@ from app.embeddings import (
     build_release_text,
     build_ai_repo_text,
     build_public_api_text,
+    build_hf_dataset_text,
+    build_hf_model_text,
     embed_batch,
 )
 
@@ -393,6 +395,182 @@ async def backfill_public_apis(force: bool = False) -> int:
     return count
 
 
+HF_EMBED_DIM = 256
+
+
+async def backfill_hf_datasets(force: bool = False) -> int:
+    """Generate 256d embeddings for HF datasets missing them."""
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT id, hf_id, description, task_categories, languages
+            FROM hf_datasets
+            WHERE (description IS NOT NULL OR hf_id IS NOT NULL)
+            {"AND embedding IS NULL" if not force else ""}
+            ORDER BY downloads DESC
+        """)).fetchall()
+
+    if not rows:
+        logger.info("No HF datasets need embeddings.")
+        return 0
+
+    logger.info(f"Generating {HF_EMBED_DIM}d embeddings for {len(rows)} HF datasets...")
+
+    texts = []
+    ids = []
+    for r in rows:
+        m = r._mapping
+        t = build_hf_dataset_text(
+            name=m["hf_id"],
+            description=m["description"],
+            task_categories=list(m["task_categories"]) if m["task_categories"] else None,
+            languages=list(m["languages"]) if m["languages"] else None,
+        )
+        texts.append(t)
+        ids.append(m["id"])
+
+    vectors = await embed_batch(texts, dimensions=HF_EMBED_DIM)
+
+    tuples = [
+        (sid, str(vec))
+        for sid, vec in zip(ids, vectors)
+        if vec is not None
+    ]
+    if not tuples:
+        return 0
+
+    from psycopg2.extras import execute_values
+    CHUNK = 500
+    count = 0
+
+    for i in range(0, len(tuples), CHUNK):
+        chunk = tuples[i:i + CHUNK]
+        raw_conn = engine.raw_connection()
+        try:
+            cur = raw_conn.cursor()
+            cur.execute("""
+                CREATE TEMP TABLE _ds_emb (
+                    id INTEGER PRIMARY KEY,
+                    embedding vector(256)
+                ) ON COMMIT DROP
+            """)
+            execute_values(
+                cur,
+                "INSERT INTO _ds_emb (id, embedding) VALUES %s",
+                chunk,
+                template="(%s, %s)",
+                page_size=500,
+            )
+            cur.execute("""
+                UPDATE hf_datasets d
+                SET embedding = b.embedding
+                FROM _ds_emb b
+                WHERE d.id = b.id
+            """)
+            count += cur.rowcount
+            raw_conn.commit()
+        except Exception as e:
+            try:
+                raw_conn.rollback()
+            except Exception:
+                pass
+            logger.error(f"HF dataset embedding write failed at chunk {i}: {e}")
+        finally:
+            try:
+                raw_conn.close()
+            except Exception:
+                pass
+
+    logger.info(f"Embedded {count}/{len(rows)} HF datasets.")
+    return count
+
+
+async def backfill_hf_models(force: bool = False) -> int:
+    """Generate 256d embeddings for HF models missing them."""
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT id, hf_id, description, pipeline_tag, library_name, languages
+            FROM hf_models
+            WHERE (description IS NOT NULL OR hf_id IS NOT NULL)
+            {"AND embedding IS NULL" if not force else ""}
+            ORDER BY downloads DESC
+        """)).fetchall()
+
+    if not rows:
+        logger.info("No HF models need embeddings.")
+        return 0
+
+    logger.info(f"Generating {HF_EMBED_DIM}d embeddings for {len(rows)} HF models...")
+
+    texts = []
+    ids = []
+    for r in rows:
+        m = r._mapping
+        t = build_hf_model_text(
+            name=m["hf_id"],
+            description=m["description"],
+            pipeline_tag=m["pipeline_tag"],
+            library_name=m["library_name"],
+            languages=list(m["languages"]) if m["languages"] else None,
+        )
+        texts.append(t)
+        ids.append(m["id"])
+
+    vectors = await embed_batch(texts, dimensions=HF_EMBED_DIM)
+
+    tuples = [
+        (sid, str(vec))
+        for sid, vec in zip(ids, vectors)
+        if vec is not None
+    ]
+    if not tuples:
+        return 0
+
+    from psycopg2.extras import execute_values
+    CHUNK = 500
+    count = 0
+
+    for i in range(0, len(tuples), CHUNK):
+        chunk = tuples[i:i + CHUNK]
+        raw_conn = engine.raw_connection()
+        try:
+            cur = raw_conn.cursor()
+            cur.execute("""
+                CREATE TEMP TABLE _model_emb (
+                    id INTEGER PRIMARY KEY,
+                    embedding vector(256)
+                ) ON COMMIT DROP
+            """)
+            execute_values(
+                cur,
+                "INSERT INTO _model_emb (id, embedding) VALUES %s",
+                chunk,
+                template="(%s, %s)",
+                page_size=500,
+            )
+            cur.execute("""
+                UPDATE hf_models m
+                SET embedding = b.embedding
+                FROM _model_emb b
+                WHERE m.id = b.id
+            """)
+            count += cur.rowcount
+            raw_conn.commit()
+        except Exception as e:
+            try:
+                raw_conn.rollback()
+            except Exception:
+                pass
+            logger.error(f"HF model embedding write failed at chunk {i}: {e}")
+        finally:
+            try:
+                raw_conn.close()
+            except Exception:
+                pass
+
+    logger.info(f"Embedded {count}/{len(rows)} HF models.")
+    return count
+
+
 async def main():
     if not is_enabled():
         logger.error(
@@ -408,11 +586,14 @@ async def main():
     newsletters = await backfill_newsletters(force=force)
     ai_repos = await backfill_ai_repos(force=force)
     public_apis = await backfill_public_apis(force=force)
+    hf_datasets = await backfill_hf_datasets(force=force)
+    hf_models = await backfill_hf_models(force=force)
 
     logger.info(
         f"Backfill complete: {projects} projects, {methodology} methodology, "
         f"{releases} releases, {newsletters} newsletter topics, "
-        f"{ai_repos} AI repos, {public_apis} public APIs."
+        f"{ai_repos} AI repos, {public_apis} public APIs, "
+        f"{hf_datasets} HF datasets, {hf_models} HF models."
     )
 
 
