@@ -1,6 +1,8 @@
 import asyncio
 import logging
 
+from sqlalchemy.exc import OperationalError
+
 from app.ingest.candidates import ingest_candidate_velocity
 from app.ingest.dockerhub import ingest_dockerhub
 from app.ingest.downloads import ingest_downloads
@@ -26,6 +28,39 @@ from app.views.refresh import refresh_all_views
 
 logger = logging.getLogger(__name__)
 
+MAX_RETRIES = 3
+RETRY_DELAYS = [10, 30, 60]  # seconds — exponential-ish backoff
+
+
+def _reset_pool():
+    """Dispose all SQLAlchemy connection pools to force fresh connections."""
+    from app.db import engine, readonly_engine
+    engine.dispose()
+    readonly_engine.dispose()
+    logger.info("DB connection pools disposed — next query will reconnect")
+
+
+async def _run_with_retry(name: str, fn, retries: int = MAX_RETRIES):
+    """Run an async ingest function with retry on DB connection errors.
+
+    fn must be a callable that returns a coroutine (not a pre-created coroutine).
+    """
+    for attempt in range(1, retries + 1):
+        try:
+            return await fn()
+        except OperationalError as e:
+            if attempt < retries:
+                delay = RETRY_DELAYS[min(attempt - 1, len(RETRY_DELAYS) - 1)]
+                logger.warning(
+                    f"{name}: DB connection error (attempt {attempt}/{retries}), "
+                    f"retrying in {delay}s: {e}"
+                )
+                _reset_pool()
+                await asyncio.sleep(delay)
+            else:
+                logger.exception(f"{name}: DB connection error after {retries} attempts")
+                raise
+
 
 async def run_all() -> dict:
     """Run all ingest jobs sequentially, then refresh materialized views."""
@@ -33,30 +68,30 @@ async def run_all() -> dict:
 
     logger.info("Starting full ingest cycle")
 
-    for name, coro in [
+    for name, fn in [
         # Phase 1: Fast daily-critical (< 5 min each)
-        ("github", ingest_github()),
-        ("downloads", ingest_downloads()),
-        ("dockerhub", ingest_dockerhub()),
-        ("huggingface", ingest_huggingface()),
-        ("releases", ingest_releases()),
-        ("hn", ingest_hn()),
-        ("v2ex", ingest_v2ex()),
-        ("trending", ingest_trending()),
-        ("newsletters", ingest_newsletters()),
-        ("candidate_velocity", ingest_candidate_velocity()),
+        ("github", ingest_github),
+        ("downloads", ingest_downloads),
+        ("dockerhub", ingest_dockerhub),
+        ("huggingface", ingest_huggingface),
+        ("releases", ingest_releases),
+        ("hn", ingest_hn),
+        ("v2ex", ingest_v2ex),
+        ("trending", ingest_trending),
+        ("newsletters", ingest_newsletters),
+        ("candidate_velocity", ingest_candidate_velocity),
         # Phase 2: Slow discovery indexes (minutes to hours)
-        ("hf_datasets", ingest_hf_datasets()),
-        ("hf_models", ingest_hf_models()),
-        ("public_apis", ingest_public_apis()),
-        ("api_specs", ingest_api_specs()),
-        ("package_deps", ingest_package_deps()),
-        ("npm_mcp", ingest_npm_mcp()),
-        ("ai_repo_downloads", ingest_ai_repo_downloads()),
-        ("ai_repos", ingest_ai_repos()),  # Slowest — last
+        ("hf_datasets", ingest_hf_datasets),
+        ("hf_models", ingest_hf_models),
+        ("public_apis", ingest_public_apis),
+        ("api_specs", ingest_api_specs),
+        ("package_deps", ingest_package_deps),
+        ("npm_mcp", ingest_npm_mcp),
+        ("ai_repo_downloads", ingest_ai_repo_downloads),
+        ("ai_repos", ingest_ai_repos),  # Slowest — last
     ]:
         try:
-            results[name] = await coro
+            results[name] = await _run_with_retry(name, fn)
             logger.info(f"{name}: {results[name]}")
         except Exception as e:
             logger.exception(f"{name} failed: {e}")
@@ -64,7 +99,7 @@ async def run_all() -> dict:
 
     # Re-match unlinked HN posts against current project list
     try:
-        hn_linked = await backfill_hn_links()
+        hn_linked = await _run_with_retry("hn_backfill", backfill_hn_links)
         results["hn_backfill"] = {"linked": hn_linked}
         logger.info(f"hn_backfill: {results['hn_backfill']}")
     except Exception as e:
@@ -73,7 +108,7 @@ async def run_all() -> dict:
 
     # Match unlinked HN posts to labs by title
     try:
-        hn_lab_linked = await backfill_hn_lab_links()
+        hn_lab_linked = await _run_with_retry("hn_lab_backfill", backfill_hn_lab_links)
         results["hn_lab_backfill"] = {"linked": hn_lab_linked}
         logger.info(f"hn_lab_backfill: {results['hn_lab_backfill']}")
     except Exception as e:
@@ -82,7 +117,7 @@ async def run_all() -> dict:
 
     # Match unlinked V2EX posts to labs
     try:
-        v2ex_lab_linked = await backfill_v2ex_lab_links()
+        v2ex_lab_linked = await _run_with_retry("v2ex_lab_backfill", backfill_v2ex_lab_links)
         results["v2ex_lab_backfill"] = {"linked": v2ex_lab_linked}
         logger.info(f"v2ex_lab_backfill: {results['v2ex_lab_backfill']}")
     except Exception as e:
@@ -91,7 +126,7 @@ async def run_all() -> dict:
 
     # Sync frontier models from OpenRouter
     try:
-        results["models"] = await ingest_models()
+        results["models"] = await _run_with_retry("models", ingest_models)
         logger.info(f"models: {results['models']}")
     except Exception as e:
         logger.exception(f"models ingest failed: {e}")
@@ -100,12 +135,12 @@ async def run_all() -> dict:
     # Backfill embeddings for new projects/methodology (before view refresh)
     if is_enabled():
         try:
-            proj_count = await backfill_projects()
-            meth_count = await backfill_methodology()
-            ai_repo_count = await backfill_ai_repos()
-            api_count = await backfill_public_apis()
-            hf_ds_count = await backfill_hf_datasets()
-            hf_model_count = await backfill_hf_models()
+            proj_count = await _run_with_retry("embed_projects", backfill_projects)
+            meth_count = await _run_with_retry("embed_methodology", backfill_methodology)
+            ai_repo_count = await _run_with_retry("embed_ai_repos", backfill_ai_repos)
+            api_count = await _run_with_retry("embed_public_apis", backfill_public_apis)
+            hf_ds_count = await _run_with_retry("embed_hf_datasets", backfill_hf_datasets)
+            hf_model_count = await _run_with_retry("embed_hf_models", backfill_hf_models)
             results["embeddings"] = {
                 "projects": proj_count, "methodology": meth_count,
                 "ai_repos": ai_repo_count, "public_apis": api_count,
@@ -125,6 +160,15 @@ async def run_all() -> dict:
     except Exception as e:
         logger.exception(f"views failed: {e}")
         results["views"] = {"error": str(e)}
+
+    # Summary
+    errors = [k for k, v in results.items() if isinstance(v, dict) and "error" in v]
+    if errors:
+        logger.warning(f"⚠ Ingest completed with errors in: {', '.join(errors)}")
+        for name in errors:
+            logger.warning(f"  {name}: {results[name]['error'][:200]}")
+    else:
+        logger.info("✓ Ingest completed successfully — all stages passed")
 
     logger.info(f"Full ingest complete: {results}")
     return results
