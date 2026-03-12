@@ -3,8 +3,7 @@
 from app.mcp.instance import mcp
 
 
-@mcp.prompt(name="evaluate-technology")
-async def evaluate_technology(topic: str) -> list[dict]:
+async def _evaluate_technology(topic: str) -> list[dict]:
     """Which technology should I use? Systematic evaluation of tools,
     frameworks, or approaches in a specific AI domain.
 
@@ -14,7 +13,7 @@ async def evaluate_technology(topic: str) -> list[dict]:
     return [
         {
             "role": "user",
-            "content": f"""Evaluate the "{topic}" landscape using PT-Edge tools. Follow this workflow:
+            "content": {"type": "text", "text": f"""Evaluate the "{topic}" landscape using PT-Edge tools. Follow this workflow:
 
 **Step 1 — Quantitative comparison**
 Call compare() with the top 3-5 known projects in this space. If more than 5, split into batches and run in parallel.
@@ -40,13 +39,12 @@ Combine into a recommendation covering:
 
 Highlight SURPRISES — newcomers outpacing incumbents, invisible infrastructure with massive adoption, or popular projects with fading momentum.
 
-Run the full chain, then synthesize once at the end. Do not narrate each tool call.""",
+Run the full chain, then synthesize once at the end. Do not narrate each tool call."""},
         }
     ]
 
 
-@mcp.prompt(name="build-something")
-async def build_something(task: str) -> list[dict]:
+async def _build_something(task: str) -> list[dict]:
     """I need to build X. Discovers frameworks, APIs, models, datasets,
     and MCP servers relevant to an implementation task.
 
@@ -56,7 +54,7 @@ async def build_something(task: str) -> list[dict]:
     return [
         {
             "role": "user",
-            "content": f"""I need to build: "{task}". Use PT-Edge to find everything I need.
+            "content": {"type": "text", "text": f"""I need to build: "{task}". Use PT-Edge to find everything I need.
 
 **Step 1 — Parallel discovery sweep** (run ALL 5 simultaneously)
 - find_ai_tool("{task}") — frameworks and libraries
@@ -82,13 +80,12 @@ For each layer, recommend the best option with evidence:
 
 Include dependency counts, license info, and red flags (stale repos, heavy deps).
 
-Run the full pipeline, then present the complete recommended stack.""",
+Run the full pipeline, then present the complete recommended stack."""},
         }
     ]
 
 
-@mcp.prompt(name="due-diligence")
-async def due_diligence(project: str) -> list[dict]:
+async def _due_diligence(project: str) -> list[dict]:
     """Should we adopt project X? Comprehensive health check covering metrics,
     hype vs reality, ecosystem position, and community sentiment.
 
@@ -98,7 +95,7 @@ async def due_diligence(project: str) -> list[dict]:
     return [
         {
             "role": "user",
-            "content": f"""Run due diligence on "{project}" using PT-Edge.
+            "content": {"type": "text", "text": f"""Run due diligence on "{project}" using PT-Edge.
 
 **Step 1 — Full profile**
 Call project_pulse("{project}") for the complete snapshot: stars, downloads, releases, tier, lifecycle, contributors, and activity.
@@ -128,20 +125,19 @@ RISK: Bus factor, funding, license, breaking changes?
 
 Give a clear GO / CAUTION / AVOID recommendation with reasoning.
 
-Run the full chain, then deliver the verdict.""",
+Run the full chain, then deliver the verdict."""},
         }
     ]
 
 
-@mcp.prompt(name="weekly-briefing")
-async def weekly_briefing() -> list[dict]:
+async def _weekly_briefing() -> list[dict]:
     """What happened in AI this week? Comprehensive briefing covering releases,
     growth trends, emerging signals, and community discourse.
     """
     return [
         {
             "role": "user",
-            "content": """Generate a weekly AI briefing using PT-Edge.
+            "content": {"type": "text", "text": """Generate a weekly AI briefing using PT-Edge.
 
 **Step 1 — What shipped** (run in parallel)
 - whats_new(days=7) — releases, trending projects, HN discussion
@@ -168,7 +164,7 @@ COMMUNITY DISCOURSE: Key themes from HN — what practitioners debate
 
 WORTH WATCHING: 2-3 things to keep an eye on next week
 
-Keep it concise. Prioritize signal over noise. Highlight surprises.""",
+Keep it concise. Prioritize signal over noise. Highlight surprises."""},
         }
     ]
 
@@ -206,11 +202,18 @@ PROMPTS = [
     },
 ]
 
+# Register with FastMCP for Streamable HTTP transport
+mcp.prompt(name="evaluate-technology")(_evaluate_technology)
+mcp.prompt(name="build-something")(_build_something)
+mcp.prompt(name="due-diligence")(_due_diligence)
+mcp.prompt(name="weekly-briefing")(_weekly_briefing)
+
+# Raw function references for JSON-RPC handler
 _PROMPT_HANDLERS = {
-    "evaluate-technology": evaluate_technology,
-    "build-something": build_something,
-    "due-diligence": due_diligence,
-    "weekly-briefing": weekly_briefing,
+    "evaluate-technology": _evaluate_technology,
+    "build-something": _build_something,
+    "due-diligence": _due_diligence,
+    "weekly-briefing": _weekly_briefing,
 }
 
 

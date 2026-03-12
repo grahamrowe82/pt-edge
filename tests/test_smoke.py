@@ -370,6 +370,33 @@ def test_resource_templates_list():
     assert "category" in names
 
 
+def test_prompt_content_format():
+    """prompts/get returns content as {type, text} object, not a plain string."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.settings import settings
+
+    client = TestClient(app)
+    resp = client.post(
+        f"/mcp?token={settings.API_TOKEN}",
+        json={
+            "jsonrpc": "2.0", "id": 14, "method": "prompts/get",
+            "params": {"name": "weekly-briefing", "arguments": {}},
+        },
+    )
+    assert resp.status_code == 200
+    messages = resp.json()["result"]["messages"]
+    assert len(messages) >= 1
+    for msg in messages:
+        assert "role" in msg
+        content = msg["content"]
+        # MCP spec: content must be an object with type+text, not a plain string
+        assert isinstance(content, dict), f"content must be object, got {type(content)}"
+        assert content["type"] == "text"
+        assert isinstance(content["text"], str)
+        assert len(content["text"]) > 0
+
+
 def test_initialize_advertises_capabilities():
     """MCP initialize includes resources and prompts capabilities."""
     from fastapi.testclient import TestClient
