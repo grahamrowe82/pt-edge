@@ -4,6 +4,10 @@ PT-Edge is an MCP server that makes AI assistants less wrong about the current s
 
 **Built by [Phase Transitions](https://phasetransitions.ai)** — a newsletter covering the engineering side of AI.
 
+<a href="https://glama.ai/mcp/servers/grahamrowe82/pt-edge">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/grahamrowe82/pt-edge/badge" alt="PT-Edge MCP server" />
+</a>
+
 ## What It Does
 
 - **Daily ingests** pull GitHub stats, package downloads, releases, HN posts, V2EX discussions, and newsletter coverage
