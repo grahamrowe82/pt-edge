@@ -1,6 +1,6 @@
 # PT-Edge — AI Project Intelligence
 
-PT-Edge is an MCP server that gives AI assistants live, structured knowledge about the AI ecosystem. It indexes open-source projects, HuggingFace models and datasets, public APIs, and community discourse — then exposes 47 MCP tools for discovery, comparison, and trend analysis.
+PT-Edge is an MCP server that gives AI assistants live, structured knowledge about the AI ecosystem. It indexes open-source projects, HuggingFace models and datasets, public APIs, and community discourse — then exposes 47 MCP tools, 3 resources, 3 resource templates, and 4 prompts for discovery, comparison, and trend analysis.
 
 **Built by [Phase Transitions](https://phasetransitionsai.substack.com/)** — a weekly newsletter on building with AI, from architecture decisions to production patterns.
 
@@ -10,11 +10,12 @@ PT-Edge is an MCP server that gives AI assistants live, structured knowledge abo
 
 ## What It Does
 
-- **Daily ingests** pull GitHub stats, package downloads, releases, HN posts, V2EX discussions, newsletter coverage, HuggingFace models/datasets, and public API specs
-- **Discovery indexes** — 11K+ AI repos, 18K+ HuggingFace models, 42K+ datasets, 2,500+ public APIs, all with 256d semantic embeddings and hybrid search
+- **Daily ingests** pull GitHub stats, package downloads, releases, HN posts, V2EX discussions, newsletter coverage, HuggingFace models/datasets, public API specs, and npm registry MCP servers
+- **Discovery indexes** — 11K+ AI repos, 18K+ HuggingFace models, 42K+ datasets, 2,500+ public APIs, all with 256d semantic embeddings, hybrid search, name-match boosting, staleness signals, and pagination
 - **Materialized views** compute derived metrics: momentum, hype ratio, tiers, lifecycle stage
 - **LLM-powered enrichment** — Claude Haiku summarises releases and newsletter topics; OpenAI embeds everything for semantic search
 - **47 MCP tools** let you query this data naturally in conversation
+- **MCP resources & prompts** — 3 static resources (methodology, categories, coverage), 3 parameterised resource templates (project, lab, category), and 4 compound query prompts (evaluate-technology, build-something, due-diligence, weekly-briefing)
 - **Community feedback system** — corrections, article pitches, and lab event tracking
 
 ## Available Tools
@@ -25,12 +26,20 @@ PT-Edge is an MCP server that gives AI assistants live, structured knowledge abo
 | **Deep Dives** | `project_pulse`, `lab_pulse`, `hype_check` |
 | **Comparison** | `compare`, `movers`, `related`, `market_map` |
 | **Project Discovery** | `radar`, `scout`, `deep_dive`, `sniff_projects`, `accept_candidate`, `topic`, `hn_pulse` |
-| **AI Ecosystem Search** | `find_ai_tool`, `find_mcp_server`, `find_public_api`, `find_dataset`, `find_model` |
-| **API Intelligence** | `fetch_api_spec`, `scaffold_api_client`, `api_deps` |
+| **AI Ecosystem Search** | `find_ai_tool`, `find_mcp_server`, `find_public_api`, `find_dataset`, `find_model` (all support `offset` for pagination) |
+| **API Intelligence** | `get_api_spec`, `get_api_endpoints`, `get_dependencies`, `find_dependents` |
 | **Community** | `submit_feedback`, `upvote_feedback`, `list_feedback`, `amend_feedback`, `propose_article`, `list_pitches`, `upvote_pitch`, `amend_pitch` |
 | **Lab Intelligence** | `submit_lab_event`, `list_lab_events`, `lab_models` |
 | **Methodology** | `explain` |
 | **Power User** | `describe_schema`, `query`, `set_tier` |
+
+### MCP Resources & Prompts
+
+| Type | Items |
+|------|-------|
+| **Resources** | `methodology`, `categories`, `coverage` |
+| **Resource Templates** | `project/{slug}`, `lab/{slug}`, `category/{category}` |
+| **Prompts** | `evaluate-technology`, `build-something`, `due-diligence`, `weekly-briefing` |
 
 ## Key Concepts
 

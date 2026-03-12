@@ -489,3 +489,129 @@ def test_initialize_advertises_capabilities():
     caps = resp.json()["result"]["capabilities"]
     assert "resources" in caps
     assert "prompts" in caps
+
+
+# ---------------------------------------------------------------------------
+# Search improvements: name boost, freshness, pagination, npm discovery
+# ---------------------------------------------------------------------------
+
+class TestNameBoost:
+    """_name_boost helper gives exact and substring bonuses."""
+
+    def test_exact_match(self):
+        from app.mcp.server import _name_boost
+        score = _name_boost("fastapi", "fastapi")
+        assert score == 0.15
+
+    def test_substring(self):
+        from app.mcp.server import _name_boost
+        score = _name_boost("fast", "fastapi-server")
+        assert score == 0.08
+
+    def test_full_name_slash(self):
+        from app.mcp.server import _name_boost
+        score = _name_boost("langchain", "langchain-ai/langchain")
+        assert score == 0.15
+
+    def test_no_match(self):
+        from app.mcp.server import _name_boost
+        score = _name_boost("pytorch", "tensorflow")
+        assert score == 0.0
+
+    def test_none_fields(self):
+        from app.mcp.server import _name_boost
+        score = _name_boost("test", None, None)
+        assert score == 0.0
+
+    def test_empty_query(self):
+        from app.mcp.server import _name_boost
+        score = _name_boost("", "fastapi")
+        assert score == 0.0
+
+
+class TestFreshnessIndicator:
+    """_freshness_indicator returns human-readable freshness strings."""
+
+    def test_none_returns_empty(self):
+        from app.mcp.server import _freshness_indicator
+        assert _freshness_indicator(None) == ""
+
+    def test_recent_push(self):
+        from datetime import datetime, timezone, timedelta
+        from app.mcp.server import _freshness_indicator
+        recent = datetime.now(timezone.utc) - timedelta(days=10)
+        result = _freshness_indicator(recent)
+        assert "< 1 month" in result
+        assert "[STALE]" not in result
+
+    def test_stale_push(self):
+        from datetime import datetime, timezone, timedelta
+        from app.mcp.server import _freshness_indicator
+        old = datetime.now(timezone.utc) - timedelta(days=400)
+        result = _freshness_indicator(old)
+        assert "[STALE]" in result
+        assert "month" in result
+
+    def test_moderate_age(self):
+        from datetime import datetime, timezone, timedelta
+        from app.mcp.server import _freshness_indicator
+        moderate = datetime.now(timezone.utc) - timedelta(days=90)
+        result = _freshness_indicator(moderate)
+        assert "month" in result
+        assert "[STALE]" not in result
+
+
+def test_search_tools_have_offset_param():
+    """All 5 search wrapper tools accept an offset parameter."""
+    import inspect
+    from app.mcp.server import (
+        find_ai_tool, find_mcp_server, find_public_api,
+        find_dataset, find_model, _tool_fn,
+    )
+    for tool in [find_ai_tool, find_mcp_server, find_public_api,
+                 find_dataset, find_model]:
+        fn = _tool_fn(tool)
+        sig = inspect.signature(fn)
+        assert "offset" in sig.parameters, (
+            f"{fn.__name__} missing offset parameter"
+        )
+        assert sig.parameters["offset"].default == 0
+
+
+def test_npm_mcp_ingest_imports():
+    """npm MCP ingest module imports without crashing."""
+    from app.ingest.npm_mcp import ingest_npm_mcp, _extract_github_slug
+    assert callable(ingest_npm_mcp)
+    assert callable(_extract_github_slug)
+
+
+def test_npm_mcp_in_runner():
+    """npm MCP ingest is registered in the runner pipeline."""
+    import inspect
+    from app.ingest import runner
+    source = inspect.getsource(runner.run_all)
+    assert "npm_mcp" in source
+
+
+class TestExtractGithubSlug:
+    """_extract_github_slug parses GitHub URLs correctly."""
+
+    def test_https_url(self):
+        from app.ingest.npm_mcp import _extract_github_slug
+        assert _extract_github_slug("https://github.com/owner/repo") == "owner/repo"
+
+    def test_ssh_url(self):
+        from app.ingest.npm_mcp import _extract_github_slug
+        assert _extract_github_slug("git@github.com:owner/repo.git") == "owner/repo"
+
+    def test_url_with_hash(self):
+        from app.ingest.npm_mcp import _extract_github_slug
+        assert _extract_github_slug("https://github.com/owner/repo#readme") == "owner/repo"
+
+    def test_none_input(self):
+        from app.ingest.npm_mcp import _extract_github_slug
+        assert _extract_github_slug(None) is None
+
+    def test_non_github_url(self):
+        from app.ingest.npm_mcp import _extract_github_slug
+        assert _extract_github_slug("https://gitlab.com/owner/repo") is None
