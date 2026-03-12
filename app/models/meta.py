@@ -22,6 +22,8 @@ class ToolUsage(Base):
     success: Mapped[bool] = mapped_column(Boolean, default=True)
     error_message: Mapped[str | None] = mapped_column(Text)
     result_size: Mapped[int | None] = mapped_column(Integer)
+    client_ip: Mapped[str | None] = mapped_column(String(45))
+    user_agent: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
