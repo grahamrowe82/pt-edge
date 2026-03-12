@@ -1,15 +1,16 @@
 # PT-Edge — AI Project Intelligence
 
-PT-Edge is an MCP server that makes AI assistants less wrong about the current state of AI development. It tracks 300+ open-source AI projects across major labs, collecting real-time signals from GitHub, PyPI, npm, HuggingFace, Docker Hub, and Hacker News.
+PT-Edge is an MCP server that gives AI assistants live, structured knowledge about the AI ecosystem. It indexes open-source projects, HuggingFace models and datasets, public APIs, and community discourse — then exposes 47 MCP tools for discovery, comparison, and trend analysis.
 
-**Built by [Phase Transitions](https://phasetransitions.ai)** — a newsletter covering the engineering side of AI.
+**Built by [Phase Transitions](https://phasetransitionsai.substack.com/)** — a weekly newsletter on building with AI, from architecture decisions to production patterns.
 
 ## What It Does
 
-- **Daily ingests** pull GitHub stats, package downloads, releases, HN posts, V2EX discussions, and newsletter coverage
+- **Daily ingests** pull GitHub stats, package downloads, releases, HN posts, V2EX discussions, newsletter coverage, HuggingFace models/datasets, and public API specs
+- **Discovery indexes** — 11K+ AI repos, 18K+ HuggingFace models, 42K+ datasets, 2,500+ public APIs, all with 256d semantic embeddings and hybrid search
 - **Materialized views** compute derived metrics: momentum, hype ratio, tiers, lifecycle stage
 - **LLM-powered enrichment** — Claude Haiku summarises releases and newsletter topics; OpenAI embeds everything for semantic search
-- **30+ MCP tools** let you query this data naturally in conversation
+- **47 MCP tools** let you query this data naturally in conversation
 - **Community feedback system** — corrections, article pitches, and lab event tracking
 
 ## Available Tools
@@ -20,6 +21,8 @@ PT-Edge is an MCP server that makes AI assistants less wrong about the current s
 | **Deep Dives** | `project_pulse`, `lab_pulse`, `hype_check` |
 | **Comparison** | `compare`, `movers`, `related`, `market_map` |
 | **Project Discovery** | `radar`, `scout`, `deep_dive`, `sniff_projects`, `accept_candidate`, `topic`, `hn_pulse` |
+| **AI Ecosystem Search** | `find_ai_tool`, `find_mcp_server`, `find_public_api`, `find_dataset`, `find_model` |
+| **API Intelligence** | `fetch_api_spec`, `scaffold_api_client`, `api_deps` |
 | **Community** | `submit_feedback`, `upvote_feedback`, `list_feedback`, `amend_feedback`, `propose_article`, `list_pitches`, `upvote_pitch`, `amend_pitch` |
 | **Lab Intelligence** | `submit_lab_event`, `list_lab_events`, `lab_models` |
 | **Methodology** | `explain` |
@@ -46,7 +49,7 @@ Works with Claude Desktop, Claude.ai (web connector), and any MCP-compatible cli
 
 - **Runtime:** Python 3.11, FastAPI, FastMCP
 - **Database:** PostgreSQL 16 with pgvector
-- **Embeddings:** OpenAI text-embedding-3-large (1536 dimensions)
+- **Embeddings:** OpenAI text-embedding-3-large (256d Matryoshka for discovery indexes, 1536d for project/methodology)
 - **LLM:** Claude Haiku 4.5 (release + newsletter summarisation)
 - **Hosting:** Render (web service + cron + managed Postgres)
 
