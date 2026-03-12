@@ -71,9 +71,9 @@ def _fmt_delta(n):
 
 
 def _fmt_delta_safe(delta, has_baseline):
-    """Format a delta, showing n/a when there is no historical baseline."""
+    """Format a delta, showing — when there is no historical baseline."""
     if not has_baseline:
-        return "n/a (new)"
+        return "—"
     return _fmt_delta(delta)
 
 
@@ -301,8 +301,38 @@ def _bucket_interpretation(bucket):
     return f"Bucket '{bucket}' -- interpret with context."
 
 
+def _strip_summary(text: str, max_len: int = 120) -> str:
+    """Clean HTML/markdown artifacts from release summaries and truncate at sentence boundary."""
+    if not text:
+        return ""
+    # Remove HTML tags
+    text = re.sub(r"<[^>]+>", "", text)
+    # Remove markdown headers
+    text = re.sub(r"#{1,6}\s+", "", text)
+    # Remove raw GitHub URLs
+    text = re.sub(r"https?://github\.com/\S+", "", text)
+    # Remove markdown links but keep text
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    # Collapse whitespace
+    text = re.sub(r"\s+", " ", text).strip()
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    # Truncate at last sentence boundary within max_len
+    truncated = text[:max_len]
+    last_period = truncated.rfind(". ")
+    if last_period > max_len // 2:
+        return truncated[:last_period + 1]
+    # Fall back to word boundary
+    last_space = truncated.rfind(" ")
+    if last_space > max_len // 2:
+        return truncated[:last_space] + "..."
+    return truncated + "..."
+
+
 def _group_releases(releases):
-    """Group releases by lab + timestamp (within 1 minute). Returns list of display strings."""
+    """Group releases by project + 24h window. Returns list of display strings."""
     lines = []
     if not releases:
         lines.append("  No releases in this period.")
@@ -310,27 +340,30 @@ def _group_releases(releases):
 
     def _group_key(item):
         rel, proj_name, lab_name = item
-        ts = rel.released_at.replace(second=0, microsecond=0) if rel.released_at else None
-        return (lab_name or "", ts)
+        # Group by project name + date (24h window) instead of lab + minute
+        day = rel.released_at.date() if rel.released_at else None
+        return (proj_name or "", lab_name or "", day)
 
     sorted_releases = sorted(releases, key=_group_key)
     for key, group_iter in groupby(sorted_releases, _group_key):
         items = list(group_iter)
-        lab_name, ts = key
-        if len(items) >= 3 and lab_name:
-            # Group as "Lab: N packages updated"
+        proj_name, lab_name, day = key
+        if len(items) >= 3:
+            # Group as "Project: N releases" (collapses monorepo sub-packages and daily builds)
             first_rel = items[0][0]
             version = _fmt_version(first_rel.version)
+            lab_label = f" ({lab_name})" if lab_name else ""
+            proj_label = proj_name or "unknown"
             lines.append(
-                f"  {_fmt_date(ts)}  "
-                f"{lab_name}: {len(items)} packages updated{f' ({version})' if version else ''}"
+                f"  {_fmt_date(first_rel.released_at)}  "
+                f"{proj_label}{lab_label}: {len(items)} releases{f' (latest {version})' if version else ''}"
             )
         else:
-            for rel, proj_name, lab_n in items:
-                proj_label = proj_name or "unknown"
+            for rel, proj_n, lab_n in items:
+                proj_label = proj_n or "unknown"
                 lab_label = f" ({lab_n})" if lab_n else ""
                 version_label = f" {_fmt_version(rel.version)}" if rel.version else ""
-                summary = f" -- {rel.summary[:120]}" if rel.summary else ""
+                summary = f" -- {_strip_summary(rel.summary)}" if rel.summary else ""
                 lines.append(
                     f"  {_fmt_date(rel.released_at)}  "
                     f"{proj_label}{lab_label}{version_label}{summary}"
@@ -645,11 +678,17 @@ async def about() -> str:
 @track_usage
 async def describe_schema() -> str:
     """List all database tables with their columns and types."""
+    _exclude_tables = {
+        "pg_stat_statements", "pg_stat_statements_info",
+        "alembic_version", "sync_log",
+    }
+
     sql = """
-        SELECT table_name, column_name, data_type, is_nullable
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-        ORDER BY table_name, ordinal_position
+        SELECT c.table_name, c.column_name, c.data_type, c.is_nullable,
+               c.udt_name
+        FROM information_schema.columns c
+        WHERE c.table_schema = 'public'
+        ORDER BY c.table_name, c.ordinal_position
     """
     with engine.connect() as conn:
         rows = conn.execute(text(sql))
@@ -657,8 +696,14 @@ async def describe_schema() -> str:
         for r in rows:
             m = r._mapping
             tname = m["table_name"]
+            if tname in _exclude_tables:
+                continue
             nullable = " (nullable)" if m["is_nullable"] == "YES" else ""
-            col_line = f"  {m['column_name']:<30} {m['data_type']}{nullable}"
+            dtype = m["data_type"]
+            # Show vector dimension instead of generic USER-DEFINED
+            if dtype == "USER-DEFINED" and m.get("udt_name") == "vector":
+                dtype = "vector"
+            col_line = f"  {m['column_name']:<30} {dtype}{nullable}"
             tables.setdefault(tname, []).append(col_line)
 
     lines = ["DATABASE SCHEMA", "=" * 40, ""]
@@ -739,7 +784,7 @@ async def whats_new(days: int = 7) -> str:
             .outerjoin(Lab, Release.lab_id == Lab.id)
             .filter(Release.released_at >= cutoff)
             .order_by(Release.released_at.desc())
-            .limit(50)
+            .limit(20)
             .all()
         )
 
@@ -782,7 +827,7 @@ async def whats_new(days: int = 7) -> str:
 
         # --- Notable HN Discussion ---
         lines.append("")
-        lines.append("NOTABLE HN DISCUSSION")
+        lines.append("TOP HN DISCUSSION (unfiltered)")
         lines.append("-" * 30)
         hn_posts = (
             session.query(HNPost)
@@ -1345,11 +1390,11 @@ async def lab_pulse(lab: str) -> str:
                 (Release.project_id.in_(project_ids) if project_ids else False)
             )
             .order_by(Release.released_at.desc())
-            .limit(15)
+            .limit(5)
         )
         releases = releases_query.all()
 
-        lines.append("RECENT RELEASES")
+        lines.append("RECENT RELEASES (latest 5)")
         lines.append("-" * 30)
         if releases:
             for rel, proj_name in releases:
@@ -1402,7 +1447,7 @@ async def lab_pulse(lab: str) -> str:
                 session.query(HNPost)
                 .filter(HNPost.lab_id == lab_obj.id)
                 .order_by(HNPost.posted_at.desc())
-                .limit(10)
+                .limit(5)
                 .all()
             )
             if hn_posts:
@@ -1426,7 +1471,7 @@ async def lab_pulse(lab: str) -> str:
                 session.query(V2EXPost)
                 .filter(V2EXPost.lab_id == lab_obj.id)
                 .order_by(V2EXPost.posted_at.desc())
-                .limit(10)
+                .limit(3)
                 .all()
             )
             if v2ex_posts:
@@ -1465,7 +1510,7 @@ async def lab_pulse(lab: str) -> str:
         except Exception:
             lines.append("  Lab events data not yet available.")
 
-        # Frontier models
+        # Frontier models (capped to top 5 by context window)
         lines.append("")
         lines.append("FRONTIER MODELS")
         lines.append("-" * 30)
@@ -1477,11 +1522,12 @@ async def lab_pulse(lab: str) -> str:
                     FrontierModel.lab_id == lab_obj.id,
                     FrontierModel.status == "active",
                 )
-                .order_by(FrontierModel.name)
+                .order_by(FrontierModel.context_window.desc().nullslast(), FrontierModel.name)
                 .all()
             )
             if models:
-                for model in models:
+                display_models = models[:5]
+                for model in display_models:
                     ctx = f"{model.context_window:,}tok" if model.context_window else "n/a"
                     pricing = ""
                     if model.pricing_input and model.pricing_output:
@@ -1489,6 +1535,8 @@ async def lab_pulse(lab: str) -> str:
                     elif not model.pricing_input:
                         pricing = "  (open weights)"
                     lines.append(f"  {model.name:<30} ctx: {ctx:<14}{pricing}")
+                if len(models) > 5:
+                    lines.append(f"  ... {len(models) - 5} more. Use lab_models('{lab_obj.slug}') for full catalog.")
             else:
                 lines.append("  No frontier models recorded. Run model ingest to populate.")
         except Exception:
@@ -1925,7 +1973,15 @@ async def list_feedback(topic: str = None, status: str = "active", category: str
         for c in corrections:
             lines.append("")
             lines.append(f"  [{c.id}] [{c.category.upper()}] {c.topic}")
-            lines.append(f"       {c.correction[:200]}")
+            feedback_text = c.correction[:200]
+            # Truncate at word boundary
+            if len(c.correction) > 200:
+                last_space = feedback_text.rfind(" ")
+                if last_space > 100:
+                    feedback_text = feedback_text[:last_space] + "..."
+                else:
+                    feedback_text += "..."
+            lines.append(f"       {feedback_text}")
             if c.context:
                 lines.append(f"       Context: {c.context[:100]}")
             lines.append(
@@ -2027,11 +2083,8 @@ async def list_pitches(status: str = None) -> str:
             lines.append(
                 f"  [{p.id}] {p.topic}  (upvotes: {p.upvotes}, status: {p.status})"
             )
-            lines.append(f"       {p.thesis[:120]}")
-            if p.evidence:
-                lines.append(f"       Evidence: {p.evidence[:100]}")
-            lines.append("")
 
+        lines.append("")
         lines.append(f"Total: {len(pitches)} pitch(es)")
         lines.append("")
         lines.append("Use upvote_pitch(id) to support a pitch.")
@@ -2331,7 +2384,14 @@ async def list_lab_events(lab: str = None, event_type: str = None, limit: int = 
                 f"  {date_str}  [{event.event_type}]  {lab_name}: {event.title}"
             )
             if event.summary:
-                lines.append(f"             {event.summary[:120]}")
+                summary_text = event.summary[:120]
+                if len(event.summary) > 120:
+                    last_space = summary_text.rfind(" ")
+                    if last_space > 60:
+                        summary_text = summary_text[:last_space] + "..."
+                    else:
+                        summary_text += "..."
+                lines.append(f"             {summary_text}")
             if event.source_url:
                 lines.append(f"             {event.source_url}")
             lines.append("")
@@ -2470,6 +2530,14 @@ async def lifecycle_map(category: str = None, tier: int = None, transitions: boo
                 stage = r.get("lifecycle_stage", "unknown")
                 grouped.setdefault(stage, []).append(r)
 
+            # Summary line
+            total_projects = sum(len(grouped.get(s, [])) for s in stage_order)
+            active_stages = sum(1 for s in stage_order if grouped.get(s))
+            lines.append("")
+            lines.append(f"{total_projects} projects across {active_stages} stages.")
+
+            stage_cap = 10
+
             for stage in stage_order:
                 projects = grouped.get(stage, [])
                 if not projects:
@@ -2478,7 +2546,8 @@ async def lifecycle_map(category: str = None, tier: int = None, transitions: boo
                 lines.append(f"{stage.upper()} ({len(projects)} projects)")
                 lines.append(f"  {stage_descriptions.get(stage, '')}")
                 lines.append("-" * 30)
-                for r in projects:
+                display = projects[:stage_cap]
+                for r in display:
                     lines.append(
                         f"  [T{int(r.get('tier', 4))}] {r.get('name', ''):<24} "
                         f"[{r.get('category', '')}]  "
@@ -2487,6 +2556,8 @@ async def lifecycle_map(category: str = None, tier: int = None, transitions: boo
                         f"commits: {_fmt_number(r.get('commits_30d'))}  "
                         f"releases: {r.get('releases_30d', 0)}/30d"
                     )
+                if len(projects) > stage_cap:
+                    lines.append(f"  ... showing top {stage_cap} of {len(projects)}. Use lifecycle_map(category='X') to filter.")
 
             # Transitions section
             if transitions:
@@ -2556,11 +2627,13 @@ async def hype_landscape(category: str = None, limit: int = 10, window: str = No
             if category:
                 params["cat"] = category
 
-            # Most overhyped (highest ratio)
+            # Most overhyped (highest ratio, must actually be in 'hype' bucket)
             overhyped = _safe_mv_query(conn, f"""
                 SELECT name, category, stars, monthly_downloads, hype_ratio, hype_bucket
                 FROM mv_hype_ratio
-                WHERE hype_ratio IS NOT NULL AND hype_ratio > 0 {cat_filter}
+                WHERE hype_ratio IS NOT NULL AND hype_ratio > 0
+                  AND hype_bucket = 'hype'
+                  {cat_filter}
                 ORDER BY hype_ratio DESC
                 LIMIT :lim
             """, params)
@@ -3043,13 +3116,24 @@ async def compare(projects: str) -> str:
         _row("Stars", "stars", _fmt_number)
         _row("Forks", "forks", _fmt_number)
         _row("DL/mo", "monthly_downloads", _fmt_number)
-        _row("Stars 7d", "stars_7d_delta", lambda v: _fmt_delta_safe(v, True) if v is not None else "n/a")
-        _row("Stars 30d", "stars_30d_delta", lambda v: _fmt_delta_safe(v, True) if v is not None else "n/a")
+        def _delta_7d(slug):
+            r = by_slug.get(slug, {})
+            return _fmt_delta_safe(r.get("stars_7d_delta"), r.get("has_7d_baseline", False))
+
+        def _delta_30d(slug):
+            r = by_slug.get(slug, {})
+            return _fmt_delta_safe(r.get("stars_30d_delta"), r.get("has_30d_baseline", False))
+
+        # Stars 7d/30d — use actual baseline flags
+        vals_7d = [_delta_7d(s) for s in slugs]
+        lines.append(f"{'Stars 7d':20}" + "".join(f"{v:<{col_width}}" for v in vals_7d))
+        vals_30d = [_delta_30d(s) for s in slugs]
+        lines.append(f"{'Stars 30d':20}" + "".join(f"{v:<{col_width}}" for v in vals_30d))
         _row("Hype Ratio", "hype_ratio", _fmt_ratio)
         _row("Hype Bucket", "hype_bucket")
         _row("Commits 30d", "commits_30d", _fmt_number)
         _row("Last Release", "last_release_title", lambda v: _fmt_version(str(v)) if v else "n/a")
-        _row("Days Since Rel", "days_since_release", lambda v: str(int(v)) if v is not None else "n/a")
+        _row("Days Since Rel", "days_since_release", lambda v: str(int(v)) if v is not None and int(v) > 0 else "n/a")
 
         # Add missing projects warning
         missing = [s for s in slugs if s not in by_slug]
@@ -4081,7 +4165,7 @@ async def topic(query: str) -> str:
                         FROM newsletter_mentions
                         WHERE embedding IS NOT NULL
                         ORDER BY embedding <=> :vec
-                        LIMIT 10
+                        LIMIT 5
                     """), {"vec": str(nl_vec)}).fetchall()
                     for r in nl_rows:
                         m = r._mapping
@@ -4260,7 +4344,8 @@ async def scout(category: str = None, limit: int = 15) -> str:
 
             # ---- Small tracked projects with repo_created_at ----
             tracked_sql = """
-                SELECT p.name, p.slug, p.category, p.github_owner, p.github_repo,
+                SELECT DISTINCT ON (p.id)
+                       p.name, p.slug, p.category, p.github_owner, p.github_repo,
                        p.repo_created_at, gs.stars
                 FROM projects p
                 JOIN github_snapshots gs ON gs.project_id = p.id
@@ -4961,7 +5046,7 @@ async def deep_dive(identifier: str) -> str:
                 return (
                     f"Could not find '{identifier}' in tracked projects or candidates.\n"
                     f"Try: deep_dive('owner/repo'), a project slug, or a candidate name.\n"
-                    f"Use search('keyword') to find projects, or scout() to see candidates."
+                    f"Use topic('keyword') to find projects, or scout() to see candidates."
                 )
 
         return "\n".join(lines)
@@ -5124,8 +5209,19 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5, offset:
             star_score = log10(max(r["stars"], 1) + 1) / 5.0
             dl = r.get("downloads_monthly") or 0
             download_score = log10(max(dl, 1) + 1) / 7.0
-            r["score"] = (0.6 * r["similarity"] + 0.2 * star_score + 0.2 * download_score
-                          + _name_boost(query, r["name"], r["full_name"]))
+            nb = _name_boost(query, r["name"], r["full_name"])
+            r["score"] = (0.6 * r["similarity"] + 0.2 * star_score + 0.2 * download_score + nb)
+            r["_name_boost"] = nb
+            # Normalise license label
+            if r.get("license") == "NOASSERTION":
+                r["license"] = None
+
+        # ---- Filter low-quality results ----
+        results = [r for r in results if r["similarity"] >= 0.3 or r["_name_boost"] > 0]
+
+        if not results:
+            scope = f" in domain '{domain}'" if domain else ""
+            return f"No relevant results found for '{query}'{scope}. Try broader terms or a different domain."
 
         results.sort(key=lambda x: x["score"], reverse=True)
         page = results[offset:offset + limit]
@@ -5858,11 +5954,14 @@ async def find_dependents(package_name: str, source: str = "") -> str:
             scope = f" ({source})" if source else ""
             return f"No indexed repos found that depend on '{package_name}'{scope}."
 
+        # Coverage context
+        total_repos = conn.execute(text("SELECT COUNT(*) FROM ai_repos")).scalar() or 0
+
         lines = []
         lines.append(f"DEPENDENTS OF: {package_name}")
         if source:
             lines.append(f"Source: {source}")
-        lines.append(f"Found {len(rows)} indexed repo{'s' if len(rows) != 1 else ''}")
+        lines.append(f"Found {len(rows)} indexed repo{'s' if len(rows) != 1 else ''} (searched {total_repos:,} indexed repos)")
         lines.append("=" * 50)
 
         for i, r in enumerate(rows, 1):
@@ -5883,6 +5982,9 @@ async def find_dependents(package_name: str, source: str = "") -> str:
 
         if len(rows) == 20:
             lines.append("\n... showing top 20 by stars. There may be more.")
+
+        if len(rows) < 5:
+            lines.append("\nNote: This reflects indexed coverage only, not real-world adoption.")
 
         return "\n".join(lines)
 
