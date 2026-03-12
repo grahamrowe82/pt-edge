@@ -225,6 +225,7 @@ async def ingest_hf_datasets(batch_limit: int = 50000) -> dict:
             rows.append(parsed)
 
     if len(rows) > batch_limit:
+        logger.warning(f"Truncating {len(rows)} datasets to batch_limit={batch_limit}")
         rows = rows[:batch_limit]
 
     logger.info(f"Parsed {len(rows)} datasets with >={MIN_DOWNLOADS} downloads")

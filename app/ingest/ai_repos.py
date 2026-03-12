@@ -38,9 +38,19 @@ async def ingest_ai_repos(domains: list[str] | None = None) -> dict:
         headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
 
     semaphore = asyncio.Semaphore(2)  # conservative for Search API
-    seen: set[str] = set()  # global dedup by lowercase full_name
+
+    # Pre-seed dedup set from DB so we skip already-known repos
+    with engine.connect() as conn:
+        existing = conn.execute(text(
+            "SELECT LOWER(full_name) FROM ai_repos"
+        )).fetchall()
+    seen: set[str] = {r[0] for r in existing}
+    logger.info(f"Pre-seeded {len(seen)} existing repos into dedup set")
+
     domain_results: dict[str, int] = {}
-    all_repos: list[dict] = []
+    total_upserted = 0
+    total_found = 0
+    total_embedded = 0
 
     # Process domains in priority order (specific → broad)
     ordered = [d for d in DOMAIN_ORDER if d in DOMAINS]
@@ -72,30 +82,29 @@ async def ingest_ai_repos(domains: list[str] | None = None) -> dict:
                 await asyncio.sleep(1.0)
 
             domain_results[domain_key] = len(domain_repos)
-            all_repos.extend(domain_repos)
-            logger.info(f"Domain '{domain_key}' complete: {len(domain_repos)} repos")
+            total_found += len(domain_repos)
 
-    if not all_repos:
+            # Flush this domain to DB immediately
+            if domain_repos:
+                upserted = _batch_upsert(domain_repos)
+                total_upserted += upserted
+                logger.info(f"Domain '{domain_key}' complete: {len(domain_repos)} found, {upserted} upserted")
+
+                # Embed new descriptions for this domain
+                if is_enabled():
+                    embedded = await _embed_new_repos()
+                    total_embedded += embedded
+            else:
+                logger.info(f"Domain '{domain_key}' complete: 0 new repos")
+
+    if total_found == 0:
         logger.warning("No AI repos found")
-        _log_sync(started_at, 0, None)
-        return {"repos_found": 0, "upserted": 0, "embedded": 0, "domains": domain_results}
 
-    logger.info(f"Discovered {len(all_repos)} unique repos across {len(domain_results)} domains")
-
-    # Batch upsert
-    upserted = _batch_upsert(all_repos)
-    logger.info(f"Upserted {upserted}/{len(all_repos)} repos")
-
-    # Embed new descriptions
-    embedded = 0
-    if is_enabled():
-        embedded = await _embed_new_repos()
-
-    _log_sync(started_at, upserted, None)
+    _log_sync(started_at, total_upserted, None)
     return {
-        "repos_found": len(all_repos),
-        "upserted": upserted,
-        "embedded": embedded,
+        "repos_found": total_found,
+        "upserted": total_upserted,
+        "embedded": total_embedded,
         "domains": domain_results,
     }
 

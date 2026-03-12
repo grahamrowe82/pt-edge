@@ -72,8 +72,8 @@ async def backfill_projects(force: bool = False) -> int:
                 conn.execute(text("""
                     UPDATE projects SET embedding = :vec WHERE id = :pid
                 """), {"vec": str(vec), "pid": pid})
+                conn.commit()
                 count += 1
-        conn.commit()
 
     logger.info(f"Embedded {count}/{len(rows)} projects.")
     return count
@@ -117,8 +117,8 @@ async def backfill_methodology(force: bool = False) -> int:
                 conn.execute(text("""
                     UPDATE methodology SET embedding = :vec WHERE id = :mid
                 """), {"vec": str(vec), "mid": mid})
+                conn.commit()
                 count += 1
-        conn.commit()
 
     logger.info(f"Embedded {count}/{len(rows)} methodology entries.")
     return count
@@ -164,8 +164,8 @@ async def backfill_releases(force: bool = False) -> int:
                 conn.execute(text("""
                     UPDATE releases SET embedding = :vec WHERE id = :rid
                 """), {"vec": str(vec), "rid": rid})
+                conn.commit()
                 count += 1
-        conn.commit()
 
     logger.info(f"Embedded {count}/{len(rows)} releases.")
     return count
@@ -210,8 +210,8 @@ async def backfill_newsletters(force: bool = False) -> int:
                 conn.execute(text("""
                     UPDATE newsletter_mentions SET embedding = :vec WHERE id = :nid
                 """), {"vec": str(vec), "nid": nid})
+                conn.commit()
                 count += 1
-        conn.commit()
 
     logger.info(f"Embedded {count}/{len(rows)} newsletter topics.")
     return count
