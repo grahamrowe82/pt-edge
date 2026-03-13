@@ -13,3 +13,4 @@ venv/
 .vscode/
 *.db
 *.sqlite3
+publishing/

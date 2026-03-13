@@ -6762,11 +6762,8 @@ def mount_mcp(app):
     @app.post("/mcp")
     async def mcp_json_rpc(request: Request):
         """Simple JSON-RPC endpoint for Claude.ai web connector."""
-        token = _check_token(request)
-        if not token:
-            return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
-        # Set request context for tool usage tracking
+        # Extract client info for tracking (before auth — needed for all paths)
         from app.mcp.tracking import set_request_context
         raw_ip = request.client.host if request.client else "unknown"
         client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or raw_ip
@@ -6777,6 +6774,21 @@ def mount_mcp(app):
         method = body.get("method")
         params = body.get("params", {})
         req_id = body.get("id", 0)
+
+        # Allow discovery methods without auth (initialize, tools/list,
+        # notifications/initialized, prompts/list, resources/list).
+        # This lets MCP scoring engines (Glama) and potential users
+        # discover what the server offers before authenticating.
+        _PUBLIC_METHODS = {
+            "initialize", "notifications/initialized",
+            "tools/list", "prompts/list",
+            "resources/list", "resources/templates/list",
+        }
+
+        if method not in _PUBLIC_METHODS:
+            token = _check_token(request)
+            if not token:
+                return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
         if method == "initialize":
             _log_protocol_event("mcp.initialize", client_ip, user_agent)
