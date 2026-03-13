@@ -104,16 +104,42 @@ def test_mcp_tools_list():
 
 
 def test_mcp_unauthorized():
-    """MCP endpoint rejects bad tokens."""
+    """MCP endpoint rejects bad tokens for tool calls."""
     from fastapi.testclient import TestClient
     from app.main import app
 
     client = TestClient(app)
+    # Discovery methods (initialize, tools/list) are public — no auth required.
+    # Tool execution still requires a valid token.
     resp = client.post(
         "/mcp?token=wrong",
-        json={"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+              "params": {"name": "about", "arguments": {}}},
     )
     assert resp.status_code == 401
+
+
+def test_mcp_discovery_no_auth():
+    """Discovery methods work without authentication."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    # initialize — no token at all
+    resp = client.post(
+        "/mcp",
+        json={"jsonrpc": "2.0", "id": 1, "method": "initialize"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["result"]["serverInfo"]["name"] == "pt-edge"
+
+    # tools/list — bad token should still work
+    resp = client.post(
+        "/mcp?token=wrong",
+        json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()["result"]["tools"]) >= 20
 
 
 # ---------------------------------------------------------------------------
