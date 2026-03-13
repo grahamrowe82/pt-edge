@@ -378,7 +378,7 @@ def _group_releases(releases):
 @mcp.tool()
 @track_usage
 async def about() -> str:
-    """What is PT-Edge, how does it work, and what can you do with it?"""
+    """Start here. Returns a guide to all PT-Edge capabilities — what data is available, which tools to use for which questions, and recommended workflows. Call this first to understand the full toolkit."""
     lines = [
         "PT-EDGE -- AI Project Intelligence",
         "=" * 50,
@@ -671,6 +671,88 @@ async def about() -> str:
 
 
 # ---------------------------------------------------------------------------
+# Tool: more_tools (gateway to advanced tools)
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def more_tools() -> str:
+    """Unlock 30+ advanced tools for hype analysis, lifecycle tracking, lab intelligence, HuggingFace model/dataset search, editorial curation, community feedback, and raw SQL queries. Call this to see the full catalog."""
+    # Build descriptions from the hidden tools dynamically
+    lines = [
+        "ADVANCED PT-EDGE TOOLS",
+        "=" * 60,
+        "",
+        "These tools are all available — call any of them by name.",
+        "They are grouped by category below.",
+        "",
+    ]
+
+    categories = [
+        ("Schema & Raw Query", [
+            ("describe_schema", "List all database tables with their columns and types"),
+            ("query", "Run a read-only SQL query (SELECT only). Escape hatch for questions no pre-built tool covers"),
+            ("explain", "Deep documentation on any PT-Edge metric, algorithm, or design decision"),
+        ]),
+        ("Intelligence — Projects", [
+            ("compare", "Side-by-side comparison of 2-5 projects (comma-separated names)"),
+            ("related", "Which tracked projects appear alongside this one in HN discussions"),
+            ("deep_dive", "Full profile of any project or candidate using cached data"),
+            ("lifecycle_map", "All projects grouped by lifecycle stage (emerging/growing/mature/fading). Filter by category or tier"),
+            ("movers", "Biggest directional changes — projects accelerating or decelerating vs prior window"),
+            ("market_map", "Category concentration, power law distribution, lab dominance"),
+            ("radar", "What should you be paying attention to that isn't tracked yet"),
+        ]),
+        ("Intelligence — Labs", [
+            ("lab_pulse", "What a specific AI lab is shipping. Comma-separate for cross-lab comparison"),
+            ("lab_models", "Browse frontier models by lab — context windows, pricing, capabilities"),
+            ("list_lab_events", "Browse lab events: launches, releases, API changes"),
+            ("submit_lab_event", "Record a significant lab event that moved the practical frontier"),
+        ]),
+        ("Hype & Signals", [
+            ("hype_check", "Stars vs downloads reality check for a project"),
+            ("hype_landscape", "Top overhyped + top underrated projects, bulk comparison"),
+            ("scout", "Rising projects ranked by stars/day — candidates and small tracked projects"),
+            ("hn_pulse", "HN discourse intelligence — what the community is discussing"),
+        ]),
+        ("Discovery — HuggingFace", [
+            ("find_dataset", "Search ~42K HuggingFace datasets by description. Filter by task/language"),
+            ("find_model", "Search ~18K HuggingFace models by description. Filter by task/library"),
+        ]),
+        ("Discovery — APIs & Dependencies", [
+            ("get_api_spec", "Get OpenAPI spec overview for a public API (endpoints, auth, base URL)"),
+            ("get_api_endpoints", "Get detailed endpoint schemas for code generation"),
+            ("get_dependencies", "Dependency list for an indexed AI repo (PyPI/npm)"),
+            ("find_dependents", "Reverse lookup — which indexed repos depend on a given package"),
+        ]),
+        ("Discovery — MCP Ecosystem", [
+            ("mcp_coverage", "MCP adoption across developer tools — which categories have servers"),
+        ]),
+        ("Community Feedback", [
+            ("submit_feedback", "Submit an observation, insight, bug report, or feature request"),
+            ("upvote_feedback", "Upvote someone else's feedback"),
+            ("list_feedback", "Browse practitioner feedback, filter by topic/status/category"),
+            ("amend_feedback", "Append a note to existing feedback (e.g. flag duplicate)"),
+        ]),
+        ("Content Pitches", [
+            ("propose_article", "Pitch an article idea for Phase Transitions newsletter"),
+            ("list_pitches", "Browse community article pitches"),
+            ("upvote_pitch", "Upvote an article pitch"),
+            ("amend_pitch", "Append a note to an existing pitch"),
+        ]),
+    ]
+
+    for cat_name, tools in categories:
+        lines.append(f"── {cat_name} ──")
+        for tool_name, desc in tools:
+            lines.append(f"  {tool_name:24s} {desc}")
+        lines.append("")
+
+    lines.append("Call any tool above by name. Example: compare('langchain, llamaindex')")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Tool 2: describe_schema
 # ---------------------------------------------------------------------------
 
@@ -722,7 +804,7 @@ async def describe_schema() -> str:
 @mcp.tool()
 @track_usage
 async def query(sql: str) -> str:
-    """Execute a read-only SQL query. Only SELECT statements are allowed. Returns JSON array."""
+    """Run a read-only SQL query against PT-Edge's database. Use when no pre-built tool answers the question. Call describe_schema (via more_tools) first to see available tables. SELECT only, 5s timeout, JSON results."""
     sql_stripped = sql.strip()
 
     # Block semicolons (no stacked queries)
@@ -771,7 +853,7 @@ async def query(sql: str) -> str:
 @mcp.tool()
 @track_usage
 async def whats_new(days: int = 7) -> str:
-    """What actually shipped recently? Releases, trending projects, and notable HN discussion."""
+    """What shipped in the AI ecosystem this week? New releases, trending projects, and notable Hacker News discussion — all in one view."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     lines = [f"WHAT'S NEW (last {days} days)", "=" * 40]
 
@@ -860,7 +942,7 @@ async def whats_new(days: int = 7) -> str:
 @mcp.tool()
 @track_usage
 async def project_pulse(project: str) -> str:
-    """Deep dive on a specific project. Accepts slug or name."""
+    """Get the full picture on an AI project — stars, downloads, momentum, commits, hype ratio, lifecycle stage, and HN mentions. Pass a project name or slug (e.g. 'langchain', 'ollama')."""
     session = SessionLocal()
     try:
         proj, suggestions = await _find_project_or_suggest(session, project)
@@ -1555,7 +1637,7 @@ async def lab_pulse(lab: str) -> str:
 @mcp.tool()
 @track_usage
 async def trending(category: str = None, window: str = "7d") -> str:
-    """What's accelerating right now. Top 20 projects by star growth."""
+    """What's accelerating right now? Top 20 AI projects by GitHub star growth over the last 7 or 30 days. Filter by category."""
     delta_col = "stars_7d_delta" if window == "7d" else "stars_30d_delta"
     baseline_col = "has_7d_baseline" if window == "7d" else "has_30d_baseline"
     window_label = "7 days" if window == "7d" else "30 days"
@@ -1840,24 +1922,8 @@ async def submit_feedback(
 ) -> str:
     """Submit feedback about an AI topic or project.
 
-    CHOOSE THE RIGHT CATEGORY — do not default to 'bug':
-      bug         — something is BROKEN or returning WRONG DATA. A tool error,
-                    a calculation mistake, stale data. Only use if you can point
-                    to a specific thing that is objectively incorrect.
-      feature     — a concrete BUILDABLE thing. A new tool, a new data source,
-                    a new pipeline, a UI change. You could write a spec for it.
-      observation — strategic context, competitive analysis, positioning insight,
-                    architectural vision. Important thinking, but not a task.
-      insight     — analytical finding or ecosystem pattern worth preserving.
-                    Guidebook prose material. "The data shows X" or "Layer Y
-                    iterates faster than layer Z."
-
-    When in doubt, use 'observation' (not 'bug'). A brainstorm is never a bug.
-
-    PRIVACY: All submissions are PUBLIC and visible to anyone with access to
-    PT-Edge. Do NOT include: client names, pricing, revenue figures, personal
-    information, passwords, API keys, or anything commercially sensitive.
-    Redact before submitting.
+    Categories: bug (broken/wrong data), feature (buildable thing), observation (strategic context), insight (analytical finding).
+    Default 'observation' when unsure. All submissions are PUBLIC — do not include sensitive data.
     """
     # Input length limits
     if len(topic) > 300:
@@ -2261,32 +2327,10 @@ async def submit_lab_event(
     lab: str, event_type: str, title: str,
     summary: str = None, source_url: str = None, event_date: str = None,
 ) -> str:
-    """Record a significant lab event — something that moved the practical frontier.
+    """Record a significant lab event that moved the practical frontier.
 
-    EDITORIAL FILTER — only record events where the capability surface area changed:
-    "Yesterday you couldn't do X, today you can."
-
-    YES — qualifies:
-      - New product or feature shipped (Cowork, Claude Code Remote Control, ChatGPT Health)
-      - New model released (Opus 4.6, Gemini 3 Deep Think, Voxtral Mini 4B)
-      - New capability enabled (offline mode, swarm orchestration, infra support)
-      - API or platform change that affects what developers can build (Gemini API key policy)
-      - New integration that opens a new surface (Gemini in Gmail, Gemini in Chrome)
-      - Deprecation that removes capability (GPT-4o retirement)
-
-    NO — does not qualify:
-      - Funding rounds, valuations, investments
-      - Politics, government bans, military disputes
-      - Safety pledges, constitutions, policy statements
-      - Business model changes (ads, pricing tiers) unless they unlock new capability
-      - Impressive demos of existing capability (GPT solves physics)
-      - Distribution/adoption news (Claude inside Microsoft)
-      - Community hacks or workarounds (Llama on single GPU)
-      - IP disputes, distillation claims, legal drama
-      - Opinion pieces, benchmarks, market reactions
-
-    The test: would someone building on this ecosystem need to update their mental model
-    of what's possible? If yes, record it. If it's just interesting news, skip it.
+    Only record events where the capability surface area changed — new models, products,
+    APIs, or deprecations. Skip funding, politics, opinions, and adoption news.
 
     Event types: product_launch, model_launch, capability, api_change, deprecation, protocol, other
     """
@@ -3972,11 +4016,7 @@ async def explain(topic: str = None) -> str:
 @mcp.tool()
 @track_usage
 async def topic(query: str) -> str:
-    """What's happening with a topic across the entire ecosystem?
-
-    Searches tracked projects, candidates, and HN posts semantically.
-    Use for conceptual queries like 'MCP', 'vector databases', 'code generation'.
-    """
+    """Search across the entire AI ecosystem by topic — tracked projects, candidates, and HN posts. Use for conceptual queries like 'MCP', 'vector databases', 'code generation', 'reasoning models'."""
     lines = [
         f"TOPIC: {query}",
         "=" * 60,
@@ -5314,8 +5354,8 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5, offset:
 @track_usage
 async def find_ai_tool(query: str, domain: str = "", limit: int = 5, offset: int = 0) -> str:
     """Find AI/ML tools and libraries by describing what you need in plain English.
-    Searches ~100K indexed AI repos from GitHub across domains like
-    MCP servers, AI agents, RAG, LLM tools, vector databases, and more.
+    Searches ~100K indexed AI repos from GitHub. Use when someone asks
+    "is there a tool for X?" or "what libraries exist for Y?".
 
     Optional domain filter: mcp, agents, rag, llm-tools, generative-ai,
     embeddings, vector-db, prompt-engineering, transformers, ml-frameworks
@@ -5324,7 +5364,6 @@ async def find_ai_tool(query: str, domain: str = "", limit: int = 5, offset: int
       find_ai_tool("database query tool for postgres", domain="mcp")
       find_ai_tool("autonomous coding agent")
       find_ai_tool("PDF document chunking for RAG pipeline")
-      find_ai_tool("vector similarity search engine", domain="vector-db")
     """
     return await _search_ai_repos(query=query, domain=domain, limit=limit, offset=offset)
 
@@ -5333,7 +5372,8 @@ async def find_ai_tool(query: str, domain: str = "", limit: int = 5, offset: int
 @track_usage
 async def find_mcp_server(query: str, limit: int = 5, offset: int = 0) -> str:
     """Find MCP servers by describing what you need in plain English.
-    Convenience wrapper — searches only the 'mcp' domain.
+    Use when someone asks "is there an MCP server for X?" or needs
+    to connect Claude to an external service.
 
     Examples:
       find_mcp_server("database query tool for postgres")
@@ -5644,7 +5684,8 @@ async def _search_public_apis(query: str, category: str = "", limit: int = 5, of
 @track_usage
 async def find_public_api(query: str, category: str = "", limit: int = 5, offset: int = 0) -> str:
     """Find public REST APIs by describing what you need in plain English.
-    Searches ~2,500 indexed APIs from the APIs.guru directory.
+    Searches ~2,500 indexed APIs. Use when building integrations or looking
+    for data sources. Returns endpoints, auth methods, and base URLs.
 
     Optional category filter: financial, cloud, analytics, social, media,
     machine_learning, security, ecommerce, iot, messaging, etc.
@@ -5653,7 +5694,6 @@ async def find_public_api(query: str, category: str = "", limit: int = 5, offset
       find_public_api("payment processing")
       find_public_api("weather forecast data")
       find_public_api("send SMS messages", category="messaging")
-      find_public_api("image recognition", category="machine_learning")
     """
     return await _search_public_apis(query=query, category=category, limit=limit, offset=offset)
 
@@ -6658,8 +6698,10 @@ import inspect
 
 _PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
 
+# Full tool list — used by SSE transport (Claude Desktop / SDK).
+# Includes editorial tools and legacy aliases for backward compatibility.
 _TOOL_LIST = [
-    about, describe_schema, query, whats_new, project_pulse, lab_pulse,
+    about, more_tools, describe_schema, query, whats_new, project_pulse, lab_pulse,
     trending, hype_check,
     submit_feedback, upvote_feedback, list_feedback, amend_feedback,
     submit_correction, upvote_correction, list_corrections, amend_correction,
@@ -6674,7 +6716,6 @@ _TOOL_LIST = [
     find_dataset, find_model,
 ]
 
-
 def _tool_name(t) -> str:
     return getattr(t, "name", None) or t.__name__
 
@@ -6683,13 +6724,36 @@ def _tool_fn(t):
     return getattr(t, "fn", t)
 
 
+# Core tools — the only tools visible in JSON-RPC tools/list (Claude.ai).
+# 10 tools that cover the main use cases. Everything else is accessible
+# via more_tools() which returns a catalog, or by calling tools directly.
+_CORE_TOOL_NAMES = {
+    "about",            # orientation — start here
+    "more_tools",       # gateway to 30+ advanced tools
+    "find_ai_tool",     # search ~100K AI repos
+    "find_mcp_server",  # search MCP servers
+    "find_public_api",  # search REST APIs
+    "trending",         # what's accelerating right now
+    "project_pulse",    # deep dive on a project
+    "whats_new",        # what shipped recently
+    "topic",            # semantic search across ecosystem
+    "query",            # raw SQL escape hatch
+}
+
+# Public tool list — used by JSON-RPC transport (Claude.ai web connector).
+# Only core tools appear in tools/list. All other tools still work if called
+# by name (they're in _TOOLS) — they just don't clutter the initial listing.
+_TOOL_LIST_PUBLIC = [t for t in _TOOL_LIST if _tool_name(t) in _CORE_TOOL_NAMES]
+
+# Lookup includes ALL tools (so SSE aliases and editorial tools still work via JSON-RPC
+# if called directly — they just won't appear in tools/list for external users).
 _TOOLS = {_tool_name(t): t for t in _TOOL_LIST}
 
 
-def _tool_definitions() -> list[dict]:
+def _tool_definitions(tools=None) -> list[dict]:
     """Build JSON-RPC tool definitions, using inspect as fallback for schemas."""
     defs = []
-    for t in _TOOL_LIST:
+    for t in (tools or _TOOL_LIST):
         name = _tool_name(t)
         fn = _tool_fn(t)
 
@@ -6807,7 +6871,7 @@ def mount_mcp(app):
             return JSONResponse({
                 "jsonrpc": "2.0",
                 "id": req_id,
-                "result": {"tools": _tool_definitions()},
+                "result": {"tools": _tool_definitions(_TOOL_LIST_PUBLIC)},
             })
 
         if method == "tools/call":
