@@ -85,7 +85,7 @@ def test_mcp_initialize():
 
 
 def test_mcp_tools_list():
-    """MCP tools/list returns all tools."""
+    """MCP tools/list returns core tools (not the full set)."""
     from fastapi.testclient import TestClient
     from app.main import app
     from app.settings import settings
@@ -97,10 +97,11 @@ def test_mcp_tools_list():
     )
     assert resp.status_code == 200
     tools = resp.json()["result"]["tools"]
-    assert len(tools) >= 20
+    assert len(tools) == 10  # core tools only
     names = [t["name"] for t in tools]
-    assert "scout" in names
-    assert "deep_dive" in names
+    assert "about" in names
+    assert "more_tools" in names
+    assert "find_ai_tool" in names
 
 
 def test_mcp_unauthorized():
@@ -139,7 +140,22 @@ def test_mcp_discovery_no_auth():
         json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
     )
     assert resp.status_code == 200
-    assert len(resp.json()["result"]["tools"]) >= 20
+    assert len(resp.json()["result"]["tools"]) == 10  # core tools only
+
+
+def test_hidden_tools_still_callable():
+    """Tools not in core list are still callable via JSON-RPC."""
+    from app.mcp.server import _TOOLS, _CORE_TOOL_NAMES
+
+    # Verify hidden tools exist in _TOOLS lookup
+    assert "describe_schema" not in _CORE_TOOL_NAMES
+    assert "describe_schema" in _TOOLS
+    assert "hype_check" not in _CORE_TOOL_NAMES
+    assert "hype_check" in _TOOLS
+
+    # Verify more_tools is in core
+    assert "more_tools" in _CORE_TOOL_NAMES
+    assert "more_tools" in _TOOLS
 
 
 # ---------------------------------------------------------------------------
