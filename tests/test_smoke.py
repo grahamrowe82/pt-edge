@@ -960,3 +960,199 @@ def test_build_briefing_text():
     assert "Test Title" in text
     assert "Test summary" in text
     assert "mcp" in text
+
+
+# ---------------------------------------------------------------------------
+# PR #60: Rate limiting, subcategory, crates.io, briefing refresh
+# ---------------------------------------------------------------------------
+
+class TestRateLimiter:
+    """RateLimiter enforces minimum interval between calls."""
+
+    def test_import(self):
+        from app.ingest.rate_limit import RateLimiter, ANTHROPIC_LIMITER, OPENAI_LIMITER
+        assert isinstance(ANTHROPIC_LIMITER, RateLimiter)
+        assert isinstance(OPENAI_LIMITER, RateLimiter)
+
+    def test_rpm_setting(self):
+        from app.ingest.rate_limit import ANTHROPIC_LIMITER, OPENAI_LIMITER
+        assert ANTHROPIC_LIMITER.rpm == 40
+        assert OPENAI_LIMITER.rpm == 400
+
+    def test_interval_calculation(self):
+        from app.ingest.rate_limit import RateLimiter
+        limiter = RateLimiter(rpm=60)
+        assert limiter._interval == 1.0  # 60s / 60 = 1s
+
+    def test_acquire_is_async(self):
+        import asyncio
+        from app.ingest.rate_limit import RateLimiter
+        limiter = RateLimiter(rpm=6000)  # fast for testing
+        asyncio.run(limiter.acquire())  # should not raise
+
+
+class TestCrateDownloads:
+    """Crate download helpers work correctly."""
+
+    def test_fetch_crate_downloads_import(self):
+        from app.ingest.downloads import fetch_crate_downloads
+        assert callable(fetch_crate_downloads)
+
+    def test_crate_candidates(self):
+        from app.ingest.ai_repo_downloads import _crate_candidates
+        candidates = _crate_candidates("my-tool-rs")
+        assert "my-tool-rs" in candidates
+        assert "my-tool" in candidates  # strip -rs suffix
+
+    def test_crate_candidates_no_suffix(self):
+        from app.ingest.ai_repo_downloads import _crate_candidates
+        candidates = _crate_candidates("tokio")
+        assert "tokio" in candidates
+
+    def test_is_crate_candidate_rust(self):
+        from app.ingest.ai_repo_downloads import _is_crate_candidate
+        assert _is_crate_candidate("Rust", None)
+        assert _is_crate_candidate("Rust", [])
+
+    def test_is_crate_candidate_topics(self):
+        from app.ingest.ai_repo_downloads import _is_crate_candidate
+        assert _is_crate_candidate("Go", ["rust", "cli"])
+        assert not _is_crate_candidate("Go", ["golang"])
+
+    def test_crate_matches_repo(self):
+        from app.ingest.ai_repo_downloads import _crate_matches_repo
+        assert _crate_matches_repo(
+            {"crate": {"repository": "https://github.com/tokio-rs/tokio"}},
+            "tokio-rs", "tokio",
+        )
+        assert not _crate_matches_repo(
+            {"crate": {"repository": "https://github.com/other/repo"}},
+            "tokio-rs", "tokio",
+        )
+
+
+class TestSubcategoryClassifier:
+    """MCP subcategory classifier assigns correct labels."""
+
+    def test_classify_framework(self):
+        from app.ingest.ai_repo_subcategory import _classify_mcp
+        assert _classify_mcp("fastmcp", "MCP framework", None) == "framework"
+
+    def test_classify_gateway(self):
+        from app.ingest.ai_repo_subcategory import _classify_mcp
+        assert _classify_mcp("mcp-gateway", "API gateway for MCP", None) == "gateway"
+
+    def test_classify_transport(self):
+        from app.ingest.ai_repo_subcategory import _classify_mcp
+        assert _classify_mcp("mcp-sse-transport", "SSE transport layer", None) == "transport"
+
+    def test_classify_ide(self):
+        from app.ingest.ai_repo_subcategory import _classify_mcp
+        assert _classify_mcp("mcp-vscode", "VSCode extension for MCP", None) == "ide"
+
+    def test_classify_security(self):
+        from app.ingest.ai_repo_subcategory import _classify_mcp
+        assert _classify_mcp("mcp-auth", "OAuth provider for MCP", None) == "security"
+
+    def test_classify_none_for_generic(self):
+        from app.ingest.ai_repo_subcategory import _classify_mcp
+        assert _classify_mcp("my-mcp-server", "A server for weather data", None) is None
+
+    def test_topics_contribute(self):
+        from app.ingest.ai_repo_subcategory import _classify_mcp
+        result = _classify_mcp("my-tool", "generic description", ["testing", "mcp"])
+        assert result == "testing"
+
+
+def test_ai_repo_subcategory_field():
+    """AIRepo model has subcategory attribute."""
+    from app.models.content import AIRepo
+    assert hasattr(AIRepo, "subcategory")
+
+
+def test_ai_repo_crate_package_field():
+    """AIRepo model has crate_package attribute."""
+    from app.models.content import AIRepo
+    assert hasattr(AIRepo, "crate_package")
+
+
+def test_project_ai_repo_id_field():
+    """Project model has ai_repo_id FK."""
+    from app.models.core import Project
+    assert hasattr(Project, "ai_repo_id")
+
+
+def test_mv_ai_repo_ecosystem_in_refresh():
+    """mv_ai_repo_ecosystem is in the views refresh list."""
+    from app.views.refresh import VIEWS_IN_ORDER
+    assert "mv_ai_repo_ecosystem" in VIEWS_IN_ORDER
+
+
+def test_subcategory_in_runner():
+    """Subcategory inference is wired into the runner."""
+    import inspect
+    from app.ingest import runner
+    source = inspect.getsource(runner.run_all)
+    assert "subcategory" in source
+    assert "ingest_subcategories" in source
+
+
+def test_briefing_refresh_in_runner():
+    """Briefing evidence refresh is wired into the runner."""
+    import inspect
+    from app.ingest import runner
+    source = inspect.getsource(runner.run_all)
+    assert "briefing_refresh" in source
+    assert "refresh_briefing_evidence" in source
+
+
+def test_project_linking_in_runner():
+    """Project ↔ ai_repos linking is wired into the runner."""
+    import inspect
+    from app.ingest import runner
+    source = inspect.getsource(runner.run_all)
+    assert "project_linking" in source
+    assert "ai_repo_id" in source
+
+
+def test_briefing_refresh_import():
+    """Briefing refresh module imports without crashing."""
+    from app.briefing_refresh import refresh_briefing_evidence
+    assert callable(refresh_briefing_evidence)
+
+
+def test_rate_limiter_in_newsletters():
+    """Newsletter ingest uses rate limiter."""
+    import inspect
+    from app.ingest import newsletters
+    source = inspect.getsource(newsletters)
+    assert "ANTHROPIC_LIMITER" in source
+
+
+def test_rate_limiter_in_releases():
+    """Release ingest uses rate limiter."""
+    import inspect
+    from app.ingest import releases
+    source = inspect.getsource(releases)
+    assert "ANTHROPIC_LIMITER" in source
+
+
+def test_rate_limiter_in_embeddings():
+    """Embeddings module uses rate limiter."""
+    import inspect
+    from app import embeddings
+    source = inspect.getsource(embeddings)
+    assert "OPENAI_LIMITER" in source
+
+
+def test_runner_pipeline_order():
+    """LLM-dependent jobs (releases, newsletters) come after non-LLM jobs."""
+    import inspect
+    from app.ingest import runner
+    source = inspect.getsource(runner.run_all)
+    # releases and newsletters should appear after ai_repos in the source
+    ai_repos_pos = source.index('"ai_repos"')
+    releases_pos = source.index('"releases"')
+    newsletters_pos = source.index('"newsletters"')
+    assert releases_pos > ai_repos_pos, "releases should run after ai_repos"
+    assert newsletters_pos > ai_repos_pos, "newsletters should run after ai_repos"

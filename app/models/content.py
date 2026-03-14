@@ -106,6 +106,8 @@ class AIRepo(Base):
     downloads_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     dependency_count: Mapped[int] = mapped_column(Integer, default=0)
     deps_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    subcategory: Mapped[str | None] = mapped_column(String(50))
+    crate_package: Mapped[str | None] = mapped_column(String(200))
 
 
 class PublicAPI(Base):

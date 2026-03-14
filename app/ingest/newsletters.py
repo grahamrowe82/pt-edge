@@ -203,21 +203,32 @@ async def _extract_topics(entry: dict) -> list[dict]:
         content=entry["content"],
     )
 
+    from app.ingest.rate_limit import ANTHROPIC_LIMITER
+
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": settings.ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": "claude-haiku-4-5-20251001",
-                    "max_tokens": 8192,
-                    "messages": [{"role": "user", "content": prompt}],
-                },
-            )
+        for _attempt in range(3):
+            await ANTHROPIC_LIMITER.acquire()
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": settings.ANTHROPIC_API_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": "claude-haiku-4-5-20251001",
+                        "max_tokens": 8192,
+                        "messages": [{"role": "user", "content": prompt}],
+                    },
+                )
+
+            if resp.status_code == 429:
+                wait = min(2 ** _attempt * 15, 120)
+                logger.warning(f"Anthropic 429, backing off {wait}s (attempt {_attempt + 1}/3)")
+                await asyncio.sleep(wait)
+                continue
+            break  # success or non-retryable error
 
         if resp.status_code != 200:
             logger.warning(f"Anthropic API {resp.status_code}: {resp.text[:200]}")

@@ -33,6 +33,23 @@ async def fetch_npm_downloads(client: httpx.AsyncClient, package: str) -> dict |
     return result
 
 
+async def fetch_crate_downloads(client: httpx.AsyncClient, crate_name: str) -> dict | None:
+    """Fetch download counts from crates.io.
+
+    crates.io returns `recent_downloads` (~90 days). Divide by 3 for monthly.
+    """
+    resp = await client.get(
+        f"https://crates.io/api/v1/crates/{crate_name}",
+        headers={"User-Agent": "pt-edge/1.0 (https://github.com/pt-edge)"},
+    )
+    if resp.status_code == 200:
+        data = resp.json().get("crate", {})
+        recent = data.get("recent_downloads", 0) or 0
+        return {"last_month": recent // 3}
+    logger.warning(f"crates.io API {resp.status_code} for {crate_name}")
+    return None
+
+
 async def collect_downloads_for_project(
     client: httpx.AsyncClient, project: Project, semaphore: asyncio.Semaphore
 ) -> list[dict]:

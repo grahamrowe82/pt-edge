@@ -23,7 +23,9 @@ from app.ingest.hf_datasets import ingest_hf_datasets
 from app.ingest.hf_models import ingest_hf_models
 from app.ingest.npm_mcp import ingest_npm_mcp
 from app.ingest.builder_tools import ingest_builder_tools
+from app.ingest.ai_repo_subcategory import ingest_subcategories
 from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis, backfill_hf_datasets, backfill_hf_models
+from app.briefing_refresh import refresh_briefing_evidence
 from app.embeddings import is_enabled
 from app.views.refresh import refresh_all_views
 
@@ -70,16 +72,14 @@ async def run_all() -> dict:
     logger.info("Starting full ingest cycle")
 
     for name, fn in [
-        # Phase 1: Fast daily-critical (< 5 min each)
+        # Phase 1: Fast daily-critical — no LLM calls (< 5 min each)
         ("github", ingest_github),
         ("downloads", ingest_downloads),
         ("dockerhub", ingest_dockerhub),
         ("huggingface", ingest_huggingface),
-        ("releases", ingest_releases),
         ("hn", ingest_hn),
         ("v2ex", ingest_v2ex),
         ("trending", ingest_trending),
-        ("newsletters", ingest_newsletters),
         ("candidate_velocity", ingest_candidate_velocity),
         # Phase 2: Slow discovery indexes (minutes to hours)
         ("hf_datasets", ingest_hf_datasets),
@@ -90,7 +90,10 @@ async def run_all() -> dict:
         ("builder_tools", ingest_builder_tools),
         ("npm_mcp", ingest_npm_mcp),
         ("ai_repo_downloads", ingest_ai_repo_downloads),
-        ("ai_repos", ingest_ai_repos),  # Slowest — last
+        ("ai_repos", ingest_ai_repos),  # Slowest
+        # Phase 3: LLM-dependent (rate-limited, at end so they don't block)
+        ("releases", ingest_releases),
+        ("newsletters", ingest_newsletters),
     ]:
         try:
             results[name] = await _run_with_retry(name, fn)
@@ -125,6 +128,36 @@ async def run_all() -> dict:
     except Exception as e:
         logger.exception(f"v2ex_lab_backfill failed: {e}")
         results["v2ex_lab_backfill"] = {"error": str(e)}
+
+    # Classify MCP repos by subcategory
+    try:
+        results["subcategory"] = await _run_with_retry("subcategory", ingest_subcategories)
+        logger.info(f"subcategory: {results['subcategory']}")
+    except Exception as e:
+        logger.exception(f"subcategory failed: {e}")
+        results["subcategory"] = {"error": str(e)}
+
+    # Link projects ↔ ai_repos by matching github_owner/github_repo
+    try:
+        from sqlalchemy import text as _text
+        from app.db import engine as _engine
+        with _engine.connect() as conn:
+            result = conn.execute(_text("""
+                UPDATE projects p
+                SET ai_repo_id = a.id
+                FROM ai_repos a
+                WHERE LOWER(p.github_owner) = LOWER(a.github_owner)
+                  AND LOWER(p.github_repo) = LOWER(a.github_repo)
+                  AND p.ai_repo_id IS NULL
+                  AND p.github_owner IS NOT NULL
+            """))
+            linked = result.rowcount
+            conn.commit()
+        results["project_linking"] = {"linked": linked}
+        logger.info(f"project_linking: {results['project_linking']}")
+    except Exception as e:
+        logger.exception(f"project_linking failed: {e}")
+        results["project_linking"] = {"error": str(e)}
 
     # Sync frontier models from OpenRouter
     try:
@@ -162,6 +195,16 @@ async def run_all() -> dict:
     except Exception as e:
         logger.exception(f"views failed: {e}")
         results["views"] = {"error": str(e)}
+
+    # Refresh briefing evidence values against current data
+    try:
+        results["briefing_refresh"] = await _run_with_retry(
+            "briefing_refresh", refresh_briefing_evidence
+        )
+        logger.info(f"briefing_refresh: {results['briefing_refresh']}")
+    except Exception as e:
+        logger.exception(f"briefing_refresh failed: {e}")
+        results["briefing_refresh"] = {"error": str(e)}
 
     # Summary
     errors = [k for k, v in results.items() if isinstance(v, dict) and "error" in v]

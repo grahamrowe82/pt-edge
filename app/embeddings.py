@@ -222,9 +222,12 @@ async def embed_batch(texts: list[str], dimensions: int = DIMENSIONS) -> list[Op
     from openai import AsyncOpenAI
     client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
+    from app.ingest.rate_limit import OPENAI_LIMITER
+
     for start in range(0, len(safe_texts), MAX_BATCH_SIZE):
         chunk = safe_texts[start:start + MAX_BATCH_SIZE]
         try:
+            await OPENAI_LIMITER.acquire()
             resp = await client.embeddings.create(input=chunk, model=MODEL, dimensions=dimensions)
             for item in resp.data:
                 results[start + item.index] = item.embedding
@@ -233,6 +236,7 @@ async def embed_batch(texts: list[str], dimensions: int = DIMENSIONS) -> list[Op
             # Retry individually — isolate the bad text(s)
             for i, text in enumerate(chunk):
                 try:
+                    await OPENAI_LIMITER.acquire()
                     resp = await client.embeddings.create(
                         input=[text], model=MODEL, dimensions=dimensions,
                     )
