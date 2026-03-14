@@ -62,6 +62,16 @@ def build_methodology_text(
     return f"{title}. {summary}. Category: {category}. Topic: {topic}."
 
 
+def build_briefing_text(
+    slug: str,
+    title: str,
+    summary: str,
+    domain: str,
+) -> str:
+    """What goes into a briefing embedding. Uses summary, not full detail."""
+    return f"{title}. {summary}. Domain: {domain}. Slug: {slug}."
+
+
 def build_release_text(
     project_name: str,
     version: str | None,

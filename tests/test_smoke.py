@@ -97,7 +97,7 @@ def test_mcp_tools_list():
     )
     assert resp.status_code == 200
     tools = resp.json()["result"]["tools"]
-    assert len(tools) == 12  # core tools only
+    assert len(tools) == 13  # core tools only
     names = [t["name"] for t in tools]
     assert "about" in names
     assert "more_tools" in names
@@ -142,7 +142,7 @@ def test_mcp_discovery_no_auth():
         json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
     )
     assert resp.status_code == 200
-    assert len(resp.json()["result"]["tools"]) == 12  # core tools only
+    assert len(resp.json()["result"]["tools"]) == 13  # core tools only
 
 
 def test_hidden_tools_still_callable():
@@ -896,3 +896,67 @@ def test_recall_and_workspace_in_core():
     assert "workspace" in _CORE_TOOL_NAMES
     assert "recall" in _TOOLS
     assert "workspace" in _TOOLS
+
+
+# ---------------------------------------------------------------------------
+# Briefings — persistent narrative layer
+# ---------------------------------------------------------------------------
+
+def test_briefing_tool_registered():
+    """Briefing tool is registered in the tool list."""
+    from app.mcp.server import _TOOLS
+    assert "briefing" in _TOOLS
+
+
+def test_briefing_in_core_tools():
+    """Briefing tool is in core tools (visible to Claude.ai)."""
+    from app.mcp.server import _CORE_TOOL_NAMES
+    assert "briefing" in _CORE_TOOL_NAMES
+
+
+def test_briefing_model_import():
+    """Briefing model imports and has correct tablename."""
+    from app.models import Briefing
+    assert Briefing.__tablename__ == "briefings"
+
+
+def test_briefing_model_fields():
+    """Briefing model has all required fields."""
+    from app.models import Briefing
+    for attr in ["slug", "domain", "title", "summary", "detail",
+                 "evidence", "source_article", "verified_at", "updated_at"]:
+        assert hasattr(Briefing, attr), f"Briefing missing {attr}"
+
+
+def test_core_tool_count():
+    """Core tool list has expected count (13 after adding briefing)."""
+    from app.mcp.server import _CORE_TOOL_NAMES
+    assert len(_CORE_TOOL_NAMES) == 13
+
+
+def test_briefing_seed_entries():
+    """Briefing seed file has entries with required fields."""
+    from app.briefings_seed import ENTRIES
+    assert len(ENTRIES) >= 10
+    for entry in ENTRIES:
+        assert "slug" in entry
+        assert "domain" in entry
+        assert "title" in entry
+        assert "summary" in entry
+        assert "detail" in entry
+        assert len(entry["slug"]) <= 100
+        assert len(entry["title"]) <= 300
+
+
+def test_build_briefing_text():
+    """build_briefing_text produces valid embedding input."""
+    from app.embeddings import build_briefing_text
+    text = build_briefing_text(
+        slug="test-slug",
+        title="Test Title",
+        summary="Test summary",
+        domain="mcp",
+    )
+    assert "Test Title" in text
+    assert "Test summary" in text
+    assert "mcp" in text

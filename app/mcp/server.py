@@ -16,7 +16,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from app.db import SessionLocal, engine, readonly_engine
 from app.models import (
     Lab, Project, GitHubSnapshot, DownloadSnapshot,
-    Release, HNPost, V2EXPost, Correction, ArticlePitch, SyncLog, Methodology,
+    Release, HNPost, V2EXPost, Correction, ArticlePitch, SyncLog, Methodology, Briefing,
 )
 from app.mcp.tracking import track_usage, compact_response, _workspace_recall, _workspace_list, _workspace_cleanup
 from app.settings import settings
@@ -423,6 +423,7 @@ async def about() -> str:
         "  find_ai_tool('query')    — search ~100K AI repos",
         "  find_mcp_server('query') — search MCP servers",
         "  find_public_api('query') — search ~2,500 REST APIs",
+        "  briefing()               — curated ecosystem intelligence",
         "  query('SELECT ...')      — raw SQL",
         "",
         "Call more_tools() to see 30+ advanced tools for hype analysis,",
@@ -435,8 +436,8 @@ async def about() -> str:
         "-" * 30,
         "",
         "Research a topic:",
-        "  1. topic('MCP')             2. find_ai_tool('MCP server')",
-        "  3. project_pulse('name')    4. hn_pulse('MCP')",
+        "  1. briefing(domain='mcp')   2. topic('MCP')",
+        "  3. find_ai_tool('MCP')      4. project_pulse('name')",
         "",
         "Compare competitors:",
         "  1. compare('A, B, C')       2. hype_landscape(category='framework')",
@@ -512,10 +513,11 @@ async def more_tools() -> str:
     ]
 
     categories = [
-        ("Schema & Raw Query", [
+        ("Knowledge & Query", [
+            ("briefing", "Curated ecosystem intelligence — distilled findings with live data deltas"),
+            ("explain", "Deep documentation on any PT-Edge metric, algorithm, or design decision"),
             ("describe_schema", "List all database tables with their columns and types"),
             ("query", "Run a read-only SQL query (SELECT only). Escape hatch for questions no pre-built tool covers"),
-            ("explain", "Deep documentation on any PT-Edge metric, algorithm, or design decision"),
         ]),
         ("Intelligence — Projects", [
             ("compare", "Side-by-side comparison of 2-5 projects (comma-separated names)"),
@@ -3876,6 +3878,261 @@ async def explain(topic: str = None) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Tool 22b: briefing
+# ---------------------------------------------------------------------------
+
+def _lookup_current(conn, slug: str, metric: str):
+    """Look up current value for a project metric used in briefing evidence."""
+    # Try ai_repos first (most MCP projects are here)
+    row = conn.execute(text("""
+        SELECT stars, downloads_monthly
+        FROM ai_repos
+        WHERE LOWER(name) = LOWER(:slug)
+        LIMIT 1
+    """), {"slug": slug}).fetchone()
+
+    if row and row._mapping.get(metric) is not None:
+        return row._mapping[metric]
+
+    # Try with full_name pattern (owner/repo)
+    row = conn.execute(text("""
+        SELECT stars, downloads_monthly
+        FROM ai_repos
+        WHERE LOWER(full_name) LIKE '%/' || LOWER(:slug)
+        LIMIT 1
+    """), {"slug": slug}).fetchone()
+
+    if row and row._mapping.get(metric) is not None:
+        return row._mapping[metric]
+
+    # Fall back to tracked projects
+    row = conn.execute(text("""
+        SELECT gs.stars, ds.total_downloads as downloads_monthly
+        FROM projects p
+        LEFT JOIN LATERAL (
+            SELECT stars FROM github_snapshots
+            WHERE project_id = p.id ORDER BY snapshot_date DESC LIMIT 1
+        ) gs ON true
+        LEFT JOIN LATERAL (
+            SELECT SUM(download_count) as total_downloads FROM download_snapshots
+            WHERE project_id = p.id AND snapshot_date = (
+                SELECT MAX(snapshot_date) FROM download_snapshots WHERE project_id = p.id
+            )
+        ) ds ON true
+        WHERE LOWER(p.slug) = LOWER(:slug)
+        LIMIT 1
+    """), {"slug": slug}).fetchone()
+
+    if row and row._mapping.get(metric) is not None:
+        return row._mapping[metric]
+
+    return None
+
+
+@mcp.tool()
+@track_usage
+@compact_response(1500)
+async def briefing(topic: str = None, domain: str = "") -> str:
+    """Curated intelligence briefings on the AI ecosystem. Distilled findings
+    from data analysis — not raw data, but interpretive conclusions backed
+    by evidence.
+
+    Call with no arguments to see all available briefings.
+    Call with a topic for the full briefing with live data comparison.
+    Filter by domain: mcp, agents, rag, llm-tools, etc.
+
+    Examples: briefing('mcp-framework-dominance'), briefing(domain='mcp'), briefing('gateway')
+    """
+    try:
+        with engine.connect() as conn:
+            # ---------------------------------------------------------------
+            # Listing mode — no topic
+            # ---------------------------------------------------------------
+            if not topic:
+                where = "WHERE LOWER(domain) = LOWER(:domain)" if domain else ""
+                params = {"domain": domain} if domain else {}
+                rows = conn.execute(text(f"""
+                    SELECT slug, domain, title, summary, verified_at
+                    FROM briefings
+                    {where}
+                    ORDER BY domain, slug
+                """), params).fetchall()
+
+                if not rows:
+                    if domain:
+                        return f"No briefings found for domain '{domain}'. Call briefing() to see all domains."
+                    return (
+                        "No briefings found. "
+                        "Run `python -m app.briefings_seed` to populate."
+                    )
+
+                lines = [
+                    "ECOSYSTEM BRIEFINGS",
+                    "=" * 60,
+                    "",
+                    "Curated intelligence on the AI ecosystem. Each briefing is a",
+                    "distilled finding backed by specific data points.",
+                    "",
+                    "Call briefing('slug') for the full analysis with live data deltas.",
+                    "",
+                ]
+
+                current_domain = None
+                for r in rows:
+                    m = r._mapping
+                    d = m["domain"].upper()
+                    if d != current_domain:
+                        current_domain = d
+                        lines.append(f"{d}")
+                        lines.append("-" * 40)
+
+                    # Freshness indicator
+                    verified = m["verified_at"]
+                    if verified:
+                        from datetime import datetime, timezone
+                        age_days = (datetime.now(timezone.utc) - verified).days
+                        if age_days <= 7:
+                            freshness = "current"
+                        elif age_days <= 30:
+                            freshness = f"{age_days}d ago"
+                        else:
+                            freshness = f"{age_days}d ago — may be stale"
+                    else:
+                        freshness = "unknown"
+
+                    lines.append(f"  {m['slug']}")
+                    lines.append(f"    {m['title']}")
+                    lines.append(f"    Verified: {freshness}")
+                    lines.append("")
+
+                return "\n".join(lines)
+
+            # ---------------------------------------------------------------
+            # Detail mode — specific topic
+            # ---------------------------------------------------------------
+
+            # 1. Exact slug match
+            row = conn.execute(text("""
+                SELECT slug, domain, title, summary, detail, evidence, source_article, verified_at
+                FROM briefings
+                WHERE LOWER(slug) = LOWER(:topic)
+            """), {"topic": topic.strip()}).fetchone()
+
+            if not row:
+                # 2. Partial match on slug, title, or summary
+                similar = conn.execute(text("""
+                    SELECT slug, title FROM briefings
+                    WHERE LOWER(slug) LIKE '%' || LOWER(:q) || '%'
+                       OR LOWER(title) LIKE '%' || LOWER(:q) || '%'
+                       OR LOWER(summary) LIKE '%' || LOWER(:q) || '%'
+                    ORDER BY slug
+                    LIMIT 10
+                """), {"q": topic.strip()}).fetchall()
+
+                if similar:
+                    lines = [
+                        f"No exact match for '{topic}'. Did you mean one of these?",
+                        "",
+                    ]
+                    for s in similar:
+                        sm = s._mapping
+                        lines.append(f"  briefing('{sm['slug']}')  — {sm['title']}")
+                    return "\n".join(lines)
+
+                # 3. Semantic fallback
+                from app.embeddings import is_enabled, embed_one
+                if is_enabled():
+                    vec = await embed_one(topic.strip())
+                    if vec is not None:
+                        sem_rows = conn.execute(text("""
+                            SELECT slug, title, summary,
+                                   1 - (embedding <=> :vec) AS similarity
+                            FROM briefings
+                            WHERE embedding IS NOT NULL
+                            ORDER BY embedding <=> :vec
+                            LIMIT 3
+                        """), {"vec": str(vec)}).fetchall()
+
+                        if sem_rows:
+                            lines = [
+                                f"No exact match for '{topic}', but found related briefings:",
+                                "",
+                            ]
+                            for s in sem_rows:
+                                sm = s._mapping
+                                lines.append(
+                                    f"  briefing('{sm['slug']}')  — {sm['title']} "
+                                    f"(similarity: {float(sm['similarity']):.0%})"
+                                )
+                            return "\n".join(lines)
+
+                return (
+                    f"No briefing found for '{topic}'.\n"
+                    "Call briefing() with no arguments to see all available briefings."
+                )
+
+            # Found a match — render it
+            m = row._mapping
+            lines = [
+                m["title"],
+                "=" * 60,
+                f"Domain: {m['domain']}  |  Slug: {m['slug']}",
+                f"Verified: {_fmt_date(m['verified_at'])}",
+                "",
+                m["detail"],
+            ]
+
+            # Live delta — compare evidence values to current data
+            evidence = m.get("evidence") or []
+            if isinstance(evidence, str):
+                import json
+                evidence = json.loads(evidence)
+
+            deltas = []
+            for ev in evidence:
+                if ev.get("type") != "project" or not ev.get("metric"):
+                    continue
+                old_val = ev.get("value")
+                if not isinstance(old_val, (int, float)):
+                    continue
+                current = _lookup_current(conn, ev["slug"], ev["metric"])
+                if current is None:
+                    continue
+                try:
+                    current = int(current)
+                    old_val = int(old_val)
+                    if old_val == current:
+                        continue
+                    pct = ((current - old_val) / old_val * 100) if old_val != 0 else 0
+                    deltas.append(
+                        f"  {ev['slug']}: {ev['metric']} was {_fmt_number(old_val)}, "
+                        f"now {_fmt_number(current)} ({pct:+.1f}%)"
+                    )
+                except (ValueError, TypeError):
+                    continue
+
+            if deltas:
+                verified_date = _fmt_date(m["verified_at"]) if m["verified_at"] else "unknown"
+                lines.append("")
+                lines.append(f"LIVE DATA DELTA (since {verified_date})")
+                lines.append("-" * 40)
+                lines.extend(deltas)
+
+            if m.get("source_article"):
+                lines.append("")
+                lines.append(f"Source article: {m['source_article']}")
+
+            lines.append("")
+            lines.append("-" * 60)
+            lines.append("Think we're wrong? Use submit_feedback() to push back.")
+
+            return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error querying briefings: {e}"
+
+
+# ---------------------------------------------------------------------------
 # Tool 23: topic
 # ---------------------------------------------------------------------------
 
@@ -6572,7 +6829,7 @@ _PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
 # Includes editorial tools and legacy aliases for backward compatibility.
 _TOOL_LIST = [
     about, more_tools, recall, workspace, describe_schema, query, whats_new, project_pulse, lab_pulse,
-    trending, hype_check,
+    trending, hype_check, briefing,
     submit_feedback, upvote_feedback, list_feedback, amend_feedback,
     submit_correction, upvote_correction, list_corrections, amend_correction,
     propose_article, list_pitches, upvote_pitch, amend_pitch,
@@ -6610,6 +6867,7 @@ _CORE_TOOL_NAMES = {
     "query",            # raw SQL escape hatch
     "recall",           # retrieve full output from workspace
     "workspace",        # list workspace contents
+    "briefing",         # curated ecosystem intelligence
 }
 
 # Public tool list — used by JSON-RPC transport (Claude.ai web connector).
