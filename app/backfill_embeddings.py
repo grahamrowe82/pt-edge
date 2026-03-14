@@ -16,6 +16,7 @@ from app.embeddings import (
     is_enabled,
     build_project_text,
     build_methodology_text,
+    build_briefing_text,
     build_newsletter_text,
     build_release_text,
     build_ai_repo_text,
@@ -121,6 +122,51 @@ async def backfill_methodology(force: bool = False) -> int:
                 count += 1
 
     logger.info(f"Embedded {count}/{len(rows)} methodology entries.")
+    return count
+
+
+async def backfill_briefings(force: bool = False) -> int:
+    """Generate embeddings for all briefing entries missing them."""
+    with engine.connect() as conn:
+        rows = conn.execute(text(f"""
+            SELECT id, slug, title, summary, domain
+            FROM briefings
+            {"WHERE embedding IS NULL" if not force else ""}
+            ORDER BY id
+        """)).fetchall()
+
+    if not rows:
+        logger.info("No briefings need embeddings.")
+        return 0
+
+    logger.info(f"Generating embeddings for {len(rows)} briefings...")
+
+    texts = []
+    ids = []
+    for r in rows:
+        m = r._mapping
+        text_input = build_briefing_text(
+            slug=m["slug"],
+            title=m["title"],
+            summary=m["summary"],
+            domain=m["domain"],
+        )
+        texts.append(text_input)
+        ids.append(m["id"])
+
+    vectors = await embed_batch(texts)
+
+    count = 0
+    with engine.connect() as conn:
+        for bid, vec in zip(ids, vectors):
+            if vec is not None:
+                conn.execute(text("""
+                    UPDATE briefings SET embedding = :vec WHERE id = :bid
+                """), {"vec": str(vec), "bid": bid})
+                conn.commit()
+                count += 1
+
+    logger.info(f"Embedded {count}/{len(rows)} briefings.")
     return count
 
 
@@ -582,6 +628,7 @@ async def main():
 
     projects = await backfill_projects(force=force)
     methodology = await backfill_methodology(force=force)
+    briefings = await backfill_briefings(force=force)
     releases = await backfill_releases(force=force)
     newsletters = await backfill_newsletters(force=force)
     ai_repos = await backfill_ai_repos(force=force)
@@ -591,7 +638,7 @@ async def main():
 
     logger.info(
         f"Backfill complete: {projects} projects, {methodology} methodology, "
-        f"{releases} releases, {newsletters} newsletter topics, "
+        f"{briefings} briefings, {releases} releases, {newsletters} newsletter topics, "
         f"{ai_repos} AI repos, {public_apis} public APIs, "
         f"{hf_datasets} HF datasets, {hf_models} HF models."
     )

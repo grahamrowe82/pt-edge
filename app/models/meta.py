@@ -50,3 +50,19 @@ class Methodology(Base):
     detail: Mapped[str] = mapped_column(Text, nullable=False)
     embedding = mapped_column(Vector(1536), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Briefing(Base):
+    __tablename__ = "briefings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    domain: Mapped[str] = mapped_column(String(50), nullable=False)  # mcp, agents, rag, etc.
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    detail: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence: Mapped[dict | None] = mapped_column(JSONB)
+    source_article: Mapped[str | None] = mapped_column(String(100))
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    embedding = mapped_column(Vector(1536), nullable=True)
