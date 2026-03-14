@@ -489,6 +489,243 @@ The server layer is also where the most waste occurs — dozens of nearly identi
         ],
         "source_article": "07-the-8-layers-of-the-mcp-ecosystem",
     },
+    # -----------------------------------------------------------------------
+    # AGENTS — FRAMEWORK RACE
+    # -----------------------------------------------------------------------
+    {
+        "slug": "agents-framework-race",
+        "domain": "agents",
+        "title": "crewAI (5.5M dl/mo) and browser-use (3.9M) lead the agent framework race — most contenders have zero downloads",
+        "summary": (
+            "The agent framework space has massive star inflation. Of the top 20 repos by stars, "
+            "12 have zero monthly downloads. Only 9 repos across the entire domain exceed 100K dl/mo. "
+            "crewAI and browser-use are the only frameworks with both high stars and high adoption."
+        ),
+        "detail": """## Agent Framework Race
+
+The agents domain (15,132 repos, 2M total stars) is the most hype-inflated domain in the AI ecosystem. Stars are abundant, downloads are scarce.
+
+**The real contenders (by downloads/month):**
+- crewAI (45,936 stars, 5.5M dl/mo) — multi-agent orchestration, the LangChain of agents
+- browser-use (80,598 stars, 3.9M dl/mo) — browser automation for AI agents
+- E2B (11,263 stars, 2.7M dl/mo) — sandboxed code execution environments
+- composio (27,355 stars, 523K dl/mo) — tool integration platform
+- ag2 (4,256 stars, 557K dl/mo) — AutoGen successor, quiet but growing
+
+**The hype layer (high stars, zero downloads):**
+MetaGPT (65K stars), daytona (64K), agno (39K), deer-flow (30K), CopilotKit (29K) — these have massive GitHub attention but no package manager presence. They're either pre-release, self-hosted only, or solving problems people star but don't use.
+
+**The signal:** Production agent adoption is narrower than the star counts suggest. The gap between 'interesting' and 'deployed' is wider in agents than any other domain.""",
+        "evidence": [
+            {"type": "project", "slug": "crewAI", "metric": "downloads_monthly", "value": 5498708, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "crewAI", "metric": "stars", "value": 45936, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "browser-use", "metric": "downloads_monthly", "value": 3883828, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "browser-use", "metric": "stars", "value": 80598, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "composio", "metric": "downloads_monthly", "value": 522750, "as_of": "2026-03-14"},
+        ],
+        "source_article": None,
+    },
+    # -----------------------------------------------------------------------
+    # RAG — LANGCHAIN DOMINANCE
+    # -----------------------------------------------------------------------
+    {
+        "slug": "rag-langchain-monopoly",
+        "domain": "rag",
+        "title": "LangChain has 223M downloads/month — 82% of all RAG domain downloads",
+        "summary": (
+            "The RAG ecosystem is effectively a LangChain monopoly by adoption. LangGraph (39M dl/mo) "
+            "extends it. The next independent project, trafilatura (4.4M), does document extraction, "
+            "not orchestration. Dify (133K stars) and Open WebUI (127K stars) have massive stars but "
+            "zero tracked downloads — they're self-hosted platforms, not libraries."
+        ),
+        "detail": """## LangChain's RAG Monopoly
+
+The RAG domain has 10,351 repos and 272M monthly downloads. But LangChain alone accounts for 223M (82%).
+
+**The LangChain stack:**
+- langchain (129,354 stars, 223M dl/mo) — the orchestration layer
+- langgraph (26,286 stars, 39M dl/mo) — stateful agent graphs built on LangChain
+
+Together: 262M dl/mo, 96% of domain downloads.
+
+**Independent RAG tools with real adoption:**
+- trafilatura (5,481 stars, 4.4M dl/mo) — web scraping/text extraction
+- PaddleOCR (72,167 stars, 1.5M dl/mo) — document OCR
+- bm25s (1,560 stars, 1.2M dl/mo) — fast BM25 search
+- chonkie (3,829 stars, 482K dl/mo) — text chunking
+- promptfoo (14,219 stars, 473K dl/mo) — evaluation framework
+
+**The self-hosted giants (zero tracked downloads):**
+Dify (132,613 stars), Open WebUI (126,989 stars), ragflow (74,911 stars), Flowise (50,686 stars) — these are deployed as applications, not installed as packages. Their real adoption is invisible to package manager metrics.
+
+**Implication:** Anyone building RAG tooling is either extending LangChain or competing against it. There is no middle ground.""",
+        "evidence": [
+            {"type": "project", "slug": "langchain", "metric": "downloads_monthly", "value": 223185230, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "langchain", "metric": "stars", "value": 129354, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "langgraph", "metric": "downloads_monthly", "value": 39407938, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "dify", "metric": "stars", "value": 132613, "as_of": "2026-03-14"},
+        ],
+        "source_article": None,
+    },
+    # -----------------------------------------------------------------------
+    # VECTOR DB — THE CLIENT LIBRARY PATTERN
+    # -----------------------------------------------------------------------
+    {
+        "slug": "vector-db-client-dominance",
+        "domain": "vector-db",
+        "title": "Vector DB adoption is measured in client libraries — pymilvus (18M dl/mo) and qdrant-client (15M) dwarf the databases themselves",
+        "summary": (
+            "The vector DB repos themselves show zero downloads (they're deployed as services). "
+            "Adoption signal comes from client libraries: pymilvus 18M, qdrant-client 15M, "
+            "llama_index 10M. The actual race is Milvus vs Qdrant vs Chroma, and the client "
+            "download numbers tell you who's winning."
+        ),
+        "detail": """## Vector DB: Follow the Clients
+
+Vector databases are deployed as services, not installed as packages. So their GitHub repos show zero PyPI/npm downloads. The real adoption signal is in their client libraries.
+
+**Client library downloads (monthly):**
+- pymilvus (18.2M) — Milvus Python client
+- qdrant-client (15.0M) — Qdrant Python client
+- llama_index (10.0M) — not a DB, but the dominant integration layer
+- genkit (942K) — Google's AI toolkit with vector DB integrations
+- deeplake (218K) — Activeloop's deep learning data lake
+- FlashRank (216K) — lightweight reranker
+
+**Stars vs adoption disconnect:**
+- meilisearch (56K stars, 0 dl) — full-text search, not vector-first
+- anything-llm (56K stars, 0 dl) — self-hosted RAG platform
+- milvus (43K stars, 0 dl) — but pymilvus has 18M dl/mo
+- qdrant (30K stars, 0 dl) — but qdrant-client has 15M dl/mo
+- chroma (27K stars, 0 dl) — rewritten in Rust, client tracking unclear
+
+**The takeaway:** Milvus leads on raw client adoption. Qdrant is close behind and growing. The race is tighter than star counts suggest.""",
+        "evidence": [
+            {"type": "project", "slug": "pymilvus", "metric": "downloads_monthly", "value": 18151557, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "qdrant-client", "metric": "downloads_monthly", "value": 14966287, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "llama_index", "metric": "downloads_monthly", "value": 9983619, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "milvus", "metric": "stars", "value": 43332, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "qdrant", "metric": "stars", "value": 29544, "as_of": "2026-03-14"},
+        ],
+        "source_article": None,
+    },
+    # -----------------------------------------------------------------------
+    # LLM TOOLS — THE MIDDLEWARE STACK
+    # -----------------------------------------------------------------------
+    {
+        "slug": "llm-tools-middleware-stack",
+        "domain": "llm-tools",
+        "title": "Transformers (112M dl/mo) and litellm (94M) are the load-bearing middleware of the AI stack",
+        "summary": (
+            "The LLM tools domain has the highest total downloads (436M/mo) across 31K repos. "
+            "Two projects carry the stack: HuggingFace transformers (112M) and litellm (94M). "
+            "Together they account for 47% of domain downloads. The next tier — pydantic-ai (15M), "
+            "openai-agents (17M) — shows where new middleware is solidifying."
+        ),
+        "detail": """## LLM Middleware Stack
+
+The llm-tools domain (31,873 repos, 436M monthly downloads) is the plumbing layer of the AI ecosystem. These are the libraries that sit between models and applications.
+
+**Tier 1 — load-bearing infrastructure (>50M dl/mo):**
+- transformers (157,811 stars, 112M dl/mo) — the universal model interface
+- litellm (38,910 stars, 94M dl/mo) — universal LLM API proxy (100+ providers)
+- datasets (21,273 stars, 61M dl/mo) — HuggingFace data loading
+- ray (41,767 stars, 59M dl/mo) — distributed compute
+
+**Tier 2 — solidifying middleware (5-40M dl/mo):**
+- ai (22,583 stars, 37M dl/mo) — Vercel AI SDK (TypeScript)
+- openai-agents-python (19,951 stars, 17M dl/mo) — OpenAI's agent framework
+- json_repair (4,585 stars, 15M dl/mo) — fix malformed LLM JSON output
+- pydantic-ai (15,437 stars, 15M dl/mo) — type-safe AI agents
+
+**Tier 3 — emerging (1-5M dl/mo):**
+- langchain-mcp-adapters (3,411 stars, 5.3M dl/mo) — MCP↔LangChain bridge
+- bitsandbytes (8,033 stars, 5.3M dl/mo) — model quantization
+- markitdown (90,677 stars, 2.9M dl/mo) — document-to-markdown conversion
+
+**The pattern:** Tier 1 is settled infrastructure. Tier 2 is where the action is — pydantic-ai and openai-agents are competing to be the next standard agent framework. json_repair at 15M dl/mo shows how much production AI work is just cleaning up LLM output.""",
+        "evidence": [
+            {"type": "project", "slug": "transformers", "metric": "downloads_monthly", "value": 112431126, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "litellm", "metric": "downloads_monthly", "value": 93642606, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "pydantic-ai", "metric": "downloads_monthly", "value": 14915046, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "openai-agents-python", "metric": "downloads_monthly", "value": 16742955, "as_of": "2026-03-14"},
+        ],
+        "source_article": None,
+    },
+    # -----------------------------------------------------------------------
+    # CROSS-DOMAIN — HYPE VS ADOPTION
+    # -----------------------------------------------------------------------
+    {
+        "slug": "cross-domain-hype-gap",
+        "domain": "agents",
+        "title": "20 repos with 20K+ stars have zero downloads — the AI hype-adoption gap is wider than any other tech sector",
+        "summary": (
+            "AutoGPT (182K stars, 0 dl), Ollama (165K, 0 dl), stable-diffusion-webui (162K, 0 dl), "
+            "Dify (133K, 0 dl), Open WebUI (127K, 0 dl). Some are self-hosted (invisible adoption). "
+            "Others are genuinely all hype. The AI ecosystem's star-to-download ratio is the worst "
+            "in open source history."
+        ),
+        "detail": """## The AI Hype-Adoption Gap
+
+Across the AI ecosystem, 20 repos with >20K stars have literally zero tracked monthly downloads. This gap between attention (stars) and adoption (downloads) is unprecedented in open source.
+
+**Three categories of zero-download repos:**
+
+**1. Self-hosted applications (real users, invisible metrics):**
+Ollama (165K stars), Dify (133K), Open WebUI (127K), stable-diffusion-webui (162K) — deployed as Docker containers or standalone apps. Millions of real users, but no PyPI/npm trace.
+
+**2. Educational content (stars ≠ usage):**
+generative-ai-for-beginners (108K stars), awesome-llm-apps (102K), LLMs-from-scratch (88K), ML-For-Beginners (84K) — these are learning resources starred by students. High stars, zero code adoption.
+
+**3. Genuinely stalled projects:**
+AutoGPT (182K stars) — peaked in early 2024, now largely inactive. prompts.chat (152K) — a prompt collection with no software to download.
+
+**Why this matters:** Star counts are unreliable as an AI project health metric. The gap between stars and downloads is 10-100x larger in AI than in traditional open source (web frameworks, databases, DevOps tools). Any analysis based purely on star counts will systematically overweight hype and underweight adoption.""",
+        "evidence": [
+            {"type": "project", "slug": "AutoGPT", "metric": "stars", "value": 182435, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "ollama", "metric": "stars", "value": 164987, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "dify", "metric": "stars", "value": 132613, "as_of": "2026-03-14"},
+            {"type": "stat", "label": "Repos with 20K+ stars and 0 downloads", "value": 20, "as_of": "2026-03-14"},
+        ],
+        "source_article": None,
+    },
+    # -----------------------------------------------------------------------
+    # EMBEDDINGS — PRODUCTION INFRASTRUCTURE
+    # -----------------------------------------------------------------------
+    {
+        "slug": "embeddings-production-stack",
+        "domain": "embeddings",
+        "title": "Embedding infrastructure is quietly massive — pytorch-metric-learning (3.7M dl/mo) and fastembed (2.9M) power the search layer",
+        "summary": (
+            "The embeddings domain gets less attention than agents or RAG but carries heavy production "
+            "traffic. pytorch-metric-learning and fastembed together have 6.6M monthly downloads. "
+            "FlagEmbedding (11K stars, 452K dl/mo) is Beijing's entry. The domain is Python-only."
+        ),
+        "detail": """## Embedding Infrastructure
+
+The embeddings domain (4,880 repos, 11M monthly downloads) is quieter than agents or RAG but arguably more foundational — every vector search, every RAG pipeline, every semantic tool starts with an embedding.
+
+**Production adoption leaders:**
+- pytorch-metric-learning (6,312 stars, 3.7M dl/mo) — metric learning + embedding training
+- fastembed (2,771 stars, 2.9M dl/mo) — Qdrant's fast embedding library
+- mteb (3,159 stars, 1.5M dl/mo) — Massive Text Embedding Benchmark (from HuggingFace)
+- Daft (5,301 stars, 568K dl/mo) — distributed DataFrame engine (Rust-backed Python)
+- model2vec (2,008 stars, 511K dl/mo) — distilled static embeddings, 500x faster
+- GPTCache (7,963 stars, 466K dl/mo) — semantic caching layer
+- FlagEmbedding (11,395 stars, 452K dl/mo) — BAAI's embedding models (Beijing)
+
+**Key patterns:**
+1. **Python-only** — no TypeScript, no Go, no Rust frontends. Embedding work is deeply scientific Python.
+2. **Research-to-production pipeline** — mteb benchmarks drive model selection, fastembed/model2vec provide fast inference, FlagEmbedding provides Chinese-language alternatives.
+3. **Qdrant's ecosystem play** — fastembed (2.9M dl/mo) is published by Qdrant. They're building the full stack: embeddings → vector DB → client library.""",
+        "evidence": [
+            {"type": "project", "slug": "pytorch-metric-learning", "metric": "downloads_monthly", "value": 3724155, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "fastembed", "metric": "downloads_monthly", "value": 2867732, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "FlagEmbedding", "metric": "downloads_monthly", "value": 451945, "as_of": "2026-03-14"},
+            {"type": "project", "slug": "FlagEmbedding", "metric": "stars", "value": 11395, "as_of": "2026-03-14"},
+        ],
+        "source_article": None,
+    },
 ]
 
 
