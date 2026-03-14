@@ -18,7 +18,7 @@ from app.models import (
     Lab, Project, GitHubSnapshot, DownloadSnapshot,
     Release, HNPost, V2EXPost, Correction, ArticlePitch, SyncLog, Methodology,
 )
-from app.mcp.tracking import track_usage
+from app.mcp.tracking import track_usage, compact_response, _workspace_recall, _workspace_list, _workspace_cleanup
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -377,294 +377,116 @@ def _group_releases(releases):
 
 @mcp.tool()
 @track_usage
+@compact_response(1500)
 async def about() -> str:
     """Start here. Returns a guide to all PT-Edge capabilities — what data is available, which tools to use for which questions, and recommended workflows. Call this first to understand the full toolkit."""
+    # Front-load the most useful info into the first ~1500 chars so compact_response
+    # truncation still delivers a useful orientation.
     lines = [
-        "PT-EDGE -- AI Project Intelligence",
+        "PT-EDGE — AI Project Intelligence",
         "=" * 50,
         "",
-        "PT-Edge makes Claude less wrong about the current state of AI development.",
-        "It tracks ~100 open-source AI projects across 10 labs, collecting real-time",
-        "signals from GitHub, PyPI, npm, Docker Hub, HuggingFace, and Hacker News.",
-        "",
-        "HOW IT WORKS",
-        "-" * 30,
-        "- Daily ingests pull GitHub stats, package downloads, releases, HN/V2EX posts,",
-        "  HuggingFace models/datasets, public API specs, and npm registry MCP servers",
-        "- Five discovery indexes: AI repos, MCP servers, public APIs, HF datasets, HF models",
-        "- Hybrid search: semantic embeddings + keyword fallback + name-match boost + staleness",
-        "- All search tools support pagination via offset parameter",
-        "- Materialized views compute derived metrics: momentum, hype ratio, tiers, lifecycle",
-        "- MCP resources expose reference data; prompts encode compound query workflows",
-        "- Corrections system lets practitioners push back on bad takes",
-        "- Project sniffing auto-discovers new AI projects from HN and GitHub trending",
-        "",
-        "KEY CONCEPTS",
-        "-" * 30,
-        "- Hype Ratio: stars / monthly downloads. High = GitHub tourism. Low = invisible infrastructure.",
-        "- Tiers: T1 Foundational (>10M downloads), T2 Major (>100K), T3 Notable (>10K), T4 Emerging",
-        "- Lifecycle: emerging -> launching -> growing -> established -> fading -> dormant",
-        "- Momentum: star and download deltas over 7d and 30d windows",
-        "",
-        "AVAILABLE TOOLS",
-        "-" * 30,
-        "Discovery & Overview:",
-        "  about()                          -- this guide",
-        "  whats_new(days=7)                -- releases, trending, HN discussion",
-        "  trending(category, window)       -- top 20 by star growth",
-        "  lifecycle_map(category, tier)     -- projects grouped by lifecycle stage",
-        "  hype_landscape(category, limit, window, format) -- overhyped + underrated + trends",
-        "",
-        "Deep Dives:",
-        "  project_pulse(name)              -- everything about one project",
-        "  lab_pulse(name)                  -- what a lab is shipping",
-        "  hype_check(project)              -- stars vs downloads reality check",
-        "",
-        "Comparative Analysis:",
-        "  compare(projects)                -- side-by-side metrics for 2-5 projects",
-        "  movers(window, limit)            -- acceleration/deceleration detector",
-        "  related(project)                 -- HN co-occurrence analysis",
-        "  market_map()                     -- category concentration + power law",
-        "",
-        "Project Discovery:",
-        "  radar()                          -- velocity alerts + HN buzz for unknowns",
-        "  scout(category, limit)           -- fastest growing projects ranked by stars/day",
-        "  deep_dive(identifier)            -- full project profile from cached data",
-        "  sniff_projects(limit)            -- auto-discovered project candidates",
-        "  accept_candidate(id, category)   -- promote a candidate to tracked",
-        "  topic(query)                     -- what's happening with a topic across ecosystem",
-        "  hn_pulse(query, days)            -- HN discourse intelligence + sentiment",
-        "",
-        "AI Ecosystem Search (all support offset for pagination):",
-        "  find_ai_tool(query, domain, limit, offset)   -- ~100K indexed AI repos, hybrid search",
-        "  find_mcp_server(query, limit, offset)         -- MCP servers (GitHub + npm sources)",
-        "  find_public_api(query, category, limit, offset) -- ~2,500 REST APIs from APIs.guru",
-        "  find_dataset(query, task, language, limit, offset) -- ~42K HuggingFace datasets",
-        "  find_model(query, task, library, limit, offset)   -- ~18K HuggingFace models",
-        "",
-        "API Intelligence:",
-        "  get_api_spec(provider, service)          -- fetch OpenAPI spec overview",
-        "  get_api_endpoints(provider, path_filter) -- endpoint schemas for code gen",
-        "  get_dependencies(repo)                   -- dependency tree from PyPI/npm",
-        "  find_dependents(package, source)          -- reverse dependency lookup",
-        "",
-        "Community & Feedback:",
-        "  submit_feedback(topic, text, category)  -- bug|feature|observation|insight (default: observation)",
-        "  upvote_feedback(id)                     -- confirm someone else's feedback",
-        "  list_feedback(topic, status, category)  -- browse feedback",
-        "  amend_feedback(id, reason)              -- append a note to feedback",
-        "  propose_article(topic, thesis)          -- pitch an article for Phase Transitions",
-        "  list_pitches(status)                    -- browse community article pitches",
-        "  upvote_pitch(id)                        -- support an article pitch",
-        "  amend_pitch(id, reason)                 -- append a note to an article pitch",
-        "",
-        "Lab Intelligence:",
-        "  submit_lab_event(lab, type, title)      -- record a product launch, model release, etc.",
-        "  list_lab_events(lab, event_type)        -- browse curated lab events",
-        "  lab_models(lab, capability)             -- frontier models with pricing and capabilities",
-        "",
-        "Methodology:",
-        "  explain(topic)                   -- how any tool/metric/algo works (deep)",
-        "",
-        "Power User:",
-        "  describe_schema()                -- database tables and columns",
-        "  query(sql)                       -- run read-only SQL",
-        "  set_tier(project, tier)          -- editorial tier override",
+        "Live intelligence on the AI open-source ecosystem. Tracks projects across",
+        "GitHub, PyPI, npm, Docker Hub, HuggingFace, and Hacker News.",
         "",
     ]
 
-    # Data freshness + coverage
+    # Data coverage (most useful info first)
     try:
         session = SessionLocal()
-        syncs = session.query(SyncLog).filter(
-            SyncLog.status == "success"
-        ).order_by(SyncLog.finished_at.desc()).all()
-
-        seen_types = set()
-        freshness_lines = []
-        for s in syncs:
-            if s.sync_type not in seen_types:
-                seen_types.add(s.sync_type)
-                freshness_lines.append(
-                    f"  {s.sync_type:<16} last synced {_fmt_date(s.finished_at)}  "
-                    f"({s.records_written} records)"
-                )
-
-        if freshness_lines:
-            lines.append("DATA FRESHNESS")
-            lines.extend(freshness_lines)
-        else:
-            lines.append("DATA FRESHNESS: No syncs recorded yet.")
-
-        # Coverage stats
-        lines.append("")
-        lines.append("DATA COVERAGE")
-        lines.append("-" * 30)
         total = session.query(func.count(Project.id)).filter(Project.is_active == True).scalar() or 0
-        with_gh = session.execute(text(
-            "SELECT COUNT(DISTINCT project_id) FROM github_snapshots"
-        )).scalar() or 0
-        with_dl = session.execute(text(
-            "SELECT COUNT(DISTINCT project_id) FROM download_snapshots"
-        )).scalar() or 0
         snapshot_days = session.execute(text(
             "SELECT COUNT(DISTINCT snapshot_date) FROM github_snapshots"
+        )).scalar() or 0
+        ai_repos = session.execute(text(
+            "SELECT COUNT(*) FROM ai_repos"
         )).scalar() or 0
         candidates = session.execute(text(
             "SELECT COUNT(*) FROM project_candidates WHERE status = 'pending'"
         )).scalar() or 0
-
         lines.extend([
-            f"  Projects tracked:    {total}",
-            f"  With GitHub data:    {with_gh} ({round(100*with_gh/total)}%)" if total else "  With GitHub data:    0",
-            f"  With download data:  {with_dl} ({round(100*with_dl/total)}%)" if total else "  With download data:  0",
-            f"  Snapshot depth:      {snapshot_days} day(s)",
-            f"  Pending candidates:  {candidates}",
+            f"Projects tracked: {total} | Snapshot depth: {snapshot_days} days",
+            f"AI repos indexed: {_fmt_number(ai_repos)} | Pending candidates: {candidates}",
+            "",
         ])
-
         session.close()
-    except Exception as e:
-        lines.append(f"DATA FRESHNESS: Could not query ({e})")
+    except Exception:
+        pass
 
     lines.extend([
+        "QUICK START",
+        "-" * 30,
+        "  whats_new()              — what shipped this week",
+        "  trending()               — star growth acceleration",
+        "  project_pulse('name')    — deep dive on a project",
+        "  topic('MCP')             — ecosystem search by topic",
+        "  find_ai_tool('query')    — search ~100K AI repos",
+        "  find_mcp_server('query') — search MCP servers",
+        "  find_public_api('query') — search ~2,500 REST APIs",
+        "  query('SELECT ...')      — raw SQL",
         "",
-        "COMMON WORKFLOWS",
+        "Call more_tools() to see 30+ advanced tools for hype analysis,",
+        "lifecycle tracking, lab intelligence, HuggingFace search, and more.",
+        "",
+        "Long responses are auto-truncated. Use recall('key') to retrieve",
+        "full output. Use workspace() to see what's stored.",
+        "",
+        "SUGGESTED WORKFLOWS",
         "-" * 30,
         "",
         "Research a topic:",
-        "  1. topic('MCP')                  — ecosystem overview",
-        "  2. scout(category='mcp-server')  — fastest growing projects",
-        "  3. deep_dive('owner/repo')       — full profile of interesting finds",
-        "  4. accept_candidate(id, 'mcp-server')  — start tracking it",
+        "  1. topic('MCP')             2. find_ai_tool('MCP server')",
+        "  3. project_pulse('name')    4. hn_pulse('MCP')",
         "",
         "Compare competitors:",
-        "  1. compare('langchain, llamaindex, haystack')  — side-by-side metrics",
-        "  2. hype_landscape(category='framework')        — who's overhyped?",
-        "  3. related('langchain')                        — HN co-discussion",
+        "  1. compare('A, B, C')       2. hype_landscape(category='framework')",
         "",
-        "Monitor what's happening:",
-        "  1. whats_new(days=7)             — releases + HN buzz this week",
-        "  2. trending()                    — star growth acceleration",
-        "  3. radar()                       — untracked projects gaining attention",
-        "  4. hn_pulse()                    — HN discourse intelligence",
+        "Monitor the ecosystem:",
+        "  1. whats_new()              2. trending()  3. radar()",
         "",
-        "Understand the methodology:",
-        "  1. explain()                     — browse all methodology topics",
-        "  2. explain('hype_ratio')         — deep dive on a specific metric",
-        "  3. submit_feedback('hype_ratio', 'Your objection here')",
+        # --- Below here will typically be truncated ---
+        "KEY CONCEPTS",
+        "-" * 30,
+        "- Hype Ratio: stars / monthly downloads. High = tourism. Low = infrastructure.",
+        "- Tiers: T1 Foundational (>10M dl), T2 Major (>100K), T3 Notable (>10K), T4 Emerging",
+        "- Lifecycle: emerging → launching → growing → established → fading → dormant",
+        "- Momentum: star and download deltas over 7d and 30d windows",
         "",
-        "COMPOUND QUERIES — HOW TO CHAIN TOOLS",
+        "BEHAVIORAL NOTES",
+        "-" * 30,
+        "1. Run independent queries IN PARALLEL — don't wait for one before starting the next.",
+        "2. Don't narrate each tool result. Run the full chain, synthesize once at the end.",
+        "3. Use find_ai_tool() to discover things BEYOND your training cutoff.",
+        "4. Look for SURPRISES — low stars but massive downloads, zero commits, newcomers outpacing.",
+        "5. Use offset to paginate: find_ai_tool('MCP', offset=5) shows results 6-10.",
+        "6. [STALE] markers = no push in >12 months. Factor into recommendations.",
+        "",
+        "COMPOUND QUERIES",
         "-" * 30,
         "",
-        "The real power of PT-Edge is cross-index queries. A single tool gives",
-        "a partial answer. Chaining tools across indexes gives a complete picture.",
-        "Here are the proven patterns:",
+        "Evaluate a technology:",
+        "  compare('A,B,C,D,E') → hype_check('X') → find_model(name) → hn_pulse(name)",
         "",
-        "Evaluate a technology (e.g. 'which agent framework should I use?'):",
-        "  1. compare('A, B, C, D, E')        — quantitative horse race (max 5)",
-        "  2. hype_check('X') on outliers      — stars vs downloads reality check",
-        "  3. find_model(framework_name)        — ecosystem depth: who builds ON it?",
-        "  4. find_mcp_server(framework_name)   — MCP ecosystem adoption",
-        "  5. hn_pulse(framework_name)          — community sentiment and discourse",
-        "  6. find_ai_tool(category_query)      — catch entrants you don't know about",
-        "  → Synthesize: position + trajectory + hype vs reality + ecosystem + sentiment",
+        "Build something:",
+        "  PARALLEL: find_ai_tool + find_public_api + find_model + find_dataset + find_mcp_server",
+        "  THEN: get_api_spec → get_api_endpoints → get_dependencies",
         "",
-        "Build something (e.g. 'I need to build X'):",
-        "  Run in PARALLEL:",
-        "    find_ai_tool(task)                 — frameworks and libraries",
-        "    find_public_api(task)              — REST APIs with specs",
-        "    find_model(task)                   — HuggingFace models for the task",
-        "    find_dataset(task)                 — training/eval data",
-        "    find_mcp_server(task)              — existing MCP servers to reuse",
-        "  Then SEQUENTIALLY:",
-        "    get_api_spec(best_api)             — fetch the OpenAPI spec",
-        "    get_api_endpoints(provider, path)  — endpoint schemas for code gen",
-        "    get_dependencies(best_repo)        — check dependency weight",
-        "  → Synthesize: recommended stack with evidence for each choice",
-        "",
-        "Due diligence on a project:",
-        "  1. project_pulse(name)              — full profile + release history",
-        "  2. hype_check(name)                 — stars vs real adoption",
-        "  3. related(name)                    — what's discussed alongside it?",
-        "  4. find_dependents(package)          — who depends on it?",
-        "  5. hn_pulse(name)                   — what practitioners say",
-        "  → Synthesize: health + adoption + ecosystem position + sentiment",
-        "",
-        "IMPORTANT BEHAVIORAL NOTES",
-        "-" * 30,
-        "",
-        "1. Run independent queries IN PARALLEL. Don't wait for one result before",
-        "   starting the next if they don't depend on each other. All five 'find_*'",
-        "   tools in the 'build something' pattern can run simultaneously.",
-        "",
-        "2. DON'T STOP after each tool result to narrate. Run the full chain,",
-        "   then synthesize once at the end. The user wants the complete picture,",
-        "   not a play-by-play of each API call.",
-        "",
-        "3. When compare() is limited to 5 projects, split into batches and",
-        "   run them in parallel. Then combine the results.",
-        "",
-        "4. Always look for SURPRISES — a project with low stars but massive",
-        "   downloads, a framework with zero commits in 30 days, a newcomer",
-        "   outpacing incumbents. These are the insights the user can't get",
-        "   from their own intuition.",
-        "",
-        "5. Use find_ai_tool() to discover things you DON'T already know about.",
-        "   Your training data has a cutoff. PT-Edge's indexes are live. Search",
-        "   broadly to catch tools and projects that emerged after your cutoff.",
-        "",
-        "6. Search results include STALENESS indicators. Repos not pushed in >12",
-        "   months are marked [STALE]. Factor this into recommendations.",
-        "",
-        "7. Use OFFSET to paginate. find_ai_tool('MCP', offset=5) shows results 6-10.",
-        "   Useful when the first page doesn't have what you need.",
+        "Due diligence:",
+        "  project_pulse → hype_check → related → find_dependents → hn_pulse",
         "",
         "MCP RESOURCES & PROMPTS",
         "-" * 30,
-        "",
-        "PT-Edge also exposes structured data via MCP resources and prompts:",
-        "",
-        "Resources (reference data, always available):",
-        "  resource://pt-edge/methodology    -- tier system, hype ratio, lifecycle, data sources",
-        "  resource://pt-edge/categories     -- valid project categories",
-        "  resource://pt-edge/coverage       -- live data coverage stats + freshness",
-        "",
-        "Resource Templates (parameterised lookups):",
-        "  resource://pt-edge/project/{slug}     -- quick reference card for a project",
-        "  resource://pt-edge/lab/{slug}          -- lab overview with project list",
-        "  resource://pt-edge/category/{category} -- all projects in a category",
-        "",
-        "Prompts (compound query workflows):",
-        "  evaluate-technology(technology)   -- systematic technology evaluation",
-        "  build-something(task)             -- discovery sweep for implementation",
-        "  due-diligence(project)            -- comprehensive project health check",
-        "  weekly-briefing()                 -- weekly AI ecosystem briefing",
-        "",
-        "BUILT BY",
-        "-" * 30,
-        "Graham Rowe — Phase Transitions newsletter",
-        "Subscribe: phasetransitionsai.substack.com",
-        "Contact: graham@phasetransitions.ai",
+        "Resources: methodology, categories, coverage, project/{slug}, lab/{slug}, category/{cat}",
+        "Prompts: evaluate-technology, build-something, due-diligence, weekly-briefing",
         "",
         "ONBOARDING",
         "-" * 30,
-        "Before diving into the tools, reflect on what you already know about this",
-        "user from your conversation context — their role, interests, what they're",
-        "currently working on or researching. Share this reflection with them:",
+        "Reflect on what you know about the user from context. Share a tailored suggestion:",
+        '  "Based on what I know about you, I\'d suggest we start with [tools] to [value]."',
+        "Offer to share an anonymised onboarding summary via submit_feedback(category='onboarding').",
         "",
-        '  "Based on what I know about you, here\'s how I\'d tailor your PT Edge',
-        '   session: [reflection]. I\'d suggest we start with [specific tools]',
-        '   to [specific value]."',
-        "",
-        "This primes the context window so all subsequent queries are shaped by",
-        "what matters to them. Then offer:",
-        "",
-        '  "Would you also like to help improve PT Edge? I can share an anonymised',
-        '   summary of why you\'re here with the team. Here\'s what I\'d send:',
-        '   [draft]. Happy to adjust before submitting."',
-        "",
-        "If they consent, call submit_feedback with category='onboarding' and the",
-        "anonymised summary as the text. If they decline, that's fine — move on.",
+        "Built by Graham Rowe — Phase Transitions newsletter",
+        "phasetransitionsai.substack.com | graham@phasetransitions.ai",
     ])
 
     return "\n".join(lines)
@@ -676,6 +498,7 @@ async def about() -> str:
 
 @mcp.tool()
 @track_usage
+@compact_response(2000)
 async def more_tools() -> str:
     """Unlock 30+ advanced tools for hype analysis, lifecycle tracking, lab intelligence, HuggingFace model/dataset search, editorial curation, community feedback, and raw SQL queries. Call this to see the full catalog."""
     # Build descriptions from the hidden tools dynamically
@@ -847,11 +670,49 @@ async def query(sql: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Tool: recall — retrieve full output from workspace
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def recall(key: str) -> str:
+    """Retrieve full output from a previous tool call. Keys are shown in truncated responses."""
+    result = _workspace_recall(key)
+    if result:
+        return result
+    available = _workspace_list()
+    if available:
+        keys = "\n".join(f"  {k} ({v:,} chars)" for k, v in available.items())
+        return f"Key '{key}' not found. Available keys:\n{keys}"
+    return f"Key '{key}' not found. No items in workspace yet."
+
+
+# ---------------------------------------------------------------------------
+# Tool: workspace — list stored items
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def workspace() -> str:
+    """Show what's stored in your session workspace from previous tool calls."""
+    items = _workspace_list()
+    if not items:
+        return "Workspace is empty. Items are stored automatically when tool responses are truncated."
+    lines = ["SESSION WORKSPACE", "=" * 40, ""]
+    for k, size in items.items():
+        lines.append(f"  {k:<40} {size:,} chars")
+    lines.append("")
+    lines.append("Use recall('key') to retrieve full output.")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Tool 4: whats_new
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
 @track_usage
+@compact_response(1500)
 async def whats_new(days: int = 7) -> str:
     """What shipped in the AI ecosystem this week? New releases, trending projects, and notable Hacker News discussion — all in one view."""
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
@@ -941,6 +802,7 @@ async def whats_new(days: int = 7) -> str:
 
 @mcp.tool()
 @track_usage
+@compact_response(1500)
 async def project_pulse(project: str) -> str:
     """Get the full picture on an AI project — stars, downloads, momentum, commits, hype ratio, lifecycle stage, and HN mentions. Pass a project name or slug (e.g. 'langchain', 'ollama')."""
     session = SessionLocal()
@@ -1403,6 +1265,7 @@ def _lab_compare(session: Session, lab_names: list[str]) -> str:
 
 @mcp.tool()
 @track_usage
+@compact_response(1500)
 async def lab_pulse(lab: str) -> str:
     """What is a specific lab shipping? Accepts slug or name.
 
@@ -2522,6 +2385,7 @@ async def lab_models(lab: str = None, capability: str = None) -> str:
 
 @mcp.tool()
 @track_usage
+@compact_response(1500)
 async def lifecycle_map(category: str = None, tier: int = None, transitions: bool = False) -> str:
     """Groups all projects by lifecycle stage. Filter by category or tier.
 
@@ -2652,6 +2516,7 @@ async def lifecycle_map(category: str = None, tier: int = None, transitions: boo
 
 @mcp.tool()
 @track_usage
+@compact_response(1500)
 async def hype_landscape(category: str = None, limit: int = 10, window: str = None, format: str = "text") -> str:
     """Top overhyped + top underrated projects. Bulk hype comparison.
 
@@ -3409,6 +3274,7 @@ async def related(project: str) -> str:
 
 @mcp.tool()
 @track_usage
+@compact_response(1500)
 async def market_map() -> str:
     """Category concentration, power law distribution, and lab dominance across all tracked projects."""
     try:
@@ -4573,6 +4439,7 @@ async def scout(category: str = None, limit: int = 15) -> str:
 
 @mcp.tool()
 @track_usage
+@compact_response(1500)
 async def hn_pulse(query: str = None, days: int = 14) -> str:
     """HN discourse intelligence. What is the community actually talking about?
 
@@ -5385,6 +5252,7 @@ async def find_mcp_server(query: str, limit: int = 5, offset: int = 0) -> str:
 
 @mcp.tool()
 @track_usage
+@compact_response(1500)
 async def mcp_coverage(category: str = "") -> str:
     """MCP adoption across developer tools. Shows which tools have MCP servers
     and which don't, broken down by category with coverage percentages.
@@ -6680,10 +6548,12 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
         if not hmac.compare_digest(token, settings.API_TOKEN):
             return Response(status_code=401, content="Unauthorized")
         # Set request context for tool usage tracking
+        import hashlib
         from app.mcp.tracking import set_request_context
         client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or ip
         user_agent = request.headers.get("User-Agent", "")
-        set_request_context(client_ip, user_agent)
+        session_key = hashlib.sha256(f"{client_ip}:{user_agent}".encode()).hexdigest()[:16]
+        set_request_context(client_ip, user_agent, session_key)
         return await call_next(request)
 
 
@@ -6701,7 +6571,7 @@ _PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
 # Full tool list — used by SSE transport (Claude Desktop / SDK).
 # Includes editorial tools and legacy aliases for backward compatibility.
 _TOOL_LIST = [
-    about, more_tools, describe_schema, query, whats_new, project_pulse, lab_pulse,
+    about, more_tools, recall, workspace, describe_schema, query, whats_new, project_pulse, lab_pulse,
     trending, hype_check,
     submit_feedback, upvote_feedback, list_feedback, amend_feedback,
     submit_correction, upvote_correction, list_corrections, amend_correction,
@@ -6725,7 +6595,7 @@ def _tool_fn(t):
 
 
 # Core tools — the only tools visible in JSON-RPC tools/list (Claude.ai).
-# 10 tools that cover the main use cases. Everything else is accessible
+# 12 tools that cover the main use cases. Everything else is accessible
 # via more_tools() which returns a catalog, or by calling tools directly.
 _CORE_TOOL_NAMES = {
     "about",            # orientation — start here
@@ -6738,6 +6608,8 @@ _CORE_TOOL_NAMES = {
     "whats_new",        # what shipped recently
     "topic",            # semantic search across ecosystem
     "query",            # raw SQL escape hatch
+    "recall",           # retrieve full output from workspace
+    "workspace",        # list workspace contents
 }
 
 # Public tool list — used by JSON-RPC transport (Claude.ai web connector).
@@ -6826,13 +6698,20 @@ def mount_mcp(app):
     @app.post("/mcp")
     async def mcp_json_rpc(request: Request):
         """Simple JSON-RPC endpoint for Claude.ai web connector."""
+        import hashlib
+        import random
 
         # Extract client info for tracking (before auth — needed for all paths)
         from app.mcp.tracking import set_request_context
         raw_ip = request.client.host if request.client else "unknown"
         client_ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or raw_ip
         user_agent = request.headers.get("User-Agent", "")
-        set_request_context(client_ip, user_agent)
+        session_key = hashlib.sha256(f"{client_ip}:{user_agent}".encode()).hexdigest()[:16]
+        set_request_context(client_ip, user_agent, session_key)
+
+        # Periodic workspace cleanup (~1% of requests)
+        if random.random() < 0.01:
+            _workspace_cleanup()
 
         body = await request.json()
         method = body.get("method")
