@@ -23,6 +23,7 @@ from app.ingest.hf_datasets import ingest_hf_datasets
 from app.ingest.hf_models import ingest_hf_models
 from app.ingest.npm_mcp import ingest_npm_mcp
 from app.ingest.builder_tools import ingest_builder_tools
+from app.ingest.ai_repo_package_detect import detect_packages_llm
 from app.ingest.ai_repo_subcategory import ingest_subcategories
 from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis, backfill_hf_datasets, backfill_hf_models
 from app.briefing_refresh import refresh_briefing_evidence
@@ -92,6 +93,7 @@ async def run_all() -> dict:
         ("ai_repo_downloads", ingest_ai_repo_downloads),
         ("ai_repos", ingest_ai_repos),  # Slowest
         # Phase 3: LLM-dependent (rate-limited, at end so they don't block)
+        ("ai_repo_package_detect", detect_packages_llm),
         ("releases", ingest_releases),
         ("newsletters", ingest_newsletters),
     ]:
