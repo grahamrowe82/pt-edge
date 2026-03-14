@@ -1156,3 +1156,124 @@ def test_runner_pipeline_order():
     newsletters_pos = source.index('"newsletters"')
     assert releases_pos > ai_repos_pos, "releases should run after ai_repos"
     assert newsletters_pos > ai_repos_pos, "newsletters should run after ai_repos"
+
+
+# ---------------------------------------------------------------------------
+# Anti-pattern guards — catch common mistakes before they reach production
+# ---------------------------------------------------------------------------
+
+def _ingest_modules() -> list[tuple[str, str]]:
+    """Return (module_name, source) for all ingest modules."""
+    import importlib
+    import inspect
+    import pkgutil
+    import app.ingest as pkg
+    results = []
+    for info in pkgutil.iter_modules(pkg.__path__):
+        mod = importlib.import_module(f"app.ingest.{info.name}")
+        results.append((info.name, inspect.getsource(mod)))
+    return results
+
+
+class TestAntiPatterns:
+    """Source-level guards against common performance and security mistakes."""
+
+    def test_no_executemany_in_ingest(self):
+        """Bulk writes must use execute_values + temp table, not row-by-row.
+
+        SQLAlchemy's conn.execute(text("UPDATE ..."), [list_of_dicts]) issues
+        one round-trip per row. At typical remote DB latency that's ~5-10ms
+        per row — 11K rows = minutes of wall-clock time. The correct pattern
+        is psycopg2.extras.execute_values with a temp table and a single
+        UPDATE ... FROM join.
+        """
+        import re
+        pattern = re.compile(
+            r'conn\.execute\(\s*text\(\s*["\']'          # conn.execute(text("
+            r'(?:UPDATE|INSERT)\b'                        # UPDATE or INSERT
+            r'[^)]*\)\s*,\s*\[',                          # ..."), [
+            re.IGNORECASE | re.DOTALL,
+        )
+        for name, source in _ingest_modules():
+            assert not pattern.search(source), (
+                f"app/ingest/{name}.py uses row-by-row executemany "
+                f"(conn.execute + list-of-dicts). Use execute_values + "
+                f"temp table pattern instead."
+            )
+
+    def test_no_fstring_sql_writes(self):
+        """Write queries must never use f-strings — SQL injection risk.
+
+        text(f"SELECT ... {domain_filter}") is OK for read-only queries that
+        interpolate trusted constants (e.g. WHERE clauses from code).
+        But UPDATE/INSERT/DELETE with f-strings is never acceptable.
+        """
+        import re
+        pattern = re.compile(
+            r'text\(f["\']'                  # text(f" or text(f'
+            r'[^"\']*'                        # any content
+            r'(?:UPDATE|INSERT|DELETE)\b',    # contains a write keyword
+            re.IGNORECASE,
+        )
+        for name, source in _ingest_modules():
+            assert not pattern.search(source), (
+                f"app/ingest/{name}.py uses f-string SQL with a write "
+                f"statement (UPDATE/INSERT/DELETE). Use bind parameters."
+            )
+
+    def test_anthropic_calls_use_rate_limiter(self):
+        """Any module calling the Anthropic API must import the rate limiter."""
+        for name, source in _ingest_modules():
+            if name == "rate_limit":
+                continue
+            # If source references anthropic client messages.create
+            if "messages.create" in source and "anthropic" in source.lower():
+                assert "ANTHROPIC_LIMITER" in source, (
+                    f"app/ingest/{name}.py calls the Anthropic API "
+                    f"without ANTHROPIC_LIMITER. Import and await it."
+                )
+
+    def test_openai_calls_use_rate_limiter(self):
+        """Any module calling the OpenAI API must import the rate limiter."""
+        import inspect
+        # Also check app/embeddings.py since it lives outside app/ingest/
+        from app import embeddings
+        source = inspect.getsource(embeddings)
+        if "embeddings.create" in source:
+            assert "OPENAI_LIMITER" in source, (
+                "app/embeddings.py calls the OpenAI API "
+                "without OPENAI_LIMITER. Import and await it."
+            )
+
+    def test_no_sleep_as_rate_limit(self):
+        """Don't use bare asyncio.sleep() as a rate limiter substitute.
+
+        sleep(60) or sleep(30) as a rate-limiting strategy is brittle and
+        wasteful. Use the RateLimiter class instead. Short sleeps (< 5s)
+        for API politeness between requests are fine. Sleeps near a 429
+        check are also fine (backoff on rate-limit response).
+        """
+        import re
+        pattern = re.compile(r'asyncio\.sleep\((\d+)\)')
+        for name, source in _ingest_modules():
+            if name == "rate_limit":
+                continue
+            for match in pattern.finditer(source):
+                val = int(match.group(1))
+                if val < 10:
+                    continue
+                # Check surrounding context (5 lines above and below)
+                # to allow 429-backoff patterns
+                ctx_start = max(0, source.rfind('\n', 0, max(0, match.start() - 300)))
+                ctx_end = min(len(source), source.find('\n', match.end() + 300))
+                context = source[ctx_start:ctx_end].lower()
+                if "429" in context or "rate limit" in context or "rate-limit" in context or "backing off" in context:
+                    continue
+                line_start = source.rfind('\n', 0, match.start()) + 1
+                line_end = source.find('\n', match.end())
+                line = source[line_start:line_end].strip()
+                assert False, (
+                    f"app/ingest/{name}.py has asyncio.sleep({val}) that "
+                    f"looks like a homebrew rate limiter. Use RateLimiter "
+                    f"class instead. Line: {line}"
+                )

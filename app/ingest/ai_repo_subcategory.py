@@ -5,7 +5,7 @@ Currently targets domain='mcp' repos, assigning ecosystem-layer subcategories
 
 Idempotent: only processes rows where subcategory IS NULL.
 
-Run standalone:  python -m app.ingest.ai_repo_subcategory
+Run standalone:  python -m app.ingest.ai_repo_subcategory [limit]
 """
 import asyncio
 import logging
@@ -43,7 +43,55 @@ def _classify_mcp(name: str, description: str, topics: list[str] | None) -> str 
     return None
 
 
-async def ingest_subcategories() -> dict:
+def _batch_update_subcategory(updates: list[tuple[str, int]]) -> int:
+    """Batch update subcategory using temp table + execute_values.
+
+    Each tuple: (subcategory, id)
+    """
+    if not updates:
+        return 0
+    from psycopg2.extras import execute_values
+
+    raw_conn = engine.raw_connection()
+    try:
+        cur = raw_conn.cursor()
+        cur.execute("""
+            CREATE TEMP TABLE _sub_batch (
+                id INTEGER PRIMARY KEY,
+                subcategory VARCHAR(50) NOT NULL
+            ) ON COMMIT DROP
+        """)
+        execute_values(
+            cur,
+            "INSERT INTO _sub_batch (id, subcategory) VALUES %s",
+            [(rid, sub) for sub, rid in updates],
+            template="(%s, %s)",
+            page_size=1000,
+        )
+        cur.execute("""
+            UPDATE ai_repos a
+            SET subcategory = b.subcategory
+            FROM _sub_batch b
+            WHERE a.id = b.id
+        """)
+        count = cur.rowcount
+        raw_conn.commit()
+        return count
+    except Exception as e:
+        try:
+            raw_conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"Batch subcategory update failed: {e}")
+        return 0
+    finally:
+        try:
+            raw_conn.close()
+        except Exception:
+            pass
+
+
+async def ingest_subcategories(limit: int = 50000) -> dict:
     """Classify uncategorized MCP repos by subcategory."""
     started_at = datetime.now(timezone.utc)
 
@@ -52,7 +100,9 @@ async def ingest_subcategories() -> dict:
             SELECT id, name, description, topics
             FROM ai_repos
             WHERE domain = 'mcp' AND subcategory IS NULL
-        """)).fetchall()
+            ORDER BY stars DESC
+            LIMIT :lim
+        """), {"lim": limit}).fetchall()
 
     if not rows:
         logger.info("No uncategorized MCP repos to classify")
@@ -63,7 +113,7 @@ async def ingest_subcategories() -> dict:
     updates: list[tuple[str, int]] = []
     unmatched = 0
 
-    for r in rows:
+    for i, r in enumerate(rows):
         m = r._mapping
         subcategory = _classify_mcp(
             m["name"] or "",
@@ -75,15 +125,10 @@ async def ingest_subcategories() -> dict:
         else:
             unmatched += 1
 
-    if updates:
-        with engine.connect() as conn:
-            conn.execute(
-                text("UPDATE ai_repos SET subcategory = :sub WHERE id = :id"),
-                [{"sub": sub, "id": rid} for sub, rid in updates],
-            )
-            conn.commit()
+        if (i + 1) % 5000 == 0:
+            logger.info(f"  classified {i + 1}/{len(rows)} ({len(updates)} matched)")
 
-    classified = len(updates)
+    classified = _batch_update_subcategory(updates)
     logger.info(f"Subcategory classification: {classified} classified, {unmatched} unmatched")
 
     # Sync log
@@ -105,8 +150,10 @@ async def ingest_subcategories() -> dict:
 
 
 async def main():
+    import sys
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    result = await ingest_subcategories()
+    lim = int(sys.argv[1]) if len(sys.argv) > 1 else 50000
+    result = await ingest_subcategories(limit=lim)
     logger.info(f"Result: {result}")
 
 
