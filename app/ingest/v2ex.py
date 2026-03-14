@@ -12,6 +12,7 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
+from app.ingest.llm import call_haiku_text
 from app.models import Project, Lab, SyncLog
 from app.settings import settings
 from app.ingest.hn import (
@@ -37,6 +38,26 @@ def _matches_broad_filter(title: str, content: str | None) -> bool:
     """Check if a V2EX post from hot/latest feed is AI-related."""
     text_lower = f"{title} {content or ''}".lower()
     return any(term in text_lower for term in _BROAD_FILTER_TERMS)
+
+
+V2EX_FILTER_PROMPT = """\
+Is this Chinese developer forum post about AI, machine learning, LLMs, \
+or related developer tools? Consider both the title and content.
+
+Title: {title}
+Content (first 500 chars): {content_preview}
+
+Return ONLY "yes" or "no"."""
+
+
+async def _llm_ai_filter(title: str, content: str) -> bool:
+    """Use LLM to determine if a V2EX post is AI-related. Haiku understands Chinese."""
+    prompt = V2EX_FILTER_PROMPT.format(
+        title=title,
+        content_preview=(content or "")[:500],
+    )
+    result = await call_haiku_text(prompt, max_tokens=10)
+    return result is not None and result.strip().lower().startswith("yes")
 
 
 async def fetch_node_topics(
@@ -142,7 +163,10 @@ async def ingest_v2ex() -> dict:
                 for t in topics:
                     title = t.get("title", "")
                     content = t.get("content", "")
-                    if _matches_broad_filter(title, content):
+                    is_relevant = _matches_broad_filter(title, content)
+                    if not is_relevant and settings.ANTHROPIC_API_KEY:
+                        is_relevant = await _llm_ai_filter(title, content)
+                    if is_relevant:
                         row = _build_row(t, projects, lab_slug_to_id)
                         if row and row["v2ex_id"] not in seen_ids:
                             seen_ids.add(row["v2ex_id"])

@@ -1,7 +1,10 @@
-"""Classify ai_repos by subcategory using keyword matching.
+"""Classify ai_repos by subcategory using keyword matching + LLM fallback.
 
 Currently targets domain='mcp' repos, assigning ecosystem-layer subcategories
 (framework, gateway, transport, etc.) based on name + description + topics.
+
+Phase 1 (regex): Fast keyword matching — first-match-wins.
+Phase 2 (LLM):  For repos regex missed, batch to Claude Haiku for classification.
 
 Idempotent: only processes rows where subcategory IS NULL.
 
@@ -15,7 +18,9 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
+from app.ingest.llm import call_haiku
 from app.models import SyncLog
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +152,122 @@ async def ingest_subcategories(limit: int = 50000) -> dict:
         session.close()
 
     return {"classified": classified, "unmatched": unmatched}
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: LLM fallback for repos regex didn't match
+# ---------------------------------------------------------------------------
+
+VALID_SUBCATEGORIES = {
+    "testing", "security", "observability", "transport", "gateway",
+    "discovery", "billing", "ide", "agent-memory", "framework", "other",
+}
+
+LLM_BATCH_SIZE = 30
+
+SUBCATEGORY_LLM_PROMPT = """\
+Classify each MCP (Model Context Protocol) repository into exactly one \
+subcategory. Choose from: testing, security, observability, transport, \
+gateway, discovery, billing, ide, agent-memory, framework, other.
+
+Rules:
+- "other" for repos that don't fit any specific subcategory.
+- Use the subcategory that best matches the PRIMARY purpose.
+- Return valid JSON only — an array of objects.
+
+Return format:
+[{{"id": <repo_id>, "subcategory": "<subcategory>"}}, ...]
+
+Repos:
+{repos_text}"""
+
+
+async def classify_subcategory_llm(limit: int = 7500) -> dict:
+    """Use LLM to classify MCP repos that regex didn't match."""
+    if not settings.ANTHROPIC_API_KEY:
+        logger.info("No ANTHROPIC_API_KEY — skipping LLM subcategory classification")
+        return {"classified": 0, "skipped": "no API key"}
+
+    started_at = datetime.now(timezone.utc)
+
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT id, name, LEFT(description, 200) AS description, topics
+            FROM ai_repos
+            WHERE domain = 'mcp' AND subcategory IS NULL
+            ORDER BY stars DESC
+            LIMIT :lim
+        """), {"lim": limit}).fetchall()
+
+    if not rows:
+        logger.info("No unclassified MCP repos for LLM")
+        return {"classified": 0, "batches": 0}
+
+    logger.info(f"LLM subcategory classification: processing {len(rows)} repos")
+
+    # Build batches
+    batches = [rows[i:i + LLM_BATCH_SIZE] for i in range(0, len(rows), LLM_BATCH_SIZE)]
+    id_set = {r._mapping["id"] for r in rows}
+
+    total_classified = 0
+    errors = 0
+
+    for batch_idx, batch in enumerate(batches):
+        lines = []
+        for r in batch:
+            m = r._mapping
+            desc = (m["description"] or "").replace("\n", " ").strip()
+            topics_csv = ", ".join(m["topics"]) if m["topics"] else ""
+            lines.append(f'{m["id"]}. {m["name"]} — "{desc}" [topics: {topics_csv}]')
+        repos_text = "\n".join(lines)
+
+        predictions = await call_haiku(
+            SUBCATEGORY_LLM_PROMPT.format(repos_text=repos_text)
+        )
+        if not predictions:
+            logger.warning(f"Batch {batch_idx + 1}/{len(batches)}: LLM returned no results")
+            errors += 1
+            continue
+
+        updates: list[tuple[str, int]] = []
+        for pred in predictions:
+            if not isinstance(pred, dict):
+                continue
+            rid = pred.get("id")
+            sub = (pred.get("subcategory") or "").lower().strip()
+            if rid not in id_set or sub not in VALID_SUBCATEGORIES:
+                continue
+            if sub == "other":
+                continue  # Leave NULL for manual review
+            updates.append((sub, rid))
+
+        if updates:
+            written = _batch_update_subcategory(updates)
+            total_classified += written
+
+        logger.info(
+            f"Batch {batch_idx + 1}/{len(batches)}: "
+            f"{len(updates)} classified, {total_classified} total"
+        )
+
+    # Sync log
+    session = SessionLocal()
+    try:
+        session.add(SyncLog(
+            sync_type="subcategory_llm",
+            status="success" if not errors else "partial",
+            records_written=total_classified,
+            error_message=f"{errors} LLM errors" if errors else None,
+            started_at=started_at,
+            finished_at=datetime.now(timezone.utc),
+        ))
+        session.commit()
+    finally:
+        session.close()
+
+    result = {"classified": total_classified, "batches": len(batches), "errors": errors}
+    logger.info(f"LLM subcategory classification complete: {result}")
+    return result
 
 
 async def main():

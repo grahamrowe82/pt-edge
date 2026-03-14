@@ -24,7 +24,8 @@ from app.ingest.hf_models import ingest_hf_models
 from app.ingest.npm_mcp import ingest_npm_mcp
 from app.ingest.builder_tools import ingest_builder_tools
 from app.ingest.ai_repo_package_detect import detect_packages_llm
-from app.ingest.ai_repo_subcategory import ingest_subcategories
+from app.ingest.ai_repo_subcategory import ingest_subcategories, classify_subcategory_llm
+from app.ingest.hn_llm_match import match_hn_posts_llm
 from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis, backfill_hf_datasets, backfill_hf_models
 from app.briefing_refresh import refresh_briefing_evidence
 from app.embeddings import is_enabled
@@ -122,6 +123,14 @@ async def run_all() -> dict:
         logger.exception(f"hn_lab_backfill failed: {e}")
         results["hn_lab_backfill"] = {"error": str(e)}
 
+    # LLM-assisted HN matching (residual NULLs after regex backfill)
+    try:
+        results["hn_llm_match"] = await _run_with_retry("hn_llm_match", match_hn_posts_llm)
+        logger.info(f"hn_llm_match: {results['hn_llm_match']}")
+    except Exception as e:
+        logger.exception(f"hn_llm_match failed: {e}")
+        results["hn_llm_match"] = {"error": str(e)}
+
     # Match unlinked V2EX posts to labs
     try:
         v2ex_lab_linked = await _run_with_retry("v2ex_lab_backfill", backfill_v2ex_lab_links)
@@ -131,13 +140,20 @@ async def run_all() -> dict:
         logger.exception(f"v2ex_lab_backfill failed: {e}")
         results["v2ex_lab_backfill"] = {"error": str(e)}
 
-    # Classify MCP repos by subcategory
+    # Classify MCP repos by subcategory (regex first, then LLM fallback)
     try:
         results["subcategory"] = await _run_with_retry("subcategory", ingest_subcategories)
         logger.info(f"subcategory: {results['subcategory']}")
     except Exception as e:
         logger.exception(f"subcategory failed: {e}")
         results["subcategory"] = {"error": str(e)}
+
+    try:
+        results["subcategory_llm"] = await _run_with_retry("subcategory_llm", classify_subcategory_llm)
+        logger.info(f"subcategory_llm: {results['subcategory_llm']}")
+    except Exception as e:
+        logger.exception(f"subcategory_llm failed: {e}")
+        results["subcategory_llm"] = {"error": str(e)}
 
     # Link projects ↔ ai_repos by matching github_owner/github_repo
     try:
