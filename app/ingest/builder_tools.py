@@ -2,7 +2,7 @@
 
 Phase 1 (seed): Upsert curated developer tools into builder_tools.
 Phase 2 (enrich): Cross-reference each unchecked/stale builder_tool against
-    ai_repos WHERE domain='mcp' using name matching. Update mcp_status.
+    ai_repos WHERE domain='mcp' using name matching + LLM fallback.
 
 Run standalone:  python -m app.ingest.builder_tools
 """
@@ -13,7 +13,9 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
+from app.ingest.llm import call_haiku
 from app.models import SyncLog
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -278,19 +280,88 @@ def _seed_curated() -> int:
             pass
 
 
-def _enrich_mcp_status() -> dict:
+MCP_MATCH_PROMPT = """\
+Match each developer tool to the MCP (Model Context Protocol) server \
+repository that provides integration with it. A match means the MCP \
+repo specifically integrates with that tool's API.
+
+MCP repo names (pick from these only):
+{repo_names}
+
+Tools to match:
+{tools_text}
+
+Rules:
+- Only match if you are confident the MCP repo provides integration.
+- Return null for tools with no matching MCP repo.
+- Return valid JSON only.
+
+Return format:
+[{{"id": <tool_id>, "repo_name": "<matched repo name or null>"}}, ...]"""
+
+LLM_MCP_BATCH_SIZE = 30
+
+
+async def _llm_match_mcp_repos(
+    unmatched_tools: list[dict],
+    repo_by_name: dict[str, dict],
+    all_mcp: list[dict],
+) -> dict[int, dict]:
+    """Use LLM to match tools to MCP repos. Returns {tool_id: matched_repo}."""
+    if not settings.ANTHROPIC_API_KEY or not unmatched_tools:
+        return {}
+
+    # Build repo name list (top 500 by stars, already sorted)
+    repo_names = "\n".join(r["name"] for r in all_mcp[:500])
+
+    matched: dict[int, dict] = {}
+    batches = [
+        unmatched_tools[i:i + LLM_MCP_BATCH_SIZE]
+        for i in range(0, len(unmatched_tools), LLM_MCP_BATCH_SIZE)
+    ]
+
+    for batch in batches:
+        lines = []
+        for t in batch:
+            desc = (t.get("description") or "")[:100]
+            lines.append(f'{t["id"]}. {t["name"]} ({t.get("category", "")}) — "{desc}"')
+        tools_text = "\n".join(lines)
+
+        predictions = await call_haiku(
+            MCP_MATCH_PROMPT.format(repo_names=repo_names, tools_text=tools_text)
+        )
+        if not predictions:
+            continue
+
+        tool_id_set = {t["id"] for t in batch}
+        for pred in predictions:
+            if not isinstance(pred, dict):
+                continue
+            tid = pred.get("id")
+            repo_name = pred.get("repo_name")
+            if tid not in tool_id_set or not repo_name:
+                continue
+            repo_name_lower = repo_name.lower()
+            if repo_name_lower in repo_by_name:
+                matched[tid] = repo_by_name[repo_name_lower]
+
+    return matched
+
+
+async def _enrich_mcp_status() -> dict:
     """Cross-reference builder_tools against ai_repos (domain='mcp').
 
     Matching strategy:
     1. Exact name patterns: {slug}-mcp-server, {slug}-mcp, mcp-server-{slug}, mcp-{slug}
     2. Partial match: slug + 'mcp' both in repo name
+    3. LLM fallback for unmatched tools
     Determines official vs community by comparing repo owner to tool slug.
     """
     stale_cutoff = datetime.now(timezone.utc) - timedelta(days=STALE_DAYS)
 
     with engine.connect() as conn:
         tools = conn.execute(text("""
-            SELECT id, slug, name, source_ref
+            SELECT id, slug, name, source_ref, category, description
             FROM builder_tools
             WHERE mcp_status = 'unchecked'
                OR mcp_checked_at IS NULL
@@ -322,6 +393,7 @@ def _enrich_mcp_status() -> dict:
     all_mcp = [dict(r._mapping) for r in mcp_repos]
     updates = []
     found = 0
+    unmatched_for_llm: list[dict] = []
 
     for tool_row in tools:
         t = tool_row._mapping
@@ -363,7 +435,32 @@ def _enrich_mcp_status() -> dict:
                 best_match.get("npm_package") or None, t["id"],
             ))
         else:
-            updates.append(("none_found", None, None, None, t["id"]))
+            unmatched_for_llm.append(dict(t))
+
+    # Strategy 3: LLM fallback for tools that pattern matching missed
+    if unmatched_for_llm:
+        llm_matches = await _llm_match_mcp_repos(unmatched_for_llm, repo_by_name, all_mcp)
+        for t in unmatched_for_llm:
+            tid = t["id"]
+            if tid in llm_matches:
+                found += 1
+                best_match = llm_matches[tid]
+                owner = best_match["github_owner"].lower()
+                slug = t["slug"]
+                if owner == slug or owner.startswith(slug):
+                    mcp_status = "has_official"
+                    mcp_type = "official_repo"
+                else:
+                    mcp_status = "has_community"
+                    mcp_type = "community_repo"
+                    if best_match.get("npm_package"):
+                        mcp_type = "community_npm"
+                updates.append((
+                    mcp_status, mcp_type, best_match["full_name"],
+                    best_match.get("npm_package") or None, tid,
+                ))
+            else:
+                updates.append(("none_found", None, None, None, tid))
 
     # Batch update
     if updates:
@@ -412,8 +509,8 @@ async def ingest_builder_tools() -> dict:
     seeded = _seed_curated()
     logger.info(f"Seeded {seeded} builder tools from curated list")
 
-    # Phase 2: Enrich MCP status by cross-referencing ai_repos
-    enriched = _enrich_mcp_status()
+    # Phase 2: Enrich MCP status by cross-referencing ai_repos + LLM fallback
+    enriched = await _enrich_mcp_status()
     logger.info(f"MCP enrichment: {enriched}")
 
     _log_sync(started_at, seeded, None)

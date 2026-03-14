@@ -17,6 +17,7 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
+from app.ingest.llm import call_haiku_text
 from app.models import Project, SyncLog
 from app.settings import settings
 
@@ -212,6 +213,38 @@ LANG_CATEGORY = {
 }
 
 
+CATEGORY_PROMPT = """\
+Classify this AI/ML GitHub project into exactly one category: \
+model, framework, tool, library, infra, agent.
+
+Project: {name}
+Description: {description}
+Language: {language}
+Topics: {topics}
+
+Return ONLY the category word, nothing else."""
+
+VALID_CATEGORIES = {"model", "framework", "tool", "library", "infra", "agent"}
+
+
+async def _classify_category_llm(
+    name: str, description: str, language: str | None, topics: list | None,
+) -> str | None:
+    """Use LLM to classify a project's category. Returns category or None."""
+    prompt = CATEGORY_PROMPT.format(
+        name=name,
+        description=description or "",
+        language=language or "unknown",
+        topics=", ".join(topics) if topics else "none",
+    )
+    result = await call_haiku_text(prompt, max_tokens=20)
+    if result:
+        cat = result.strip().lower()
+        if cat in VALID_CATEGORIES:
+            return cat
+    return None
+
+
 async def _auto_promote_candidates() -> list[dict]:
     """Promote pending candidates that cross star thresholds.
 
@@ -258,9 +291,16 @@ async def _auto_promote_candidates() -> list[dict]:
                 session.commit()
                 continue
 
-            # Guess category from language
-            lang = (c.get("language") or "").lower()
-            category = LANG_CATEGORY.get(lang, "tool")
+            # LLM category classification with language-based fallback
+            category = await _classify_category_llm(
+                c.get("name") or c.get("github_repo") or "",
+                c.get("description") or "",
+                c.get("language"),
+                list(c.get("topics") or []),
+            )
+            if not category:
+                lang = (c.get("language") or "").lower()
+                category = LANG_CATEGORY.get(lang, "tool")
 
             # Create project — default to binary distribution (most HN/trending
             # discoveries are apps, not pip-installable packages)

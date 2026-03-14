@@ -1182,6 +1182,123 @@ def test_runner_pipeline_order():
 
 
 # ---------------------------------------------------------------------------
+# LLM enrichment tasks — shared helper + 7 tasks
+# ---------------------------------------------------------------------------
+
+def test_llm_helper_import():
+    """Shared LLM helper imports without crashing."""
+    from app.ingest.llm import call_haiku, call_haiku_text
+    assert callable(call_haiku)
+    assert callable(call_haiku_text)
+
+
+def test_llm_helper_uses_rate_limiter():
+    """Shared LLM helper uses ANTHROPIC_LIMITER."""
+    import inspect
+    from app.ingest import llm
+    source = inspect.getsource(llm)
+    assert "ANTHROPIC_LIMITER" in source
+
+
+def test_subcategory_llm_import():
+    """LLM subcategory classification function imports."""
+    from app.ingest.ai_repo_subcategory import classify_subcategory_llm
+    assert callable(classify_subcategory_llm)
+
+
+def test_subcategory_llm_in_runner():
+    """LLM subcategory classification is wired into the runner."""
+    import inspect
+    from app.ingest import runner
+    source = inspect.getsource(runner.run_all)
+    assert "subcategory_llm" in source
+    assert "classify_subcategory_llm" in source
+
+
+def test_subcategory_llm_uses_call_haiku():
+    """LLM subcategory classification uses shared LLM helper."""
+    import inspect
+    from app.ingest import ai_repo_subcategory
+    source = inspect.getsource(ai_repo_subcategory)
+    assert "call_haiku" in source
+
+
+def test_hn_llm_match_import():
+    """HN LLM matching module imports."""
+    from app.ingest.hn_llm_match import match_hn_posts_llm
+    assert callable(match_hn_posts_llm)
+
+
+def test_hn_llm_match_in_runner():
+    """HN LLM matching is wired into the runner."""
+    import inspect
+    from app.ingest import runner
+    source = inspect.getsource(runner.run_all)
+    assert "hn_llm_match" in source
+    assert "match_hn_posts_llm" in source
+
+
+def test_hn_llm_match_uses_call_haiku():
+    """HN LLM matching uses shared LLM helper."""
+    import inspect
+    from app.ingest import hn_llm_match
+    source = inspect.getsource(hn_llm_match)
+    assert "call_haiku" in source
+
+
+def test_candidate_category_llm():
+    """Candidate auto-promotion uses LLM for category."""
+    import inspect
+    from app.ingest import candidates
+    source = inspect.getsource(candidates)
+    assert "call_haiku" in source or "_classify_category_llm" in source
+
+
+def test_v2ex_llm_filter():
+    """V2EX ingest has LLM AI content filter."""
+    import inspect
+    from app.ingest import v2ex
+    source = inspect.getsource(v2ex)
+    assert "_llm_ai_filter" in source
+
+
+def test_builder_tools_llm_match():
+    """Builder tools has LLM MCP matching fallback."""
+    import inspect
+    from app.ingest import builder_tools
+    source = inspect.getsource(builder_tools)
+    assert "call_haiku" in source or "_llm_match_mcp_repos" in source
+
+
+def test_newsletter_llm_resolve():
+    """Newsletter mention resolution has LLM fallback."""
+    import inspect
+    from app.ingest import newsletters
+    source = inspect.getsource(newsletters)
+    assert "_resolve_mentions_llm" in source
+
+
+def test_hn_llm_match_after_regex_backfill():
+    """HN LLM matching runs after regex-based backfill."""
+    import inspect
+    from app.ingest import runner
+    source = inspect.getsource(runner.run_all)
+    regex_pos = source.index("hn_lab_backfill")
+    llm_pos = source.index("hn_llm_match")
+    assert llm_pos > regex_pos, "hn_llm_match must run after regex backfill"
+
+
+def test_subcategory_llm_after_regex():
+    """LLM subcategory runs after regex subcategory."""
+    import inspect
+    from app.ingest import runner
+    source = inspect.getsource(runner.run_all)
+    regex_pos = source.index('"subcategory"')
+    llm_pos = source.index('"subcategory_llm"')
+    assert llm_pos > regex_pos, "subcategory_llm must run after regex pass"
+
+
+# ---------------------------------------------------------------------------
 # Anti-pattern guards — catch common mistakes before they reach production
 # ---------------------------------------------------------------------------
 
@@ -1245,15 +1362,23 @@ class TestAntiPatterns:
             )
 
     def test_anthropic_calls_use_rate_limiter(self):
-        """Any module calling the Anthropic API must import the rate limiter."""
+        """Any module calling the Anthropic API must use the rate limiter."""
         for name, source in _ingest_modules():
-            if name == "rate_limit":
+            if name in ("rate_limit", "llm"):
                 continue
-            # If source references anthropic client messages.create
-            if "messages.create" in source and "anthropic" in source.lower():
-                assert "ANTHROPIC_LIMITER" in source, (
+            uses_anthropic = (
+                ("messages.create" in source and "anthropic" in source.lower())
+                or "api.anthropic.com" in source
+            )
+            if uses_anthropic:
+                has_limiter = (
+                    "ANTHROPIC_LIMITER" in source
+                    or "call_haiku" in source
+                    or "call_haiku_text" in source
+                )
+                assert has_limiter, (
                     f"app/ingest/{name}.py calls the Anthropic API "
-                    f"without ANTHROPIC_LIMITER. Import and await it."
+                    f"without ANTHROPIC_LIMITER or call_haiku helper."
                 )
 
     def test_openai_calls_use_rate_limiter(self):

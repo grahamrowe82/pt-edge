@@ -9,6 +9,7 @@ Deduplicates on (entry_url, topic_index).
 Gracefully degrades: if ANTHROPIC_API_KEY is not set, entries are stored
 as a single row without summaries, sentiment, or mention extraction.
 """
+import asyncio
 import json
 import logging
 import re
@@ -22,6 +23,7 @@ from sqlalchemy import text
 
 from app.db import engine, SessionLocal
 from app.embeddings import is_enabled as embeddings_enabled, build_newsletter_text, embed_batch
+from app.ingest.llm import call_haiku
 from app.models import Project, Lab, SyncLog
 from app.settings import settings
 
@@ -291,7 +293,81 @@ async def _extract_topics(entry: dict) -> list[dict]:
 
 # ─── ID resolution ───────────────────────────────────────────────────
 
-def _resolve_mention_ids(
+RESOLVE_PROMPT = """\
+Match each AI mention to the correct project or lab from our database.
+"GPT-4o" -> project "GPT", "Claude 3.5 Sonnet" -> project "Claude", etc.
+
+Projects (name -> id):
+{projects_text}
+
+Labs (slug -> id):
+{labs_text}
+
+Mentions to resolve:
+{mentions_text}
+
+Rules:
+- Match by semantic equivalence, not exact string match.
+- Return null for mentions that don't match any project or lab.
+- Return valid JSON only.
+
+Return format:
+[{{"idx": <index>, "project_id": <id or null>, "lab_id": <id or null>}}, ...]"""
+
+
+async def _resolve_mentions_llm(
+    unresolved: list[tuple[int, dict]],
+    project_name_to_id: dict[str, int],
+    lab_slug_to_id: dict[str, int],
+) -> dict[int, dict]:
+    """Use LLM to resolve unmatched mentions. Returns {idx: {project_id, lab_id}}."""
+    if not unresolved:
+        return {}
+
+    projects_text = "\n".join(
+        f"{name} -> {pid}" for name, pid in sorted(project_name_to_id.items())
+    )
+    labs_text = "\n".join(
+        f"{slug} -> {lid}" for slug, lid in sorted(lab_slug_to_id.items())
+    )
+    mentions_text = "\n".join(
+        f'{idx}. "{m.get("name", "")}" (type: {m.get("type", "")})'
+        for idx, m in unresolved
+    )
+
+    valid_project_ids = set(project_name_to_id.values())
+    valid_lab_ids = set(lab_slug_to_id.values())
+
+    predictions = await call_haiku(
+        RESOLVE_PROMPT.format(
+            projects_text=projects_text,
+            labs_text=labs_text,
+            mentions_text=mentions_text,
+        )
+    )
+    if not predictions:
+        return {}
+
+    result: dict[int, dict] = {}
+    for pred in predictions:
+        if not isinstance(pred, dict):
+            continue
+        idx = pred.get("idx")
+        if idx is None:
+            continue
+        pid = pred.get("project_id")
+        lid = pred.get("lab_id")
+        if pid is not None and pid not in valid_project_ids:
+            pid = None
+        if lid is not None and lid not in valid_lab_ids:
+            lid = None
+        if pid is not None or lid is not None:
+            result[idx] = {"project_id": pid, "lab_id": lid}
+
+    return result
+
+
+async def _resolve_mention_ids(
     mentions: list[dict],
     project_name_to_id: dict[str, int],
     lab_slug_to_id: dict[str, int],
@@ -300,16 +376,20 @@ def _resolve_mention_ids(
     from app.ingest.hn import LAB_ALIASES
 
     resolved = []
-    for m in mentions:
+    unresolved: list[tuple[int, dict]] = []
+
+    for i, m in enumerate(mentions):
         name = m.get("name", "")
         mention_type = m.get("type", "")
         entry = {"name": name, "type": mention_type}
         name_lower = name.lower()
+        matched = False
 
         if mention_type == "project":
             pid = project_name_to_id.get(name_lower)
             if pid:
                 entry["project_id"] = pid
+                matched = True
         elif mention_type == "lab":
             lid = lab_slug_to_id.get(name_lower)
             if not lid:
@@ -318,8 +398,22 @@ def _resolve_mention_ids(
                     lid = lab_slug_to_id.get(alias_slug)
             if lid:
                 entry["lab_id"] = lid
+                matched = True
+
+        if not matched:
+            unresolved.append((i, m))
 
         resolved.append(entry)
+
+    # LLM fallback for unresolved mentions
+    if unresolved and settings.ANTHROPIC_API_KEY:
+        llm_resolved = await _resolve_mentions_llm(
+            unresolved, project_name_to_id, lab_slug_to_id
+        )
+        for idx, ids in llm_resolved.items():
+            if idx < len(resolved):
+                resolved[idx].update(ids)
+
     return resolved
 
 
@@ -389,7 +483,7 @@ async def ingest_newsletters() -> dict:
                     {"url": m["entry_url"]},
                 )
                 for idx, topic in enumerate(topics):
-                    resolved_mentions = _resolve_mention_ids(
+                    resolved_mentions = await _resolve_mention_ids(
                         topic.get("mentions", []),
                         project_name_to_id,
                         lab_slug_to_id,
@@ -529,7 +623,7 @@ async def ingest_newsletters() -> dict:
                 else:
                     # Explode topics into individual rows
                     for idx, topic in enumerate(topics):
-                        resolved_mentions = _resolve_mention_ids(
+                        resolved_mentions = await _resolve_mention_ids(
                             topic.get("mentions", []),
                             project_name_to_id,
                             lab_slug_to_id,
