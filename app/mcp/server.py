@@ -3883,7 +3883,19 @@ async def explain(topic: str = None) -> str:
 
 def _lookup_current(conn, slug: str, metric: str):
     """Look up current value for a project metric used in briefing evidence."""
-    # Try ai_repos first (most MCP projects are here)
+    # Try projects → ai_repos FK first (direct link)
+    row = conn.execute(text("""
+        SELECT a.stars, a.downloads_monthly
+        FROM projects p
+        JOIN ai_repos a ON a.id = p.ai_repo_id
+        WHERE LOWER(p.slug) = LOWER(:slug)
+        LIMIT 1
+    """), {"slug": slug}).fetchone()
+
+    if row and row._mapping.get(metric) is not None:
+        return row._mapping[metric]
+
+    # Try ai_repos by name
     row = conn.execute(text("""
         SELECT stars, downloads_monthly
         FROM ai_repos
@@ -5296,7 +5308,7 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5, offset:
                     rows = conn.execute(text(f"""
                         SELECT id, full_name, name, description, stars, forks,
                                language, topics, license, archived, domain,
-                               downloads_monthly, last_pushed_at,
+                               subcategory, downloads_monthly, last_pushed_at,
                                1 - (embedding <=> :vec) AS similarity
                         FROM ai_repos
                         WHERE embedding IS NOT NULL AND archived = false
@@ -5318,6 +5330,7 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5, offset:
                             "topics": list(m["topics"]) if m["topics"] else [],
                             "license": m["license"],
                             "domain": m["domain"],
+                            "subcategory": m["subcategory"],
                             "downloads_monthly": m["downloads_monthly"] or 0,
                             "last_pushed_at": m["last_pushed_at"],
                             "similarity": float(m["similarity"]),
@@ -5329,8 +5342,8 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5, offset:
         with engine.connect() as conn:
             kw_rows = conn.execute(text(f"""
                 SELECT id, full_name, name, description, stars, forks,
-                       language, topics, license, domain, downloads_monthly,
-                       last_pushed_at
+                       language, topics, license, domain, subcategory,
+                       downloads_monthly, last_pushed_at
                 FROM ai_repos
                 WHERE archived = false
                   AND (name ILIKE :kw OR description ILIKE :kw
@@ -5354,6 +5367,7 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5, offset:
                         "topics": list(m["topics"]) if m["topics"] else [],
                         "license": m["license"],
                         "domain": m["domain"],
+                        "subcategory": m["subcategory"],
                         "downloads_monthly": m["downloads_monthly"] or 0,
                         "last_pushed_at": m["last_pushed_at"],
                         "similarity": 0.5,
@@ -5453,7 +5467,12 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5, offset:
             dl_str = f" | {_fmt_downloads(dl)}/mo" if dl > 0 else ""
             lang = f" · {r['language']}" if r['language'] else ""
             lic = f" · {r['license']}" if r['license'] else ""
-            dom = f" [{r['domain']}]" if not domain else ""
+            if not domain:
+                sub = r.get("subcategory")
+                dom = f" [{r['domain']}/{sub}]" if sub else f" [{r['domain']}]"
+            else:
+                sub = r.get("subcategory")
+                dom = f" [{sub}]" if sub else ""
             lines.append(
                 f"{i}. {r['full_name']}{dom}  "
                 f"(⭐ {r['stars']:,}{dl_str}{lang}{lic})"

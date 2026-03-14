@@ -49,6 +49,7 @@ class Project(Base):
     distribution_type: Mapped[str | None] = mapped_column(String(20), nullable=True, default="package")
     hf_model_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     docker_image: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    ai_repo_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("ai_repos.id"))
     topics: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
     embedding = mapped_column(Vector(1536), nullable=True)
     repo_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

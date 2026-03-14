@@ -43,26 +43,37 @@ async def _summarise_release(body: str, project_name: str, version: str, title: 
     # Truncate very long release notes to avoid wasting tokens
     body_truncated = body[:8000] if len(body) > 8000 else body
 
+    from app.ingest.rate_limit import ANTHROPIC_LIMITER
+
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                "https://api.anthropic.com/v1/messages",
-                headers={
-                    "x-api-key": settings.ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json",
-                },
-                json={
-                    "model": "claude-haiku-4-5-20251001",
-                    "max_tokens": 512,
-                    "messages": [{"role": "user", "content": SUMMARY_PROMPT.format(
-                        project_name=project_name,
-                        version=version or "unknown",
-                        title=title,
-                        body=body_truncated,
-                    )}],
-                },
-            )
+        for _attempt in range(3):
+            await ANTHROPIC_LIMITER.acquire()
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                resp = await client.post(
+                    "https://api.anthropic.com/v1/messages",
+                    headers={
+                        "x-api-key": settings.ANTHROPIC_API_KEY,
+                        "anthropic-version": "2023-06-01",
+                        "content-type": "application/json",
+                    },
+                    json={
+                        "model": "claude-haiku-4-5-20251001",
+                        "max_tokens": 512,
+                        "messages": [{"role": "user", "content": SUMMARY_PROMPT.format(
+                            project_name=project_name,
+                            version=version or "unknown",
+                            title=title,
+                            body=body_truncated,
+                        )}],
+                    },
+                )
+
+            if resp.status_code == 429:
+                wait = min(2 ** _attempt * 15, 120)
+                logger.warning(f"Anthropic 429, backing off {wait}s (attempt {_attempt + 1}/3)")
+                await asyncio.sleep(wait)
+                continue
+            break
 
         if resp.status_code != 200:
             logger.warning(f"Anthropic API {resp.status_code}: {resp.text[:200]}")

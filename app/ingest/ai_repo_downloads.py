@@ -14,13 +14,14 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.ingest.downloads import fetch_pypi_downloads, fetch_npm_downloads
+from app.ingest.downloads import fetch_pypi_downloads, fetch_npm_downloads, fetch_crate_downloads
 from app.models import SyncLog
 
 logger = logging.getLogger(__name__)
 
 PYPI_LANGUAGES = {"Python", "Jupyter Notebook"}
 NPM_LANGUAGES = {"JavaScript", "TypeScript"}
+CRATE_LANGUAGES = {"Rust"}
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +105,37 @@ def _is_npm_candidate(language: str | None, topics: list | None) -> bool:
     return False
 
 
+def _is_crate_candidate(language: str | None, topics: list | None) -> bool:
+    if language in CRATE_LANGUAGES:
+        return True
+    if topics and any(t in {"rust", "crate", "cargo"} for t in topics):
+        return True
+    return False
+
+
+def _crate_candidates(repo_name: str) -> list[str]:
+    """Generate candidate crate names from a repo name."""
+    name = repo_name.lower()
+    candidates = [name, name.replace("_", "-"), name.replace("-", "_")]
+    for suffix in ["-rs", "-rust"]:
+        if name.endswith(suffix):
+            candidates.append(name[: -len(suffix)])
+    return list(dict.fromkeys(candidates))
+
+
+def _crate_matches_repo(crate_data: dict, owner: str, repo: str) -> bool:
+    """Check if a crate's metadata points back to the GitHub repo."""
+    slug = f"{owner}/{repo}".lower()
+    crate = crate_data.get("crate", {})
+    repo_url = (crate.get("repository") or "").lower()
+    if slug in repo_url:
+        return True
+    homepage = (crate.get("homepage") or "").lower()
+    if slug in homepage:
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Detection: try to match repo → package
 # ---------------------------------------------------------------------------
@@ -160,6 +192,35 @@ async def _detect_npm(
     return None
 
 
+async def _detect_crate(
+    client: httpx.AsyncClient,
+    semaphore: asyncio.Semaphore,
+    owner: str,
+    repo: str,
+    repo_name: str,
+) -> str | None:
+    """Try candidate names against crates.io API. Return matched crate or None."""
+    for candidate in _crate_candidates(repo_name):
+        async with semaphore:
+            try:
+                resp = await client.get(
+                    f"https://crates.io/api/v1/crates/{candidate}",
+                    headers={"User-Agent": "pt-edge/1.0 (https://github.com/pt-edge)"},
+                )
+            except httpx.HTTPError:
+                continue
+            await asyncio.sleep(1.0)  # crates.io: 1 req/sec
+
+        if resp.status_code == 200:
+            data = resp.json()
+            if _crate_matches_repo(data, owner, repo):
+                return candidate
+        elif resp.status_code == 429:
+            logger.warning("crates.io rate limited, backing off")
+            await asyncio.sleep(60)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Batch DB writes
 # ---------------------------------------------------------------------------
@@ -167,7 +228,7 @@ async def _detect_npm(
 def _batch_update(updates: list[tuple]) -> int:
     """Batch update ai_repos with package names and download counts.
 
-    Each tuple: (id, pypi_package, npm_package, downloads_monthly)
+    Each tuple: (id, pypi_package, npm_package, crate_package, downloads_monthly)
     """
     if not updates:
         return 0
@@ -181,20 +242,22 @@ def _batch_update(updates: list[tuple]) -> int:
                 id INTEGER PRIMARY KEY,
                 pypi_package VARCHAR(200),
                 npm_package VARCHAR(200),
+                crate_package VARCHAR(200),
                 downloads_monthly BIGINT
             ) ON COMMIT DROP
         """)
         execute_values(
             cur,
-            "INSERT INTO _dl_batch (id, pypi_package, npm_package, downloads_monthly) VALUES %s",
+            "INSERT INTO _dl_batch (id, pypi_package, npm_package, crate_package, downloads_monthly) VALUES %s",
             updates,
-            template="(%s, %s, %s, %s)",
+            template="(%s, %s, %s, %s, %s)",
             page_size=500,
         )
         cur.execute("""
             UPDATE ai_repos a SET
                 pypi_package = b.pypi_package,
                 npm_package = b.npm_package,
+                crate_package = b.crate_package,
                 downloads_monthly = b.downloads_monthly,
                 downloads_checked_at = NOW()
             FROM _dl_batch b
@@ -245,6 +308,7 @@ async def ingest_ai_repo_downloads(
 
     pypi_sem = asyncio.Semaphore(2)
     npm_sem = asyncio.Semaphore(3)
+    crate_sem = asyncio.Semaphore(1)  # crates.io: 1 req/sec
     dl_sem = asyncio.Semaphore(3)
 
     async with httpx.AsyncClient(
@@ -278,6 +342,7 @@ async def ingest_ai_repo_downloads(
 
                 pypi_pkg = None
                 npm_pkg = None
+                crate_pkg = None
                 dl_monthly = 0
 
                 try:
@@ -301,11 +366,21 @@ async def ingest_ai_repo_downloads(
                             if stats:
                                 dl_monthly += stats["last_month"]
 
-                    if pypi_pkg or npm_pkg:
-                        updates.append((rid, pypi_pkg, npm_pkg, dl_monthly))
+                    # Try crates.io
+                    if _is_crate_candidate(language, topics):
+                        crate_pkg = await _detect_crate(client, crate_sem, owner, repo, repo_name)
+                        if crate_pkg:
+                            async with dl_sem:
+                                stats = await fetch_crate_downloads(client, crate_pkg)
+                                await asyncio.sleep(1.0)
+                            if stats:
+                                dl_monthly += stats["last_month"]
+
+                    if pypi_pkg or npm_pkg or crate_pkg:
+                        updates.append((rid, pypi_pkg, npm_pkg, crate_pkg, dl_monthly))
                         logger.info(
                             f"  {owner}/{repo} → pypi={pypi_pkg} npm={npm_pkg} "
-                            f"dl={dl_monthly:,}/mo"
+                            f"crate={crate_pkg} dl={dl_monthly:,}/mo"
                         )
                     else:
                         no_match_ids.append(rid)
@@ -325,9 +400,10 @@ async def ingest_ai_repo_downloads(
         # ---- Phase B: Refresh existing packages ----
         with engine.connect() as conn:
             rows = conn.execute(text("""
-                SELECT id, pypi_package, npm_package
+                SELECT id, pypi_package, npm_package, crate_package
                 FROM ai_repos
-                WHERE (pypi_package IS NOT NULL OR npm_package IS NOT NULL)
+                WHERE (pypi_package IS NOT NULL OR npm_package IS NOT NULL
+                       OR crate_package IS NOT NULL)
                   AND downloads_checked_at < NOW() - INTERVAL '7 days'
                 ORDER BY stars DESC
                 LIMIT :lim
@@ -357,7 +433,14 @@ async def ingest_ai_repo_downloads(
                         if stats:
                             dl_monthly += stats["last_month"]
 
-                    updates.append((rid, m["pypi_package"], m["npm_package"], dl_monthly))
+                    if m["crate_package"]:
+                        async with dl_sem:
+                            stats = await fetch_crate_downloads(client, m["crate_package"])
+                            await asyncio.sleep(1.0)
+                        if stats:
+                            dl_monthly += stats["last_month"]
+
+                    updates.append((rid, m["pypi_package"], m["npm_package"], m["crate_package"], dl_monthly))
                 except Exception as e:
                     logger.warning(f"Refresh error for repo {rid}: {e}")
                     errors += 1
