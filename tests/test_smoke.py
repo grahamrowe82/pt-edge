@@ -1121,6 +1121,29 @@ def test_briefing_refresh_import():
     assert callable(refresh_briefing_evidence)
 
 
+def test_ai_repo_package_detect_import():
+    """LLM package detection module imports without crashing."""
+    from app.ingest.ai_repo_package_detect import detect_packages_llm
+    assert callable(detect_packages_llm)
+
+
+def test_ai_repo_package_detect_in_runner():
+    """LLM package detection is wired into the runner."""
+    import inspect
+    from app.ingest import runner
+    source = inspect.getsource(runner.run_all)
+    assert "ai_repo_package_detect" in source
+    assert "detect_packages_llm" in source
+
+
+def test_rate_limiter_in_package_detect():
+    """LLM package detection uses rate limiter."""
+    import inspect
+    from app.ingest import ai_repo_package_detect
+    source = inspect.getsource(ai_repo_package_detect)
+    assert "ANTHROPIC_LIMITER" in source
+
+
 def test_rate_limiter_in_newsletters():
     """Newsletter ingest uses rate limiter."""
     import inspect
