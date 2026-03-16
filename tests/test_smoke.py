@@ -1173,12 +1173,14 @@ def test_runner_pipeline_order():
     import inspect
     from app.ingest import runner
     source = inspect.getsource(runner.run_all)
-    # releases and newsletters should appear after ai_repos in the source
-    ai_repos_pos = source.index('"ai_repos"')
+    # ai_repos now runs on its own weekly cron, not in the daily runner
+    assert "ai_repos removed" in source, "ai_repos should be removed from daily runner"
+    # releases and newsletters should appear after builder_tools in the source
+    builder_tools_pos = source.index('"builder_tools"')
     releases_pos = source.index('"releases"')
     newsletters_pos = source.index('"newsletters"')
-    assert releases_pos > ai_repos_pos, "releases should run after ai_repos"
-    assert newsletters_pos > ai_repos_pos, "newsletters should run after ai_repos"
+    assert releases_pos > builder_tools_pos, "releases should run after builder_tools"
+    assert newsletters_pos > builder_tools_pos, "newsletters should run after builder_tools"
 
 
 # ---------------------------------------------------------------------------

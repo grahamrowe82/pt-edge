@@ -92,7 +92,7 @@ async def run_all() -> dict:
         ("builder_tools", ingest_builder_tools),
         ("npm_mcp", ingest_npm_mcp),
         ("ai_repo_downloads", ingest_ai_repo_downloads),
-        ("ai_repos", ingest_ai_repos),  # Slowest
+        # ai_repos removed — runs on its own weekly cron (Saturday 12:00 UTC)
         # Phase 3: LLM-dependent (rate-limited, at end so they don't block)
         ("ai_repo_package_detect", detect_packages_llm),
         ("releases", ingest_releases),
