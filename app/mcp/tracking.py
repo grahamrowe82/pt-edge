@@ -2,7 +2,6 @@ import contextvars
 import functools
 import time
 import logging
-from collections import defaultdict
 from datetime import datetime, timezone
 
 from app.db import SessionLocal
@@ -24,106 +23,8 @@ def set_request_context(client_ip: str, user_agent: str, session_key: str = ""):
 
 
 # ---------------------------------------------------------------------------
-# Session workspace — in-memory store for full tool results
-# ---------------------------------------------------------------------------
-
-# {session_key: {data_key: (value, timestamp)}}
-_workspace: dict[str, dict[str, tuple[str, float]]] = defaultdict(dict)
-_WORKSPACE_TTL = 3600  # 1 hour
-
-
-def _workspace_store(key: str, value: str):
-    """Save a value to the current session's workspace."""
-    session = _session_key.get("")
-    if not session:
-        return
-    _workspace[session][key] = (value, time.time())
-
-
-def _workspace_recall(key: str) -> str | None:
-    """Retrieve a value from the current session's workspace."""
-    session = _session_key.get("")
-    if not session:
-        return None
-    entry = _workspace.get(session, {}).get(key)
-    if entry and (time.time() - entry[1]) < _WORKSPACE_TTL:
-        return entry[0]
-    return None
-
-
-def _workspace_list() -> dict[str, int]:
-    """List keys in current session's workspace with sizes."""
-    session = _session_key.get("")
-    if not session:
-        return {}
-    now = time.time()
-    return {
-        k: len(v) for k, (v, ts) in _workspace.get(session, {}).items()
-        if (now - ts) < _WORKSPACE_TTL
-    }
-
-
-def _workspace_cleanup():
-    """Remove expired entries. Called periodically."""
-    now = time.time()
-    expired_sessions = []
-    for session, data in _workspace.items():
-        live = {k: (v, ts) for k, (v, ts) in data.items() if (now - ts) < _WORKSPACE_TTL}
-        if not live:
-            expired_sessions.append(session)
-        else:
-            _workspace[session] = live
-    for s in expired_sessions:
-        del _workspace[s]
-
-
-# ---------------------------------------------------------------------------
 # Decorators
 # ---------------------------------------------------------------------------
-
-def compact_response(max_chars=1500):
-    """Decorator that truncates tool output and saves full result to workspace.
-
-    If response <= max_chars, returns as-is.
-    If response > max_chars, saves full result to workspace and returns
-    truncated output with a recall() hint.
-    If caller passes detail='full', skips truncation entirely.
-    """
-    def decorator(func):
-        @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            # detail='full' bypasses truncation
-            if kwargs.get("detail") == "full":
-                kwargs.pop("detail")
-                return await func(*args, **kwargs)
-
-            result = await func(*args, **kwargs)
-
-            if not result or len(result) <= max_chars:
-                return result
-
-            # Build workspace key from function name + first meaningful arg
-            key = func.__name__
-            if args:
-                key = f"{func.__name__}:{args[0]}"
-            elif kwargs:
-                first_val = next(iter(kwargs.values()), None)
-                if first_val and isinstance(first_val, str):
-                    key = f"{func.__name__}:{first_val}"
-
-            _workspace_store(key, result)
-
-            # Truncate at last newline after 60% mark for clean output
-            truncated = result[:max_chars]
-            last_nl = truncated.rfind("\n")
-            if last_nl > max_chars * 0.6:
-                truncated = truncated[:last_nl]
-
-            return truncated + f"\n\n... truncated. recall('{key}') for full output."
-
-        return wrapper
-    return decorator
-
 
 def track_usage(func):
     """Decorator that logs MCP tool usage. Swallows its own errors."""

@@ -18,7 +18,7 @@ from app.models import (
     Lab, Project, GitHubSnapshot, DownloadSnapshot,
     Release, HNPost, V2EXPost, Correction, ArticlePitch, SyncLog, Methodology, Briefing,
 )
-from app.mcp.tracking import track_usage, compact_response, _workspace_recall, _workspace_list, _workspace_cleanup
+from app.mcp.tracking import track_usage
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -379,8 +379,6 @@ def _group_releases(releases):
 @track_usage
 async def about() -> str:
     """Start here. Returns a guide to all PT-Edge capabilities — what data is available, which tools to use for which questions, and recommended workflows. Call this first to understand the full toolkit."""
-    # Front-load the most useful info into the first ~1500 chars so compact_response
-    # truncation still delivers a useful orientation.
     lines = [
         "PT-EDGE — AI Project Intelligence",
         "=" * 50,
@@ -427,9 +425,6 @@ async def about() -> str:
         "",
         "Call more_tools() to see 30+ advanced tools for hype analysis,",
         "lifecycle tracking, lab intelligence, HuggingFace search, and more.",
-        "",
-        "Long responses are auto-truncated. Use recall('key') to retrieve",
-        "full output. Use workspace() to see what's stored.",
         "",
         "SUGGESTED WORKFLOWS",
         "-" * 30,
@@ -498,7 +493,6 @@ async def about() -> str:
 
 @mcp.tool()
 @track_usage
-@compact_response(2000)
 async def more_tools() -> str:
     """Unlock 30+ advanced tools for hype analysis, lifecycle tracking, lab intelligence, HuggingFace model/dataset search, editorial curation, community feedback, and raw SQL queries. Call this to see the full catalog."""
     # Build descriptions from the hidden tools dynamically
@@ -676,49 +670,11 @@ async def query(sql: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Tool: recall — retrieve full output from workspace
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-@track_usage
-async def recall(key: str) -> str:
-    """Retrieve full output from a previous tool call. Keys are shown in truncated responses."""
-    result = _workspace_recall(key)
-    if result:
-        return result
-    available = _workspace_list()
-    if available:
-        keys = "\n".join(f"  {k} ({v:,} chars)" for k, v in available.items())
-        return f"Key '{key}' not found. Available keys:\n{keys}"
-    return f"Key '{key}' not found. No items in workspace yet."
-
-
-# ---------------------------------------------------------------------------
-# Tool: workspace — list stored items
-# ---------------------------------------------------------------------------
-
-@mcp.tool()
-@track_usage
-async def workspace() -> str:
-    """Show what's stored in your session workspace from previous tool calls."""
-    items = _workspace_list()
-    if not items:
-        return "Workspace is empty. Items are stored automatically when tool responses are truncated."
-    lines = ["SESSION WORKSPACE", "=" * 40, ""]
-    for k, size in items.items():
-        lines.append(f"  {k:<40} {size:,} chars")
-    lines.append("")
-    lines.append("Use recall('key') to retrieve full output.")
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
 # Tool 4: whats_new
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
 @track_usage
-@compact_response(1500)
 async def whats_new(days: int = 7) -> str:
     """What shipped in the AI ecosystem this week? New releases, trending projects, and notable Hacker News discussion — all in one view.
 
@@ -813,7 +769,6 @@ async def whats_new(days: int = 7) -> str:
 
 @mcp.tool()
 @track_usage
-@compact_response(1500)
 async def project_pulse(project: str) -> str:
     """Get the full picture on an AI project — stars, downloads, momentum, commits, hype ratio, lifecycle stage, and HN mentions. Pass a project name or slug (e.g. 'langchain', 'ollama')."""
     session = SessionLocal()
@@ -1276,7 +1231,6 @@ def _lab_compare(session: Session, lab_names: list[str]) -> str:
 
 @mcp.tool()
 @track_usage
-@compact_response(1500)
 async def lab_pulse(lab: str) -> str:
     """What is a specific lab shipping? Accepts slug or name.
 
@@ -1304,14 +1258,19 @@ async def lab_pulse(lab: str) -> str:
         ]
 
         # Projects with latest metrics
-        projects = (
+        all_projects = (
             session.query(Project)
             .filter(Project.lab_id == lab_obj.id, Project.is_active == True)
             .order_by(Project.name)
             .all()
         )
+        total_projects = len(all_projects)
+        projects = all_projects[:15]
 
-        lines.append(f"PROJECTS ({len(projects)} active)")
+        header = f"PROJECTS ({total_projects} active)"
+        if total_projects > 15:
+            header += f" — showing 15 of {total_projects}"
+        lines.append(header)
         lines.append("-" * 30)
         for p in projects:
             gh = (
@@ -2402,7 +2361,6 @@ async def lab_models(lab: str = None, capability: str = None) -> str:
 
 @mcp.tool()
 @track_usage
-@compact_response(1500)
 async def lifecycle_map(category: str = None, tier: int = None, transitions: bool = False) -> str:
     """Groups all projects by lifecycle stage. Filter by category or tier.
 
@@ -2533,7 +2491,6 @@ async def lifecycle_map(category: str = None, tier: int = None, transitions: boo
 
 @mcp.tool()
 @track_usage
-@compact_response(1500)
 async def hype_landscape(category: str = None, limit: int = 10, window: str = None, format: str = "text") -> str:
     """Top overhyped + top underrated projects. Bulk hype comparison.
 
@@ -2541,6 +2498,7 @@ async def hype_landscape(category: str = None, limit: int = 10, window: str = No
     which projects' ratios are shifting fastest.
     Set format='json' for machine-readable output.
     """
+    limit = min(limit, 20)
     lines = ["HYPE LANDSCAPE", "=" * 40]
     overhyped = []
     underrated = []
@@ -3291,7 +3249,6 @@ async def related(project: str) -> str:
 
 @mcp.tool()
 @track_usage
-@compact_response(1500)
 async def market_map() -> str:
     """Category concentration, power law distribution, and lab dominance across all tracked projects."""
     try:
@@ -3958,7 +3915,6 @@ def _lookup_current(conn, slug: str, metric: str):
 
 @mcp.tool()
 @track_usage
-@compact_response(1500)
 async def briefing(topic: str = None, domain: str = "") -> str:
     """Curated intelligence briefings on the AI ecosystem. Distilled findings
     from data analysis — not raw data, but interpretive conclusions backed
@@ -4728,7 +4684,6 @@ async def scout(category: str = None, limit: int = 15) -> str:
 
 @mcp.tool()
 @track_usage
-@compact_response(1500)
 async def hn_pulse(query: str = None, days: int = 14) -> str:
     """HN discourse intelligence. What is the community actually talking about?
 
@@ -5548,7 +5503,6 @@ async def find_mcp_server(query: str, limit: int = 5, offset: int = 0) -> str:
 
 @mcp.tool()
 @track_usage
-@compact_response(1500)
 async def mcp_coverage(category: str = "") -> str:
     """MCP adoption across developer tools. Shows which tools have MCP servers
     and which don't, broken down by category with coverage percentages.
@@ -5599,7 +5553,7 @@ async def mcp_coverage(category: str = "") -> str:
                 ORDER BY
                     CASE mcp_status WHEN 'has_official' THEN 0 ELSE 1 END,
                     name
-                LIMIT 50
+                LIMIT 20
             """), params).fetchall()
 
             # Notable gaps: popular tools without MCP (by API count)
@@ -5612,7 +5566,7 @@ async def mcp_coverage(category: str = "") -> str:
                 {"AND LOWER(bt.category) = :cat" if category else ""}
                 GROUP BY bt.slug, bt.name, bt.category
                 ORDER BY COUNT(pa.id) DESC
-                LIMIT 15
+                LIMIT 10
             """
             gap_tools = conn.execute(text(gap_sql), params).fetchall()
 
@@ -6867,7 +6821,7 @@ _PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
 # Full tool list — used by SSE transport (Claude Desktop / SDK).
 # Includes editorial tools and legacy aliases for backward compatibility.
 _TOOL_LIST = [
-    about, more_tools, recall, workspace, describe_schema, query, whats_new, project_pulse, lab_pulse,
+    about, more_tools, describe_schema, query, whats_new, project_pulse, lab_pulse,
     trending, hype_check, briefing,
     submit_feedback, upvote_feedback, list_feedback, amend_feedback,
     submit_correction, upvote_correction, list_corrections, amend_correction,
@@ -6904,8 +6858,6 @@ _CORE_TOOL_NAMES = {
     "whats_new",        # what shipped recently
     "topic",            # semantic search across ecosystem
     "query",            # raw SQL escape hatch
-    "recall",           # retrieve full output from workspace
-    "workspace",        # list workspace contents
     "briefing",         # curated ecosystem intelligence
 }
 
@@ -6996,7 +6948,6 @@ def mount_mcp(app):
     async def mcp_json_rpc(request: Request):
         """Simple JSON-RPC endpoint for Claude.ai web connector."""
         import hashlib
-        import random
 
         # Extract client info for tracking (before auth — needed for all paths)
         from app.mcp.tracking import set_request_context
@@ -7005,10 +6956,6 @@ def mount_mcp(app):
         user_agent = request.headers.get("User-Agent", "")
         session_key = hashlib.sha256(f"{client_ip}:{user_agent}".encode()).hexdigest()[:16]
         set_request_context(client_ip, user_agent, session_key)
-
-        # Periodic workspace cleanup (~1% of requests)
-        if random.random() < 0.01:
-            _workspace_cleanup()
 
         body = await request.json()
         method = body.get("method")
