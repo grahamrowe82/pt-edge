@@ -5,7 +5,8 @@ import time
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import text
 
 from app.api.auth import require_api_key
@@ -35,8 +36,31 @@ def _not_found(resource: str):
 
 
 # ---------------------------------------------------------------------------
-# Usage tracking
+# Usage tracking middleware (mounted on the app, scoped to /api/v1/)
 # ---------------------------------------------------------------------------
+
+class APIUsageMiddleware(BaseHTTPMiddleware):
+    """Logs usage for /api/v1/ requests after the response is sent."""
+
+    async def dispatch(self, request: Request, call_next):
+        if not request.url.path.startswith("/api/v1/"):
+            return await call_next(request)
+
+        start = time.time()
+        response = await call_next(request)
+        duration_ms = int((time.time() - start) * 1000)
+
+        key_data = getattr(request.state, "api_key_data", None)
+        if key_data:
+            _log_api_usage(
+                api_key_id=key_data["id"],
+                endpoint=request.url.path,
+                params=dict(request.query_params),
+                duration_ms=duration_ms,
+                status_code=response.status_code,
+            )
+        return response
+
 
 def _log_api_usage(api_key_id: int, endpoint: str, params: dict, duration_ms: int, status_code: int):
     """Fire-and-forget usage logging — never breaks a request."""
@@ -65,24 +89,11 @@ def _log_api_usage(api_key_id: int, endpoint: str, params: dict, duration_ms: in
 
 
 # ---------------------------------------------------------------------------
-# Auth dependency that also records request start time
+# Auth dependency that stashes key_data on request.state for middleware
 # ---------------------------------------------------------------------------
 
-async def _auth_and_track(request: Request, bg: BackgroundTasks, key_data: dict = Depends(require_api_key)):
-    start = time.time()
+async def _auth(request: Request, key_data: dict = Depends(require_api_key)):
     request.state.api_key_data = key_data
-
-    def _log_after():
-        duration_ms = int((time.time() - start) * 1000)
-        _log_api_usage(
-            api_key_id=key_data["id"],
-            endpoint=request.url.path,
-            params=dict(request.query_params),
-            duration_ms=duration_ms,
-            status_code=200,
-        )
-
-    bg.add_task(_log_after)
     return key_data
 
 
@@ -94,7 +105,7 @@ async def _auth_and_track(request: Request, bg: BackgroundTasks, key_data: dict 
 async def projects_bulk(
     request: Request,
     slugs: str = Query(..., description="Comma-separated slugs, max 20"),
-    key_data: dict = Depends(_auth_and_track),
+    key_data: dict = Depends(_auth),
 ):
     slug_list = [s.strip() for s in slugs.split(",") if s.strip()][:20]
     results = queries.get_projects_bulk(slug_list)
@@ -102,7 +113,7 @@ async def projects_bulk(
 
 
 @router.get("/projects/{slug}")
-async def project_detail(slug: str, request: Request, key_data: dict = Depends(_auth_and_track)):
+async def project_detail(slug: str, request: Request, key_data: dict = Depends(_auth)):
     result = queries.get_project(slug)
     if not result:
         _not_found(f"Project '{slug}'")
@@ -115,7 +126,7 @@ async def project_search(
     q: str = Query(None),
     category: str = Query(None),
     limit: int = Query(20, le=50, ge=1),
-    key_data: dict = Depends(_auth_and_track),
+    key_data: dict = Depends(_auth),
 ):
     results = queries.search_projects(q=q, category=category, limit=limit)
     return _ok(results, count=len(results), query_params={"q": q, "category": category, "limit": limit})
@@ -127,7 +138,7 @@ async def trending(
     category: str = Query(None),
     window: str = Query("7d", pattern="^(7d|30d)$"),
     limit: int = Query(20, le=50, ge=1),
-    key_data: dict = Depends(_auth_and_track),
+    key_data: dict = Depends(_auth),
 ):
     results = queries.get_trending(category=category, window=window, limit=limit)
     return _ok(results, count=len(results), query_params={"category": category, "window": window, "limit": limit})
@@ -137,14 +148,14 @@ async def trending(
 async def whats_new(
     request: Request,
     days: int = Query(7, le=30, ge=1),
-    key_data: dict = Depends(_auth_and_track),
+    key_data: dict = Depends(_auth),
 ):
     result = queries.get_whats_new(days=days)
     return _ok(result, query_params={"days": days})
 
 
 @router.get("/labs/{slug}")
-async def lab_detail(slug: str, request: Request, key_data: dict = Depends(_auth_and_track)):
+async def lab_detail(slug: str, request: Request, key_data: dict = Depends(_auth)):
     result = queries.get_lab(slug)
     if not result:
         _not_found(f"Lab '{slug}'")
@@ -157,7 +168,7 @@ async def hn_posts(
     q: str = Query(None),
     days: int = Query(30, le=90, ge=1),
     limit: int = Query(20, le=50, ge=1),
-    key_data: dict = Depends(_auth_and_track),
+    key_data: dict = Depends(_auth),
 ):
     results = queries.get_hn_posts(q=q, days=days, limit=limit)
     return _ok(results, count=len(results), query_params={"q": q, "days": days, "limit": limit})
@@ -167,14 +178,14 @@ async def hn_posts(
 async def briefings_list(
     request: Request,
     domain: str = Query(None),
-    key_data: dict = Depends(_auth_and_track),
+    key_data: dict = Depends(_auth),
 ):
     results = queries.get_briefings(domain=domain)
     return _ok(results, count=len(results), query_params={"domain": domain})
 
 
 @router.get("/briefings/{slug}")
-async def briefing_detail(slug: str, request: Request, key_data: dict = Depends(_auth_and_track)):
+async def briefing_detail(slug: str, request: Request, key_data: dict = Depends(_auth)):
     result = queries.get_briefing(slug)
     if not result:
         _not_found(f"Briefing '{slug}'")
