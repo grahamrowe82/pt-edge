@@ -23,7 +23,7 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-from app.mcp.instance import mcp
+from app.mcp.instance import mcp, MCP_INSTRUCTIONS
 
 TIER_LABELS = {1: "Foundational", 2: "Major", 3: "Notable", 4: "Emerging"}
 
@@ -629,7 +629,12 @@ async def describe_schema() -> str:
 @mcp.tool()
 @track_usage
 async def query(sql: str) -> str:
-    """Run a read-only SQL query against PT-Edge's database. Use when no pre-built tool answers the question. Call describe_schema (via more_tools) first to see available tables. SELECT only, 5s timeout, JSON results."""
+    """Run a read-only SQL query against PT-Edge's database. Use when no pre-built tool answers the question. Call describe_schema (via more_tools) first to see available tables. SELECT only, 5s timeout, JSON results.
+
+    Examples:
+      query("SELECT name, stars FROM projects ORDER BY stars DESC LIMIT 10")
+      query("SELECT COUNT(*) FROM projects WHERE category = 'framework'")
+    """
     sql_stripped = sql.strip()
 
     # Block semicolons (no stacked queries)
@@ -716,7 +721,12 @@ async def workspace() -> str:
 @track_usage
 @compact_response(1500)
 async def whats_new(days: int = 7) -> str:
-    """What shipped in the AI ecosystem this week? New releases, trending projects, and notable Hacker News discussion — all in one view."""
+    """What shipped in the AI ecosystem this week? New releases, trending projects, and notable Hacker News discussion — all in one view.
+
+    Examples:
+      whats_new()        — last 7 days (default)
+      whats_new(days=30) — last 30 days
+    """
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     lines = [f"WHAT'S NEW (last {days} days)", "=" * 40]
 
@@ -1502,7 +1512,13 @@ async def lab_pulse(lab: str) -> str:
 @mcp.tool()
 @track_usage
 async def trending(category: str = None, window: str = "7d") -> str:
-    """What's accelerating right now? Top 20 AI projects by GitHub star growth over the last 7 or 30 days. Filter by category."""
+    """What's accelerating right now? Top 20 AI projects by GitHub star growth over the last 7 or 30 days. Filter by category.
+
+    Examples:
+      trending()                        — top 20 by 7-day star growth
+      trending(category='framework')    — filter to frameworks only
+      trending(window='30d')            — use 30-day growth window
+    """
     delta_col = "stars_7d_delta" if window == "7d" else "stars_30d_delta"
     baseline_col = "has_7d_baseline" if window == "7d" else "has_30d_baseline"
     window_label = "7 days" if window == "7d" else "30 days"
@@ -4151,7 +4167,12 @@ async def briefing(topic: str = None, domain: str = "") -> str:
 @mcp.tool()
 @track_usage
 async def topic(query: str) -> str:
-    """Search across the entire AI ecosystem by topic — tracked projects, candidates, and HN posts. Use for conceptual queries like 'MCP', 'vector databases', 'code generation', 'reasoning models'."""
+    """Search across the entire AI ecosystem by topic — tracked projects, candidates, and HN posts. Use for conceptual queries like 'MCP', 'vector databases', 'code generation', 'reasoning models'.
+
+    Examples:
+      topic('MCP')               — everything related to Model Context Protocol
+      topic('vector databases')  — vector DB projects, HN discussion, candidates
+    """
     lines = [
         f"TOPIC: {query}",
         "=" * 60,
@@ -7019,6 +7040,7 @@ def mount_mcp(app):
                     "protocolVersion": "2024-11-05",
                     "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
                     "serverInfo": {"name": "pt-edge", "version": "1.0.0"},
+                    "instructions": MCP_INSTRUCTIONS,
                 },
             })
 
