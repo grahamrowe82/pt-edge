@@ -97,13 +97,11 @@ def test_mcp_tools_list():
     )
     assert resp.status_code == 200
     tools = resp.json()["result"]["tools"]
-    assert len(tools) == 13  # core tools only
+    assert len(tools) == 11  # core tools only
     names = [t["name"] for t in tools]
     assert "about" in names
     assert "more_tools" in names
     assert "find_ai_tool" in names
-    assert "recall" in names
-    assert "workspace" in names
 
 
 def test_mcp_unauthorized():
@@ -142,7 +140,7 @@ def test_mcp_discovery_no_auth():
         json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
     )
     assert resp.status_code == 200
-    assert len(resp.json()["result"]["tools"]) == 13  # core tools only
+    assert len(resp.json()["result"]["tools"]) == 11  # core tools only
 
 
 def test_hidden_tools_still_callable():
@@ -799,103 +797,13 @@ class TestCuratedTools:
             assert cat, f"{slug} has empty category"
 
 
-# ---------------------------------------------------------------------------
-# Compact response + session workspace
-# ---------------------------------------------------------------------------
-
-class TestCompactResponse:
-    """compact_response decorator truncates and saves to workspace."""
-
-    def test_short_response_unchanged(self):
-        import asyncio
-        from app.mcp.tracking import compact_response
-
-        @compact_response(100)
-        async def short_tool():
-            return "short"
-
-        result = asyncio.run(short_tool())
-        assert result == "short"
-
-    def test_long_response_truncated(self):
-        import asyncio
-        from app.mcp.tracking import compact_response, _session_key
-
-        token = _session_key.set("test-compact")
-        try:
-            @compact_response(100)
-            async def long_tool():
-                return "x" * 500
-
-            result = asyncio.run(long_tool())
-            assert len(result) < 500
-            assert "truncated" in result
-            assert "recall(" in result
-        finally:
-            _session_key.reset(token)
-
-    def test_detail_full_bypasses_truncation(self):
-        import asyncio
-        from app.mcp.tracking import compact_response
-
-        @compact_response(100)
-        async def detailed_tool(detail=None):
-            return "x" * 500
-
-        result = asyncio.run(detailed_tool(detail="full"))
-        assert len(result) == 500
-
-
-class TestWorkspace:
-    """Session workspace store/recall works correctly."""
-
-    def test_store_and_recall(self):
-        from app.mcp.tracking import (
-            _workspace_store, _workspace_recall,
-            _workspace_list, _session_key,
-        )
-
-        token = _session_key.set("test-workspace")
-        try:
-            _workspace_store("test_key", "test_value")
-            assert _workspace_recall("test_key") == "test_value"
-            keys = _workspace_list()
-            assert "test_key" in keys
-            assert keys["test_key"] == len("test_value")
-        finally:
-            _session_key.reset(token)
-
-    def test_recall_without_session_returns_none(self):
-        from app.mcp.tracking import _workspace_recall, _session_key
-
-        token = _session_key.set("")
-        try:
-            assert _workspace_recall("anything") is None
-        finally:
-            _session_key.reset(token)
-
-    def test_recall_tool_missing_key(self):
-        """recall() tool returns helpful message for missing keys."""
-        import asyncio
-        from app.mcp.server import recall as recall_tool, _tool_fn
-        from app.mcp.tracking import _session_key
-
-        token = _session_key.set("test-recall")
-        try:
-            fn = _tool_fn(recall_tool)
-            result = asyncio.run(fn(key="nonexistent"))
-            assert "not found" in result.lower()
-        finally:
-            _session_key.reset(token)
-
-
-def test_recall_and_workspace_in_core():
-    """recall and workspace are in core tool names."""
+def test_recall_and_workspace_removed():
+    """recall and workspace tools have been removed."""
     from app.mcp.server import _CORE_TOOL_NAMES, _TOOLS
-    assert "recall" in _CORE_TOOL_NAMES
-    assert "workspace" in _CORE_TOOL_NAMES
-    assert "recall" in _TOOLS
-    assert "workspace" in _TOOLS
+    assert "recall" not in _CORE_TOOL_NAMES
+    assert "workspace" not in _CORE_TOOL_NAMES
+    assert "recall" not in _TOOLS
+    assert "workspace" not in _TOOLS
 
 
 # ---------------------------------------------------------------------------
@@ -929,9 +837,9 @@ def test_briefing_model_fields():
 
 
 def test_core_tool_count():
-    """Core tool list has expected count (13 after adding briefing)."""
+    """Core tool list has expected count (11 after removing recall/workspace)."""
     from app.mcp.server import _CORE_TOOL_NAMES
-    assert len(_CORE_TOOL_NAMES) == 13
+    assert len(_CORE_TOOL_NAMES) == 11
 
 
 def test_briefing_seed_entries():
