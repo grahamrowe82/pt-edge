@@ -377,7 +377,6 @@ def _group_releases(releases):
 
 @mcp.tool()
 @track_usage
-@compact_response(1500)
 async def about() -> str:
     """Start here. Returns a guide to all PT-Edge capabilities — what data is available, which tools to use for which questions, and recommended workflows. Call this first to understand the full toolkit."""
     # Front-load the most useful info into the first ~1500 chars so compact_response
