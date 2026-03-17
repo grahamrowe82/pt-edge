@@ -33,6 +33,7 @@ def _safe_mv_query(conn, sql, params=None):
     except Exception as e:
         if "does not exist" in str(e) or "relation" in str(e).lower():
             logger.debug(f"Materialized view not available: {e}")
+            conn.rollback()
             return []
         raise
 
@@ -167,12 +168,144 @@ def search_projects(q: str = None, category: str = None, limit: int = 20) -> lis
 
 
 def get_projects_bulk(slugs: list[str]) -> list[dict]:
-    results = []
-    for slug in slugs[:20]:
-        proj = get_project(slug)
-        if proj:
-            results.append(proj)
-    return results
+    slugs = slugs[:20]
+    session = SessionLocal()
+    try:
+        projects = (
+            session.query(Project)
+            .filter(Project.slug.in_(slugs))
+            .all()
+        )
+        if not projects:
+            return []
+
+        project_ids = [p.id for p in projects]
+
+        # Batch-fetch latest GH snapshots (one per project via DISTINCT ON)
+        gh_map = {}
+        gh_rows = session.execute(
+            text("""
+                SELECT DISTINCT ON (project_id)
+                       project_id, stars, forks, open_issues, watchers,
+                       commits_30d, contributors, last_commit_at, license, snapshot_date
+                FROM github_snapshots
+                WHERE project_id = ANY(:pids)
+                ORDER BY project_id, snapshot_date DESC
+            """),
+            {"pids": project_ids},
+        ).fetchall()
+        for r in gh_rows:
+            gh_map[r._mapping["project_id"]] = {
+                k: _serialize(v) if v is not None and k in ("last_commit_at", "snapshot_date") else v
+                for k, v in dict(r._mapping).items() if k != "project_id"
+            }
+
+        # Batch-fetch latest DL snapshots
+        dl_map = {}
+        dl_rows = session.execute(
+            text("""
+                SELECT DISTINCT ON (project_id)
+                       project_id, source, downloads_daily, downloads_weekly,
+                       downloads_monthly, snapshot_date
+                FROM download_snapshots
+                WHERE project_id = ANY(:pids)
+                ORDER BY project_id, snapshot_date DESC
+            """),
+            {"pids": project_ids},
+        ).fetchall()
+        for r in dl_rows:
+            m = dict(r._mapping)
+            pid = m.pop("project_id")
+            dl_map[pid] = {
+                "source": m["source"],
+                "daily": m["downloads_daily"],
+                "weekly": m["downloads_weekly"],
+                "monthly": m["downloads_monthly"],
+                "snapshot_date": _serialize(m["snapshot_date"]),
+            }
+
+        # Batch-fetch MV data
+        mv_tier = {}
+        mv_lc = {}
+        mv_momentum = {}
+        mv_hype = {}
+        with readonly_engine.connect() as conn:
+            for r in _safe_mv_query(conn, "SELECT project_id, tier, is_override FROM mv_project_tier WHERE project_id = ANY(:pids)", {"pids": project_ids}):
+                mv_tier[int(r["project_id"])] = r
+            for r in _safe_mv_query(conn, "SELECT project_id, lifecycle_stage FROM mv_lifecycle WHERE project_id = ANY(:pids)", {"pids": project_ids}):
+                mv_lc[int(r["project_id"])] = r
+            for r in _safe_mv_query(conn, """
+                SELECT project_id, stars_7d_delta, stars_30d_delta, dl_7d_delta, dl_30d_delta,
+                       dl_monthly_now, has_7d_baseline, has_30d_baseline
+                FROM mv_momentum WHERE project_id = ANY(:pids)
+            """, {"pids": project_ids}):
+                mv_momentum[int(r["project_id"])] = {k: v for k, v in r.items() if k != "project_id"}
+            for r in _safe_mv_query(conn, """
+                SELECT project_id, stars, monthly_downloads, hype_ratio, hype_bucket
+                FROM mv_hype_ratio WHERE project_id = ANY(:pids)
+            """, {"pids": project_ids}):
+                mv_hype[int(r["project_id"])] = {k: v for k, v in r.items() if k != "project_id"}
+
+        # Batch-fetch recent releases (last 5 per project)
+        rel_map: dict[int, list] = {}
+        rel_rows = session.execute(
+            text("""
+                SELECT * FROM (
+                    SELECT project_id, version, title, released_at,
+                           ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY released_at DESC) AS rn
+                    FROM releases
+                    WHERE project_id = ANY(:pids)
+                ) sub WHERE rn <= 5
+                ORDER BY project_id, released_at DESC
+            """),
+            {"pids": project_ids},
+        ).fetchall()
+        for r in rel_rows:
+            m = r._mapping
+            pid = m["project_id"]
+            rel_map.setdefault(pid, []).append({
+                "version": m["version"],
+                "title": m["title"],
+                "released_at": _serialize(m["released_at"]) if m["released_at"] else None,
+            })
+
+        # Assemble results in request order
+        slug_to_proj = {p.slug: p for p in projects}
+        results = []
+        for slug in slugs:
+            proj = slug_to_proj.get(slug)
+            if not proj:
+                continue
+            result = {
+                "slug": proj.slug,
+                "name": proj.name,
+                "category": proj.category,
+                "description": proj.description,
+                "url": proj.url,
+                "lab": proj.lab.name if proj.lab else None,
+                "github": f"{proj.github_owner}/{proj.github_repo}" if proj.github_owner else None,
+                "pypi_package": proj.pypi_package,
+                "npm_package": proj.npm_package,
+                "is_active": proj.is_active,
+            }
+            if proj.id in gh_map:
+                result["github_metrics"] = gh_map[proj.id]
+            if proj.id in dl_map:
+                result["downloads"] = dl_map[proj.id]
+            if proj.id in mv_tier:
+                result["tier"] = mv_tier[proj.id].get("tier")
+            if proj.id in mv_lc:
+                result["lifecycle_stage"] = mv_lc[proj.id].get("lifecycle_stage")
+            if proj.id in mv_momentum:
+                result["momentum"] = mv_momentum[proj.id]
+            if proj.id in mv_hype:
+                result["hype"] = mv_hype[proj.id]
+            if proj.id in rel_map:
+                result["recent_releases"] = rel_map[proj.id]
+            results.append(result)
+        return results
+    finally:
+        session.close()
 
 
 def get_trending(category: str = None, window: str = "7d", limit: int = 20) -> list[dict]:
