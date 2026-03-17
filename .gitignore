@@ -14,3 +14,5 @@ venv/
 *.db
 *.sqlite3
 publishing/
+.wrangler/
+marketing/

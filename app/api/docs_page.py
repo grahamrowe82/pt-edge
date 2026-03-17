@@ -44,7 +44,7 @@ HTML_PAGE = """\
 <section id="quick-start">
   <h2 class="text-2xl font-semibold mb-4">Quick Start</h2>
   <ol class="list-decimal list-inside space-y-3 text-gray-700">
-    <li><strong>Get a key</strong> &mdash; Email <a href="mailto:graham@phasetransitions.co" class="text-blue-600 underline">graham@phasetransitions.co</a> for a trial API key.</li>
+    <li><strong>Get a key</strong> &mdash; Email <a href="mailto:graham@phasetransitions.ai" class="text-blue-600 underline">graham@phasetransitions.ai</a> for a trial API key.</li>
     <li><strong>Make a request:</strong></li>
   </ol>
   <pre class="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl -H "Authorization: Bearer pte_YOUR_KEY_HERE" \\
@@ -442,7 +442,7 @@ HTML_PAGE = """\
 <!-- Footer -->
 <footer class="border-t border-gray-200 mt-16">
   <div class="max-w-4xl mx-auto px-6 py-8 text-sm text-gray-500">
-    <p><a href="https://phasetransitions.co" class="text-blue-600 underline">Phase Transitions</a> &middot; <a href="mailto:graham@phasetransitions.co" class="text-blue-600 underline">graham@phasetransitions.co</a></p>
+    <p><a href="https://phasetransitions.ai" class="text-blue-600 underline">Phase Transitions</a> &middot; <a href="mailto:graham@phasetransitions.ai" class="text-blue-600 underline">graham@phasetransitions.ai</a></p>
   </div>
 </footer>
 
