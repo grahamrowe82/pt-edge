@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     RENDER_API_KEY: str = ""  # Render API key for MCP integration; not used by app code
     ANTHROPIC_RPM: int = 40  # Anthropic rate limit (Tier 1 = 50 RPM, use 40 for safety)
     OPENAI_RPM: int = 400  # OpenAI rate limit (500 RPM, use 400 for safety)
+    SNAPSHOT_RETENTION_DAYS: int = 365  # how long to keep daily snapshots (not wired to pruning yet)
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 

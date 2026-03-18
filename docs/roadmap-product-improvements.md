@@ -8,7 +8,7 @@ Surfaced during prospect research sessions on 2026-03-17. Each item includes the
 
 These undermine credibility of existing data. Fix first.
 
-### 1.1 `commits_30d` snapshot bug
+### 1.1 `commits_30d` snapshot bug ✅ Done (2026-03-18)
 
 **Problem:** Some actively developed projects show 0 commits in 30 days. In at least one case (OpenHands), duplicate snapshot rows exist for the same date — one with correct data (196 commits), one with 0.
 
@@ -33,7 +33,7 @@ Inspect AI (18.6M monthly PyPI downloads) and Goose (+386 stars in 7 days) both 
 
 ---
 
-### 1.2 Contributor count accuracy
+### 1.2 Contributor count accuracy ✅ Done (2026-03-18)
 
 **Problem:** Contributor counts appear truncated for some projects. DeepEval (14K stars, active development) shows 1 contributor in our snapshot.
 
@@ -49,7 +49,7 @@ Inspect AI (18.6M monthly PyPI downloads) and Goose (+386 stars in 7 days) both 
 
 ---
 
-### 1.3 Snapshot history retention
+### 1.3 Snapshot history retention ✅ Done (2026-03-18)
 
 **Problem:** Star velocity queries over 30-day windows fail because historical snapshots are pruned too aggressively. The 30-day star delta query returned no results for eval tools.
 
@@ -328,7 +328,7 @@ These add depth to existing data. Lower urgency but high value for differentiati
 
 | Phase | Items | Done | Remaining | Unlocks |
 |-------|------:|:-----|:----------|:--------|
-| 1. Data Integrity | 3 | 0 | 3 | Trustworthy existing data |
+| 1. Data Integrity | 3 | 3 (1.1, 1.2, 1.3) | 0 | Trustworthy existing data |
 | 2. Coverage Gaps | 5 | 3 (2.1, 2.2, 2.4) | 2 (2.3, 2.5) | Agent ecosystem, Python deps, repo classification |
 | 3. New Data Sources | 3 | 0 | 3 | Papers, social signals, methodology transparency |
 | 4. Enhanced Signals | 6 | 0 | 6 | Velocity detection, contributor health, China, MCP taxonomy, qualitative layer |
