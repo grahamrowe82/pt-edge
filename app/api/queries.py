@@ -38,6 +38,37 @@ def _safe_mv_query(conn, sql, params=None):
         raise
 
 
+def get_transitions(days: int = 30) -> list[dict]:
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                WITH ranked AS (
+                    SELECT project_id, lifecycle_stage, snapshot_date,
+                           ROW_NUMBER() OVER (PARTITION BY project_id ORDER BY snapshot_date DESC) AS rn
+                    FROM lifecycle_history
+                    WHERE snapshot_date >= CURRENT_DATE - :days
+                ),
+                transitions AS (
+                    SELECT curr.project_id,
+                           prev.lifecycle_stage AS previous_stage,
+                           curr.lifecycle_stage AS current_stage,
+                           prev.snapshot_date AS previous_date,
+                           curr.snapshot_date AS current_date
+                    FROM ranked curr
+                    JOIN ranked prev ON curr.project_id = prev.project_id
+                    WHERE curr.rn = 1 AND prev.rn = 2
+                      AND curr.lifecycle_stage != prev.lifecycle_stage
+                )
+                SELECT t.*, p.name, p.slug, p.category
+                FROM transitions t
+                JOIN projects p ON t.project_id = p.id
+                ORDER BY t.current_date DESC
+            """),
+            {"days": days},
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
 def get_project(slug: str) -> dict | None:
     session = SessionLocal()
     try:
@@ -57,6 +88,7 @@ def get_project(slug: str) -> dict | None:
             "pypi_package": proj.pypi_package,
             "npm_package": proj.npm_package,
             "is_active": proj.is_active,
+            "stack_layer": proj.stack_layer,
         }
 
         # Latest GitHub snapshot
@@ -148,7 +180,7 @@ def get_project(slug: str) -> dict | None:
         session.close()
 
 
-def search_projects(q: str = None, category: str = None, limit: int = 20) -> list[dict]:
+def search_projects(q: str = None, category: str = None, stack_layer: str = None, limit: int = 20) -> list[dict]:
     session = SessionLocal()
     try:
         query = session.query(Project)
@@ -158,6 +190,8 @@ def search_projects(q: str = None, category: str = None, limit: int = 20) -> lis
             )
         if category:
             query = query.filter(Project.category == category)
+        if stack_layer:
+            query = query.filter(Project.stack_layer == stack_layer)
         query = query.order_by(Project.name).limit(limit)
         rows = query.all()
         return [
@@ -167,6 +201,7 @@ def search_projects(q: str = None, category: str = None, limit: int = 20) -> lis
                 "category": p.category,
                 "description": p.description,
                 "lab": p.lab.name if p.lab else None,
+                "stack_layer": p.stack_layer,
             }
             for p in rows
         ]
@@ -300,6 +335,7 @@ def get_projects_bulk(slugs: list[str]) -> list[dict]:
                 "pypi_package": proj.pypi_package,
                 "npm_package": proj.npm_package,
                 "is_active": proj.is_active,
+                "stack_layer": proj.stack_layer,
             }
             if proj.id in gh_map:
                 result["github_metrics"] = gh_map[proj.id]
@@ -323,17 +359,21 @@ def get_projects_bulk(slugs: list[str]) -> list[dict]:
         session.close()
 
 
-def get_trending(category: str = None, window: str = "7d", limit: int = 20) -> list[dict]:
+def get_trending(category: str = None, stack_layer: str = None, window: str = "7d", limit: int = 20) -> list[dict]:
     delta_col = "stars_7d_delta" if window == "7d" else "stars_30d_delta"
-    where_clause = ""
+    conditions = []
     params: dict = {}
     if category:
-        where_clause = "WHERE s.category = :cat"
+        conditions.append("s.category = :cat")
         params["cat"] = category
+    if stack_layer:
+        conditions.append("s.stack_layer = :stack_layer")
+        params["stack_layer"] = stack_layer
+    where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     with readonly_engine.connect() as conn:
         rows = _safe_mv_query(conn, f"""
-            SELECT s.slug, s.name, s.category, s.stars, s.forks, s.monthly_downloads,
+            SELECT s.slug, s.name, s.category, s.stack_layer, s.stars, s.forks, s.monthly_downloads,
                    s.stars_7d_delta, s.stars_30d_delta, s.dl_30d_delta,
                    s.hype_ratio, s.hype_bucket,
                    s.last_release_at, s.last_release_title,
@@ -349,12 +389,15 @@ def get_trending(category: str = None, window: str = "7d", limit: int = 20) -> l
     return rows
 
 
-def get_velocity(category: str = None, band: str = None, sort: str = "commits_30d", limit: int = 20) -> list[dict]:
+def get_velocity(category: str = None, stack_layer: str = None, band: str = None, sort: str = "commits_30d", limit: int = 20) -> list[dict]:
     conditions = []
     params: dict = {"lim": limit}
     if category:
         conditions.append("s.category = :cat")
         params["cat"] = category
+    if stack_layer:
+        conditions.append("s.stack_layer = :stack_layer")
+        params["stack_layer"] = stack_layer
     if band:
         conditions.append("vel.velocity_band = :band")
         params["band"] = band
@@ -370,7 +413,7 @@ def get_velocity(category: str = None, band: str = None, sort: str = "commits_30
 
     with readonly_engine.connect() as conn:
         rows = _safe_mv_query(conn, f"""
-            SELECT s.slug, s.name, s.category, s.stars, s.commits_30d,
+            SELECT s.slug, s.name, s.category, s.stack_layer, s.stars, s.commits_30d,
                    s.commits_7d_delta, s.commits_30d_delta,
                    vel.velocity_band, vel.commits_per_contributor, vel.cpc_is_capped,
                    vel.contributors, vel.fork_star_ratio,
@@ -441,7 +484,10 @@ def get_whats_new(days: int = 7) -> dict:
             for p in hn_posts
         ]
 
-        return {"releases": releases, "trending": trending, "hn": hn}
+        # Lifecycle transitions
+        transitions = get_transitions(days=days)[:10]
+
+        return {"releases": releases, "trending": trending, "hn": hn, "transitions": transitions}
     finally:
         session.close()
 
@@ -594,6 +640,31 @@ def get_dependents(package_name: str, source: str = None, include_dev: bool = Fa
         ],
     }
 
+    # Domain spread
+    with readonly_engine.connect() as conn:
+        domain_rows = conn.execute(
+            text("""
+                SELECT ar.domain, COUNT(DISTINCT pd.repo_id) AS repo_count
+                FROM package_deps pd
+                JOIN ai_repos ar ON pd.repo_id = ar.id
+                WHERE pd.dep_name = :pkg
+                  AND (:source IS NULL OR pd.source = :source)
+                  AND ar.domain IS NOT NULL
+                GROUP BY ar.domain
+                ORDER BY repo_count DESC
+            """),
+            {"pkg": package_name, "source": source},
+        ).fetchall()
+
+    if domain_rows:
+        result["domain_spread"] = {
+            "domain_count": len(domain_rows),
+            "domains": [
+                {"domain": r._mapping["domain"], "repo_count": r._mapping["repo_count"]}
+                for r in domain_rows
+            ],
+        }
+
     # Velocity: compare two most recent snapshots
     with readonly_engine.connect() as conn:
         velocity_rows = _safe_mv_query(conn, """
@@ -722,14 +793,23 @@ def get_dep_trending(source: str = None, limit: int = 20, min_dependents: int = 
                     SELECT dep_name, source, dependent_count, snapshot_date,
                            ROW_NUMBER() OVER (PARTITION BY dep_name, source ORDER BY snapshot_date DESC) AS rn
                     FROM dep_velocity_snapshots
+                ),
+                domain_counts AS (
+                    SELECT pd.dep_name, COUNT(DISTINCT ar.domain) AS domain_count
+                    FROM package_deps pd
+                    JOIN ai_repos ar ON pd.repo_id = ar.id
+                    WHERE ar.domain IS NOT NULL
+                    GROUP BY pd.dep_name
                 )
                 SELECT latest.dep_name, latest.source,
                        latest.dependent_count,
                        prev.dependent_count AS previous_count,
                        latest.dependent_count - prev.dependent_count AS dep_delta,
-                       latest.snapshot_date
+                       latest.snapshot_date,
+                       dc.domain_count
                 FROM ranked latest
                 JOIN ranked prev ON latest.dep_name = prev.dep_name AND latest.source = prev.source
+                LEFT JOIN domain_counts dc ON latest.dep_name = dc.dep_name
                 {where}
                   AND latest.dependent_count >= :min_dep
                 ORDER BY dep_delta DESC
