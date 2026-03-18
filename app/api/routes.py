@@ -197,6 +197,18 @@ async def briefings_list(
     return _ok(results, count=len(results), query_params={"domain": domain})
 
 
+@router.get("/dependencies/trending")
+async def dependency_trending(
+    request: Request,
+    source: str = Query(None, pattern="^(pypi|npm)$"),
+    limit: int = Query(20, le=50, ge=1),
+    min_dependents: int = Query(3, ge=1),
+    key_data: dict = Depends(_auth),
+):
+    results = queries.get_dep_trending(source=source, limit=limit, min_dependents=min_dependents)
+    return _ok(results, count=len(results), query_params={"source": source, "limit": limit, "min_dependents": min_dependents})
+
+
 @router.get("/dependencies/{package_name}/dependents")
 async def dependency_dependents(
     package_name: str,
