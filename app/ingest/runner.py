@@ -232,6 +232,26 @@ async def run_all() -> dict:
         logger.exception(f"views failed: {e}")
         results["views"] = {"error": str(e)}
 
+    # Generate LLM project briefs (needs fresh MV data)
+    try:
+        from app.ingest.project_briefs import generate_project_briefs, generate_domain_briefs
+        results["project_briefs"] = await _run_with_retry("project_briefs", generate_project_briefs)
+        logger.info(f"project_briefs: {results['project_briefs']}")
+    except Exception as e:
+        logger.exception(f"project_briefs failed: {e}")
+        results["project_briefs"] = {"error": str(e)}
+
+    # Domain briefs weekly (Sunday)
+    from datetime import datetime as _dt, timezone as _tz
+    if _dt.now(_tz.utc).weekday() == 6:
+        try:
+            from app.ingest.project_briefs import generate_domain_briefs
+            results["domain_briefs"] = await _run_with_retry("domain_briefs", generate_domain_briefs)
+            logger.info(f"domain_briefs: {results['domain_briefs']}")
+        except Exception as e:
+            logger.exception(f"domain_briefs failed: {e}")
+            results["domain_briefs"] = {"error": str(e)}
+
     # Refresh briefing evidence values against current data
     try:
         results["briefing_refresh"] = await _run_with_retry(

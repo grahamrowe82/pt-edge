@@ -184,6 +184,15 @@ def get_project(slug: str) -> dict | None:
                 for r in releases
             ]
 
+        # LLM-generated brief
+        with readonly_engine.connect() as conn:
+            brief_rows = _safe_mv_query(conn, """
+                SELECT title, summary, evidence, generated_at
+                FROM project_briefs WHERE project_id = :pid
+            """, {"pid": proj.id})
+            if brief_rows:
+                result["brief"] = brief_rows[0]
+
         return result
     finally:
         session.close()
@@ -864,6 +873,67 @@ def get_dep_trending(source: str = None, limit: int = 20, min_dependents: int = 
             params,
         ).fetchall()
     return [_row_to_dict(r) for r in rows]
+
+
+def get_project_brief(slug: str) -> dict | None:
+    """Get the LLM-generated brief for a single project."""
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT pb.title, pb.summary, pb.evidence, pb.generated_at, pb.updated_at
+                FROM project_briefs pb
+                JOIN projects p ON pb.project_id = p.id
+                WHERE p.slug = :slug
+            """),
+            {"slug": slug},
+        ).fetchall()
+    if not rows:
+        return None
+    return _row_to_dict(rows[0])
+
+
+def get_project_briefs_list(domain: str = None, tier: int = None, limit: int = 50) -> list[dict]:
+    """List project briefs with optional domain/tier filters."""
+    conditions = []
+    params: dict = {"lim": limit}
+    if domain:
+        conditions.append("s.domain = :domain")
+        params["domain"] = domain
+    if tier is not None:
+        conditions.append("COALESCE(s.tier, 4) = :tier")
+        params["tier"] = tier
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(
+            text(f"""
+                SELECT s.slug, s.name, s.domain, COALESCE(s.tier, 4) AS tier,
+                       pb.title, pb.summary, pb.evidence, pb.generated_at
+                FROM project_briefs pb
+                JOIN mv_project_summary s ON pb.project_id = s.project_id
+                {where}
+                ORDER BY s.stars DESC NULLS LAST
+                LIMIT :lim
+            """),
+            params,
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def get_domain_brief(domain: str) -> dict | None:
+    """Get the LLM-generated landscape brief for a domain."""
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(
+            text("""
+                SELECT domain, title, summary, evidence, generated_at, updated_at
+                FROM domain_briefs
+                WHERE domain = :domain
+            """),
+            {"domain": domain},
+        ).fetchall()
+    if not rows:
+        return None
+    return _row_to_dict(rows[0])
 
 
 def get_papers(q: str = None, project_slug: str = None, year: int = None, limit: int = 20) -> list[dict]:

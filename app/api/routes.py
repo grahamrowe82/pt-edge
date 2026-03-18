@@ -112,6 +112,34 @@ async def projects_bulk(
     return _ok(results, count=len(results), query_params={"slugs": slug_list})
 
 
+@router.get("/project-briefs")
+async def project_briefs_list(
+    request: Request,
+    domain: str = Query(None),
+    tier: int = Query(None, ge=1, le=4),
+    limit: int = Query(50, le=100, ge=1),
+    key_data: dict = Depends(_auth),
+):
+    results = queries.get_project_briefs_list(domain=domain, tier=tier, limit=limit)
+    return _ok(results, count=len(results), query_params={"domain": domain, "tier": tier, "limit": limit})
+
+
+@router.get("/projects/{slug}/brief")
+async def project_brief(slug: str, request: Request, key_data: dict = Depends(_auth)):
+    result = queries.get_project_brief(slug)
+    if not result:
+        _not_found(f"Brief for project '{slug}'")
+    return _ok(result)
+
+
+@router.get("/domains/{domain}/brief")
+async def domain_brief(domain: str, request: Request, key_data: dict = Depends(_auth)):
+    result = queries.get_domain_brief(domain)
+    if not result:
+        _not_found(f"Brief for domain '{domain}'")
+    return _ok(result)
+
+
 @router.get("/projects/{slug}")
 async def project_detail(slug: str, request: Request, key_data: dict = Depends(_auth)):
     result = queries.get_project(slug)
