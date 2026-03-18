@@ -127,57 +127,43 @@ These limit what PT-Edge can analyze. Each opens a new data dimension.
 
 Each adds a new platform or signal type to the tracking index.
 
-### 3.1 Academic paper tracking
+### 3.1 Academic paper tracking ✅ Done (2026-03-18)
 
 **Problem:** No arXiv, Semantic Scholar, or citation data. AI research papers are a core content type for newsletters and analysts, and many open-source projects originate from papers.
 
-**Proposed solution:**
-- Integrate Semantic Scholar API (free, 100 req/sec) to track AI papers
-- Create `papers` table: `semantic_scholar_id, arxiv_id, title, authors, abstract, venue, citation_count, publication_date, discovered_at`
-- Link papers to projects where possible (many READMEs cite their paper)
-- Create `paper_snapshots` for citation count time series
-- Scope: start with papers linked to tracked projects, expand to top-cited AI papers
-
-**Implementation notes:**
-- Semantic Scholar's API is well-documented and generous with rate limits
-- The paper→project link can be bootstrapped by searching for repo URLs in paper abstracts/code links
-- ArXiv RSS feeds can supplement for discovery of new papers
-
-**Effort:** High (new data source, new tables, linking logic)
+**Implemented:**
+- Created `papers` and `paper_snapshots` tables (migration 038)
+- `Paper` and `PaperSnapshot` models in `app/models/content.py`
+- Full Semantic Scholar ingest in `app/ingest/semantic_scholar.py` — searches by project name + GitHub repo URL
+- Citation count snapshots recorded each run for time-series tracking
+- Registered in Phase 2 of `runner.py`
+- `GET /api/v1/papers` endpoint with `q`, `project`, `year`, `limit` filters
 
 ---
 
-### 3.2 Social signal aggregation
+### 3.2 Social signal aggregation — Reddit stub ✅ Done (2026-03-18)
 
-**Problem:** Twitter/X and Reddit are major discovery channels for AI tools. We only track Hacker News. Projects can go viral on social media before showing up in our star deltas.
+**Problem:** Twitter/X and Reddit are major discovery channels for AI tools. We only track Hacker News.
 
-**Proposed solution:**
-- **Phase A (Reddit):** Reddit's API is accessible and well-structured. Track mentions of tracked projects in r/MachineLearning, r/LocalLLaMA, r/artificial, r/ChatGPT. Create `reddit_posts` table mirroring `hn_posts` structure.
-- **Phase B (Twitter/X):** More complex due to API costs and access restrictions. Consider tracking via Nitter mirrors or the Academic Research API if available. Lower priority than Reddit.
-
-**Implementation notes:**
-- Reddit API requires OAuth but is free for moderate usage
-- Start with keyword matching against project names in post titles
-- De-duplicate carefully (project names like "agent" or "claude" have high false-positive rates)
-
-**Effort:** Medium-High (Reddit is medium, Twitter/X is high)
+**Implemented (stub):**
+- Created `reddit_posts` table (migration 038) with full schema
+- `RedditPost` model in `app/models/content.py`
+- Stub ingest at `app/ingest/reddit.py` — returns early with `{"skipped": True, "reason": "no credentials"}` if `REDDIT_CLIENT_ID` / `REDDIT_CLIENT_SECRET` not set
+- **Not registered in runner.py** — activate when credentials are configured
+- No API endpoint yet — add when data exists
+- Twitter/X remains future work
 
 ---
 
-### 3.3 Download count methodology documentation
+### 3.3 Download count methodology documentation ✅ Done (2026-03-18)
 
-**Problem:** PyPI and Docker Hub download counts include CI/CD automation, bots, and transitive dependency pulls. Raw numbers overstate human-initiated adoption. Without methodology notes, data consumers may draw incorrect conclusions.
+**Problem:** PyPI and Docker Hub download counts include CI/CD automation, bots, and transitive dependency pulls. Without methodology notes, data consumers may draw incorrect conclusions.
 
-**Proposed solution:**
-- Add a `/v1/methodology` endpoint documenting what each metric includes and excludes
-- For download counts specifically:
-  - Note that PyPI counts include CI/CD pipelines and mirror pulls
-  - Note that Docker Hub counts include automated pulls from orchestrators
-  - Consider developing an "adjusted downloads" estimate: `raw_downloads / known_ci_multiplier` based on package type
-- Add a `methodology` field to API responses for download metrics
-- Document the lifecycle stage algorithm (inputs, thresholds, update frequency)
-
-**Effort:** Low (documentation + optional API field)
+**Implemented:**
+- `GET /api/v1/methodology` endpoint — lists all 24 methodology entries with optional `category` filter (metric, tool, algorithm, design)
+- `GET /api/v1/methodology/{topic}` endpoint — returns full detail for a topic
+- Query functions `get_methodology_list()` and `get_methodology_detail()` in `app/api/queries.py`
+- No migration needed — `methodology` table already has 24 entries
 
 ---
 
@@ -321,7 +307,7 @@ These add depth to existing data. Lower urgency but high value for differentiati
 |-------|------:|:-----|:----------|:--------|
 | 1. Data Integrity | 3 | 3 (1.1, 1.2, 1.3) | 0 | Trustworthy existing data |
 | 2. Coverage Gaps | 5 | 5 (2.1, 2.2, 2.3, 2.4, 2.5) | 0 | Agent ecosystem, Python deps, repo classification, reverse-lookup, commercial tools |
-| 3. New Data Sources | 3 | 0 | 3 | Papers, social signals, methodology transparency |
+| 3. New Data Sources | 3 | 3 (3.1, 3.2 stub, 3.3) | 0 | Papers, social signals (Reddit needs credentials), methodology transparency |
 | 4. Enhanced Signals | 6 | 0 | 6 | Velocity detection, contributor health, China, MCP taxonomy, qualitative layer |
 
 **Additional improvements shipped (not in original roadmap):**

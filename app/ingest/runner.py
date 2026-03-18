@@ -17,6 +17,7 @@ from app.ingest.releases import ingest_releases
 from app.ingest.trending import ingest_trending
 from app.ingest.ai_repos import ingest_ai_repos
 from app.ingest.ai_repo_downloads import ingest_ai_repo_downloads
+from app.ingest.semantic_scholar import ingest_semantic_scholar
 from app.ingest.public_apis import ingest_public_apis
 from app.ingest.api_specs import ingest_api_specs
 from app.ingest.package_deps import ingest_package_deps
@@ -94,6 +95,7 @@ async def run_all() -> dict:
         ("builder_tools", ingest_builder_tools),
         ("npm_mcp", ingest_npm_mcp),
         ("ai_repo_downloads", ingest_ai_repo_downloads),
+        ("semantic_scholar", ingest_semantic_scholar),
         # ai_repos removed — runs on its own weekly cron (Saturday 12:00 UTC)
         # Phase 3: LLM-dependent (rate-limited, at end so they don't block)
         ("ai_repo_package_detect", detect_packages_llm),

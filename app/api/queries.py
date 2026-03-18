@@ -6,7 +6,7 @@ from datetime import datetime, date, timezone, timedelta
 from sqlalchemy import text
 
 from app.db import readonly_engine, SessionLocal
-from app.models import Project, Lab, Release, HNPost, GitHubSnapshot, DownloadSnapshot, Briefing, CommercialProject
+from app.models import Project, Lab, Release, HNPost, GitHubSnapshot, DownloadSnapshot, Briefing, CommercialProject, Methodology
 
 logger = logging.getLogger(__name__)
 
@@ -588,3 +588,78 @@ def get_briefing(slug: str) -> dict | None:
         }
     finally:
         session.close()
+
+
+def get_methodology_list(category: str = None) -> list[dict]:
+    session = SessionLocal()
+    try:
+        query = session.query(Methodology)
+        if category:
+            query = query.filter(Methodology.category == category)
+        query = query.order_by(Methodology.category, Methodology.topic)
+        rows = query.all()
+        return [
+            {
+                "topic": m.topic,
+                "category": m.category,
+                "title": m.title,
+                "summary": m.summary,
+                "updated_at": _serialize(m.updated_at) if m.updated_at else None,
+            }
+            for m in rows
+        ]
+    finally:
+        session.close()
+
+
+def get_methodology_detail(topic: str) -> dict | None:
+    session = SessionLocal()
+    try:
+        m = session.query(Methodology).filter(Methodology.topic == topic).first()
+        if not m:
+            return None
+        return {
+            "topic": m.topic,
+            "category": m.category,
+            "title": m.title,
+            "summary": m.summary,
+            "detail": m.detail,
+            "updated_at": _serialize(m.updated_at) if m.updated_at else None,
+        }
+    finally:
+        session.close()
+
+
+def get_papers(q: str = None, project_slug: str = None, year: int = None, limit: int = 20) -> list[dict]:
+    with readonly_engine.connect() as conn:
+        conditions = []
+        params: dict = {"limit": limit}
+
+        if q:
+            conditions.append("p.title ILIKE :q")
+            params["q"] = f"%{q}%"
+        if project_slug:
+            conditions.append("proj.slug = :slug")
+            params["slug"] = project_slug
+        if year:
+            conditions.append("p.year = :year")
+            params["year"] = year
+
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        rows = conn.execute(
+            text(f"""
+                SELECT p.semantic_scholar_id, p.arxiv_id, p.doi, p.title,
+                       p.authors, p.abstract, p.venue, p.year,
+                       p.publication_date, p.citation_count, p.open_access_url,
+                       proj.slug AS project_slug, proj.name AS project_name
+                FROM papers p
+                LEFT JOIN projects proj ON p.project_id = proj.id
+                {where}
+                ORDER BY p.citation_count DESC
+                LIMIT :limit
+            """),
+            params,
+        ).fetchall()
+
+    return [_row_to_dict(r) for r in rows]
