@@ -24,9 +24,12 @@ async def fetch_repo(client: httpx.AsyncClient, owner: str, repo: str) -> dict |
 async def fetch_commit_activity(client: httpx.AsyncClient, owner: str, repo: str) -> int:
     url = f"https://api.github.com/repos/{owner}/{repo}/stats/commit_activity"
     resp = await client.get(url)
-    # GitHub returns 202 when stats are being computed async — retry once after a pause
-    if resp.status_code == 202:
-        await asyncio.sleep(2.0)
+    # GitHub returns 202 when stats are being computed async — retry with exponential backoff
+    backoff = [2.0, 5.0, 10.0]
+    for delay in backoff:
+        if resp.status_code != 202:
+            break
+        await asyncio.sleep(delay)
         resp = await client.get(url)
     if resp.status_code == 200:
         weeks = resp.json()
@@ -88,9 +91,11 @@ async def fetch_contributor_count(client: httpx.AsyncClient, owner: str, repo: s
             await asyncio.sleep(0.1)
             stats_url = f"https://api.github.com/repos/{owner}/{repo}/stats/contributors"
             stats_resp = await client.get(stats_url)
-            # GitHub returns 202 when stats are being computed — retry once
-            if stats_resp.status_code == 202:
-                await asyncio.sleep(2.0)
+            # GitHub returns 202 when stats are being computed — retry with exponential backoff
+            for delay in [2.0, 5.0, 10.0]:
+                if stats_resp.status_code != 202:
+                    break
+                await asyncio.sleep(delay)
                 stats_resp = await client.get(stats_url)
             if stats_resp.status_code == 200:
                 stats_data = stats_resp.json()
@@ -119,8 +124,12 @@ async def collect_project_data(
             return None
         await asyncio.sleep(0.1)
         commits_30d = await fetch_commit_activity(client, project.github_owner, project.github_repo)
+        if commits_30d == 0:
+            await asyncio.sleep(0.1)
+            commits_30d = await fetch_commit_count_simple(client, project.github_owner, project.github_repo)
         await asyncio.sleep(0.1)
         contributors = await fetch_contributor_count(client, project.github_owner, project.github_repo)
+        contributors = max(contributors, 0)  # clamp -1 sentinel before it reaches the DB
 
     last_push = repo_data.get("pushed_at")
     last_commit_at = None
@@ -234,6 +243,25 @@ async def ingest_github() -> dict:
             )
             conn.commit()
         logger.info(f"Batch wrote {len(snapshots)} GitHub snapshots")
+
+        # Post-ingest validation warnings
+        with engine.connect() as conn:
+            zero_commits = conn.execute(text("""
+                SELECT COUNT(*) FROM github_snapshots
+                WHERE snapshot_date = CURRENT_DATE
+                  AND commits_30d = 0
+                  AND last_commit_at > NOW() - INTERVAL '30 days'
+            """)).scalar()
+            if zero_commits:
+                logger.warning(f"Data quality: {zero_commits} projects with commits_30d=0 despite recent activity")
+
+            suspect_contributors = conn.execute(text("""
+                SELECT COUNT(*) FROM github_snapshots
+                WHERE snapshot_date = CURRENT_DATE
+                  AND contributors <= 1 AND stars > 500
+            """)).scalar()
+            if suspect_contributors:
+                logger.warning(f"Data quality: {suspect_contributors} projects with contributors<=1 and stars>500")
 
     # Phase 2b: update project enrichment (topics, description) and re-embed
     if enrichments:
