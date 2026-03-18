@@ -184,6 +184,30 @@ async def briefings_list(
     return _ok(results, count=len(results), query_params={"domain": domain})
 
 
+@router.get("/dependencies/{package_name}/dependents")
+async def dependency_dependents(
+    package_name: str,
+    request: Request,
+    source: str = Query(None, pattern="^(pypi|npm)$"),
+    include_dev: bool = Query(False),
+    limit: int = Query(20, le=50, ge=1),
+    key_data: dict = Depends(_auth),
+):
+    result = queries.get_dependents(package_name=package_name, source=source, include_dev=include_dev, limit=limit)
+    return _ok(result, count=len(result["dependents"]), query_params={"package_name": package_name, "source": source, "include_dev": include_dev, "limit": limit})
+
+
+@router.get("/commercial-projects")
+async def commercial_projects(
+    request: Request,
+    category: str = Query(None),
+    limit: int = Query(20, le=50, ge=1),
+    key_data: dict = Depends(_auth),
+):
+    results = queries.get_commercial_projects(category=category, limit=limit)
+    return _ok(results, count=len(results), query_params={"category": category, "limit": limit})
+
+
 @router.get("/briefings/{slug}")
 async def briefing_detail(slug: str, request: Request, key_data: dict = Depends(_auth)):
     result = queries.get_briefing(slug)
