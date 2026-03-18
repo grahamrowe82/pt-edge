@@ -110,7 +110,7 @@ def get_project(slug: str) -> dict | None:
             """, {"pid": proj.id})
 
             velocity = _safe_mv_query(conn, """
-                SELECT velocity_band, commits_per_contributor, cpc_is_capped, contributors
+                SELECT velocity_band, commits_per_contributor, cpc_is_capped, contributors, fork_star_ratio
                 FROM mv_velocity WHERE project_id = :pid
             """, {"pid": proj.id})
 
@@ -254,7 +254,7 @@ def get_projects_bulk(slugs: list[str]) -> list[dict]:
             """, {"pids": project_ids}):
                 mv_hype[int(r["project_id"])] = {k: v for k, v in r.items() if k != "project_id"}
             for r in _safe_mv_query(conn, """
-                SELECT project_id, velocity_band, commits_per_contributor, cpc_is_capped, contributors
+                SELECT project_id, velocity_band, commits_per_contributor, cpc_is_capped, contributors, fork_star_ratio
                 FROM mv_velocity WHERE project_id = ANY(:pids)
             """, {"pids": project_ids}):
                 mv_vel[int(r["project_id"])] = {k: v for k, v in r.items() if k != "project_id"}
@@ -373,7 +373,7 @@ def get_velocity(category: str = None, band: str = None, sort: str = "commits_30
             SELECT s.slug, s.name, s.category, s.stars, s.commits_30d,
                    s.commits_7d_delta, s.commits_30d_delta,
                    vel.velocity_band, vel.commits_per_contributor, vel.cpc_is_capped,
-                   vel.contributors,
+                   vel.contributors, vel.fork_star_ratio,
                    s.lifecycle_stage, COALESCE(s.tier, 4) AS tier
             FROM mv_project_summary s
             JOIN mv_velocity vel ON s.project_id = vel.project_id
@@ -573,7 +573,7 @@ def get_dependents(package_name: str, source: str = None, include_dev: bool = Fa
         ).fetchall()
 
     s = summary._mapping if summary else {}
-    return {
+    result = {
         "package_name": package_name,
         "dependent_count": s.get("dependent_count", 0),
         "by_source": {
@@ -593,6 +593,32 @@ def get_dependents(package_name: str, source: str = None, include_dev: bool = Fa
             for r in rows
         ],
     }
+
+    # Velocity: compare two most recent snapshots
+    with readonly_engine.connect() as conn:
+        velocity_rows = _safe_mv_query(conn, """
+            SELECT dependent_count, snapshot_date
+            FROM dep_velocity_snapshots
+            WHERE dep_name = :pkg AND source = :src
+            ORDER BY snapshot_date DESC
+            LIMIT 2
+        """, {"pkg": package_name, "src": source or "pypi"})
+
+    if velocity_rows:
+        latest = velocity_rows[0]
+        velocity = {
+            "dependent_count": latest["dependent_count"],
+            "previous_count": None,
+            "delta": None,
+            "snapshot_date": latest["snapshot_date"],
+        }
+        if len(velocity_rows) > 1:
+            prev = velocity_rows[1]
+            velocity["previous_count"] = prev["dependent_count"]
+            velocity["delta"] = int(latest["dependent_count"]) - int(prev["dependent_count"])
+        result["velocity"] = velocity
+
+    return result
 
 
 def get_commercial_projects(category: str = None, limit: int = 20) -> list[dict]:
@@ -678,6 +704,40 @@ def get_methodology_detail(topic: str) -> dict | None:
         }
     finally:
         session.close()
+
+
+def get_dep_trending(source: str = None, limit: int = 20, min_dependents: int = 3) -> list[dict]:
+    conditions = ["latest.rn = 1", "prev.rn = 2"]
+    params: dict = {"lim": limit, "min_dep": min_dependents}
+    if source:
+        conditions.append("latest.source = :src")
+        params["src"] = source
+
+    where = "WHERE " + " AND ".join(conditions)
+
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(
+            text(f"""
+                WITH ranked AS (
+                    SELECT dep_name, source, dependent_count, snapshot_date,
+                           ROW_NUMBER() OVER (PARTITION BY dep_name, source ORDER BY snapshot_date DESC) AS rn
+                    FROM dep_velocity_snapshots
+                )
+                SELECT latest.dep_name, latest.source,
+                       latest.dependent_count,
+                       prev.dependent_count AS previous_count,
+                       latest.dependent_count - prev.dependent_count AS dep_delta,
+                       latest.snapshot_date
+                FROM ranked latest
+                JOIN ranked prev ON latest.dep_name = prev.dep_name AND latest.source = prev.source
+                {where}
+                  AND latest.dependent_count >= :min_dep
+                ORDER BY dep_delta DESC
+                LIMIT :lim
+            """),
+            params,
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
 
 
 def get_papers(q: str = None, project_slug: str = None, year: int = None, limit: int = 20) -> list[dict]:
