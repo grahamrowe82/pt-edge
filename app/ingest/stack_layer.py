@@ -179,6 +179,175 @@ def _batch_update_stack_layer(updates: list[tuple[str, int]]) -> int:
             pass
 
 
+VALID_DOMAINS = {
+    "mcp", "agents", "rag", "ai-coding", "llm-tools", "diffusion", "voice-ai",
+    "generative-ai", "embeddings", "vector-db", "prompt-engineering", "nlp",
+    "computer-vision", "transformers", "mlops", "data-engineering", "ml-frameworks",
+}
+
+DOMAIN_PROMPT = """\
+Classify each AI/ML project into exactly one domain based on its PRIMARY focus area.
+
+Domains:
+- mcp: Model Context Protocol servers/clients
+- agents: AI agent frameworks, multi-agent systems
+- rag: Retrieval-augmented generation, document QA
+- ai-coding: Code generation, copilots, code assistants
+- llm-tools: LLM utilities, wrappers, prompt tools
+- diffusion: Image generation, stable diffusion
+- voice-ai: Text-to-speech, speech recognition
+- generative-ai: General generative AI applications
+- embeddings: Embedding models, semantic search
+- vector-db: Vector databases
+- prompt-engineering: Prompt design and optimization
+- nlp: NLP, text classification, NER
+- computer-vision: Object detection, image segmentation
+- transformers: Transformer architectures, model training
+- mlops: Experiment tracking, model serving, ML platforms
+- data-engineering: Data pipelines, ETL, feature stores
+- ml-frameworks: General ML/DL frameworks
+
+Rules:
+- Choose the domain that best matches the PRIMARY focus.
+- Return valid JSON only — an array of objects.
+
+Return format:
+[{{"id": <project_id>, "domain": "<domain>"}}, ...]
+
+Projects:
+{projects_text}"""
+
+
+async def classify_project_domains(limit: int = 500) -> dict:
+    """Use LLM to classify domain for projects without one (unlinked to ai_repos)."""
+    if not settings.ANTHROPIC_API_KEY:
+        logger.info("No ANTHROPIC_API_KEY — skipping domain classification")
+        return {"classified": 0, "skipped": "no API key"}
+
+    started_at = datetime.now(timezone.utc)
+
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT id, name, LEFT(description, 200) AS description, category, topics
+            FROM projects
+            WHERE domain IS NULL AND is_active = true AND ai_repo_id IS NULL
+            ORDER BY id
+            LIMIT :lim
+        """), {"lim": limit}).fetchall()
+
+    if not rows:
+        logger.info("No unclassified projects for domain")
+        return {"classified": 0, "batches": 0}
+
+    logger.info(f"Domain classification: processing {len(rows)} projects")
+
+    batches = [rows[i:i + LLM_BATCH_SIZE] for i in range(0, len(rows), LLM_BATCH_SIZE)]
+    id_set = {r._mapping["id"] for r in rows}
+
+    total_classified = 0
+    errors = 0
+
+    for batch_idx, batch in enumerate(batches):
+        lines = []
+        for r in batch:
+            m = r._mapping
+            desc = (m["description"] or "").replace("\n", " ").strip()
+            topics_csv = ", ".join(m["topics"]) if m["topics"] else ""
+            lines.append(f'{m["id"]}. {m["name"]} [{m["category"]}] — "{desc}" [topics: {topics_csv}]')
+        projects_text = "\n".join(lines)
+
+        predictions = await call_haiku(
+            DOMAIN_PROMPT.format(projects_text=projects_text)
+        )
+        if not predictions:
+            logger.warning(f"Domain batch {batch_idx + 1}/{len(batches)}: LLM returned no results")
+            errors += 1
+            continue
+
+        updates = []
+        for pred in predictions:
+            if not isinstance(pred, dict):
+                continue
+            pid = pred.get("id")
+            domain = (pred.get("domain") or "").lower().strip()
+            if pid not in id_set or domain not in VALID_DOMAINS:
+                continue
+            updates.append((domain, pid))
+
+        if updates:
+            written = _batch_update_domain(updates)
+            total_classified += written
+
+        logger.info(
+            f"Domain batch {batch_idx + 1}/{len(batches)}: "
+            f"{len(updates)} classified, {total_classified} total"
+        )
+
+    # Sync log
+    session = SessionLocal()
+    try:
+        session.add(SyncLog(
+            sync_type="domain_classification",
+            status="success" if not errors else "partial",
+            records_written=total_classified,
+            error_message=f"{errors} LLM errors" if errors else None,
+            started_at=started_at,
+            finished_at=datetime.now(timezone.utc),
+        ))
+        session.commit()
+    finally:
+        session.close()
+
+    result = {"classified": total_classified, "batches": len(batches), "errors": errors}
+    logger.info(f"Domain classification complete: {result}")
+    return result
+
+
+def _batch_update_domain(updates: list[tuple[str, int]]) -> int:
+    """Batch update domain using temp table."""
+    if not updates:
+        return 0
+    from psycopg2.extras import execute_values
+
+    raw_conn = engine.raw_connection()
+    try:
+        cur = raw_conn.cursor()
+        cur.execute("""
+            CREATE TEMP TABLE _domain_batch (
+                id INTEGER PRIMARY KEY,
+                domain VARCHAR(50) NOT NULL
+            ) ON COMMIT DROP
+        """)
+        execute_values(
+            cur,
+            "INSERT INTO _domain_batch (id, domain) VALUES %s",
+            [(pid, domain) for domain, pid in updates],
+            template="(%s, %s)",
+            page_size=1000,
+        )
+        cur.execute("""
+            UPDATE projects p
+            SET domain = b.domain
+            FROM _domain_batch b
+            WHERE p.id = b.id
+        """)
+        count = cur.rowcount
+        raw_conn.commit()
+        return count
+    except Exception as e:
+        try:
+            raw_conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"Batch domain update failed: {e}")
+        return 0
+    finally:
+        try:
+            raw_conn.close()
+        except Exception:
+            pass
+
+
 async def main():
     import sys
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")

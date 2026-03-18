@@ -126,11 +126,12 @@ async def project_search(
     q: str = Query(None),
     category: str = Query(None),
     stack_layer: str = Query(None, pattern="^(model|inference|orchestration|data|eval|interface|infra)$"),
+    domain: str = Query(None),
     limit: int = Query(20, le=50, ge=1),
     key_data: dict = Depends(_auth),
 ):
-    results = queries.search_projects(q=q, category=category, stack_layer=stack_layer, limit=limit)
-    return _ok(results, count=len(results), query_params={"q": q, "category": category, "stack_layer": stack_layer, "limit": limit})
+    results = queries.search_projects(q=q, category=category, stack_layer=stack_layer, domain=domain, limit=limit)
+    return _ok(results, count=len(results), query_params={"q": q, "category": category, "stack_layer": stack_layer, "domain": domain, "limit": limit})
 
 
 @router.get("/trending")
@@ -138,12 +139,13 @@ async def trending(
     request: Request,
     category: str = Query(None),
     stack_layer: str = Query(None, pattern="^(model|inference|orchestration|data|eval|interface|infra)$"),
+    domain: str = Query(None),
     window: str = Query("7d", pattern="^(7d|30d)$"),
     limit: int = Query(20, le=50, ge=1),
     key_data: dict = Depends(_auth),
 ):
-    results = queries.get_trending(category=category, stack_layer=stack_layer, window=window, limit=limit)
-    return _ok(results, count=len(results), query_params={"category": category, "stack_layer": stack_layer, "window": window, "limit": limit})
+    results = queries.get_trending(category=category, stack_layer=stack_layer, domain=domain, window=window, limit=limit)
+    return _ok(results, count=len(results), query_params={"category": category, "stack_layer": stack_layer, "domain": domain, "window": window, "limit": limit})
 
 
 @router.get("/velocity")
@@ -151,13 +153,25 @@ async def velocity(
     request: Request,
     category: str = Query(None),
     stack_layer: str = Query(None, pattern="^(model|inference|orchestration|data|eval|interface|infra)$"),
+    domain: str = Query(None),
     band: str = Query(None, pattern="^(dormant|slow|moderate|fast|hyperspeed)$"),
     sort: str = Query("commits_30d", pattern="^(commits_30d|commits_delta|cpc)$"),
     limit: int = Query(20, le=50, ge=1),
     key_data: dict = Depends(_auth),
 ):
-    results = queries.get_velocity(category=category, stack_layer=stack_layer, band=band, sort=sort, limit=limit)
-    return _ok(results, count=len(results), query_params={"category": category, "stack_layer": stack_layer, "band": band, "sort": sort, "limit": limit})
+    results = queries.get_velocity(category=category, stack_layer=stack_layer, domain=domain, band=band, sort=sort, limit=limit)
+    return _ok(results, count=len(results), query_params={"category": category, "stack_layer": stack_layer, "domain": domain, "band": band, "sort": sort, "limit": limit})
+
+
+@router.get("/contributors/trending")
+async def contributors_trending(
+    request: Request,
+    stack_layer: str = Query(None, pattern="^(model|inference|orchestration|data|eval|interface|infra)$"),
+    limit: int = Query(20, le=50, ge=1),
+    key_data: dict = Depends(_auth),
+):
+    results = queries.get_contributor_trending(stack_layer=stack_layer, limit=limit)
+    return _ok(results, count=len(results), query_params={"stack_layer": stack_layer, "limit": limit})
 
 
 @router.get("/transitions")

@@ -89,6 +89,7 @@ def get_project(slug: str) -> dict | None:
             "npm_package": proj.npm_package,
             "is_active": proj.is_active,
             "stack_layer": proj.stack_layer,
+            "domain": proj.domain,
         }
 
         # Latest GitHub snapshot
@@ -141,6 +142,11 @@ def get_project(slug: str) -> dict | None:
                 FROM mv_hype_ratio WHERE project_id = :pid
             """, {"pid": proj.id})
 
+            momentum_contrib = _safe_mv_query(conn, """
+                SELECT contributors_30d_delta
+                FROM mv_momentum WHERE project_id = :pid
+            """, {"pid": proj.id})
+
             velocity = _safe_mv_query(conn, """
                 SELECT velocity_band, commits_per_contributor, cpc_is_capped, contributors, fork_star_ratio
                 FROM mv_velocity WHERE project_id = :pid
@@ -155,7 +161,10 @@ def get_project(slug: str) -> dict | None:
             if hype:
                 result["hype"] = hype[0]
             if velocity:
-                result["velocity"] = velocity[0]
+                vel_data = velocity[0]
+                if momentum_contrib:
+                    vel_data["contributors_30d_delta"] = momentum_contrib[0].get("contributors_30d_delta")
+                result["velocity"] = vel_data
 
         # Recent releases
         releases = (
@@ -180,7 +189,7 @@ def get_project(slug: str) -> dict | None:
         session.close()
 
 
-def search_projects(q: str = None, category: str = None, stack_layer: str = None, limit: int = 20) -> list[dict]:
+def search_projects(q: str = None, category: str = None, stack_layer: str = None, domain: str = None, limit: int = 20) -> list[dict]:
     session = SessionLocal()
     try:
         query = session.query(Project)
@@ -192,6 +201,8 @@ def search_projects(q: str = None, category: str = None, stack_layer: str = None
             query = query.filter(Project.category == category)
         if stack_layer:
             query = query.filter(Project.stack_layer == stack_layer)
+        if domain:
+            query = query.filter(Project.domain == domain)
         query = query.order_by(Project.name).limit(limit)
         rows = query.all()
         return [
@@ -202,6 +213,7 @@ def search_projects(q: str = None, category: str = None, stack_layer: str = None
                 "description": p.description,
                 "lab": p.lab.name if p.lab else None,
                 "stack_layer": p.stack_layer,
+                "domain": p.domain,
             }
             for p in rows
         ]
@@ -336,6 +348,7 @@ def get_projects_bulk(slugs: list[str]) -> list[dict]:
                 "npm_package": proj.npm_package,
                 "is_active": proj.is_active,
                 "stack_layer": proj.stack_layer,
+                "domain": proj.domain,
             }
             if proj.id in gh_map:
                 result["github_metrics"] = gh_map[proj.id]
@@ -359,7 +372,7 @@ def get_projects_bulk(slugs: list[str]) -> list[dict]:
         session.close()
 
 
-def get_trending(category: str = None, stack_layer: str = None, window: str = "7d", limit: int = 20) -> list[dict]:
+def get_trending(category: str = None, stack_layer: str = None, domain: str = None, window: str = "7d", limit: int = 20) -> list[dict]:
     delta_col = "stars_7d_delta" if window == "7d" else "stars_30d_delta"
     conditions = []
     params: dict = {}
@@ -369,11 +382,15 @@ def get_trending(category: str = None, stack_layer: str = None, window: str = "7
     if stack_layer:
         conditions.append("s.stack_layer = :stack_layer")
         params["stack_layer"] = stack_layer
+    if domain:
+        conditions.append("s.domain = :domain")
+        params["domain"] = domain
     where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
 
     with readonly_engine.connect() as conn:
         rows = _safe_mv_query(conn, f"""
-            SELECT s.slug, s.name, s.category, s.stack_layer, s.stars, s.forks, s.monthly_downloads,
+            SELECT s.slug, s.name, s.category, s.stack_layer, s.domain,
+                   s.stars, s.forks, s.monthly_downloads,
                    s.stars_7d_delta, s.stars_30d_delta, s.dl_30d_delta,
                    s.hype_ratio, s.hype_bucket,
                    s.last_release_at, s.last_release_title,
@@ -389,7 +406,7 @@ def get_trending(category: str = None, stack_layer: str = None, window: str = "7
     return rows
 
 
-def get_velocity(category: str = None, stack_layer: str = None, band: str = None, sort: str = "commits_30d", limit: int = 20) -> list[dict]:
+def get_velocity(category: str = None, stack_layer: str = None, domain: str = None, band: str = None, sort: str = "commits_30d", limit: int = 20) -> list[dict]:
     conditions = []
     params: dict = {"lim": limit}
     if category:
@@ -398,6 +415,9 @@ def get_velocity(category: str = None, stack_layer: str = None, band: str = None
     if stack_layer:
         conditions.append("s.stack_layer = :stack_layer")
         params["stack_layer"] = stack_layer
+    if domain:
+        conditions.append("s.domain = :domain")
+        params["domain"] = domain
     if band:
         conditions.append("vel.velocity_band = :band")
         params["band"] = band
@@ -413,8 +433,10 @@ def get_velocity(category: str = None, stack_layer: str = None, band: str = None
 
     with readonly_engine.connect() as conn:
         rows = _safe_mv_query(conn, f"""
-            SELECT s.slug, s.name, s.category, s.stack_layer, s.stars, s.commits_30d,
+            SELECT s.slug, s.name, s.category, s.stack_layer, s.domain,
+                   s.stars, s.commits_30d,
                    s.commits_7d_delta, s.commits_30d_delta,
+                   s.contributors_30d_delta,
                    vel.velocity_band, vel.commits_per_contributor, vel.cpc_is_capped,
                    vel.contributors, vel.fork_star_ratio,
                    s.lifecycle_stage, COALESCE(s.tier, 4) AS tier
@@ -422,6 +444,30 @@ def get_velocity(category: str = None, stack_layer: str = None, band: str = None
             JOIN mv_velocity vel ON s.project_id = vel.project_id
             {where_clause}
             ORDER BY {order}
+            LIMIT :lim
+        """, params)
+    return rows
+
+
+def get_contributor_trending(stack_layer: str = None, limit: int = 20) -> list[dict]:
+    conditions = ["s.contributors_30d_delta > 0"]
+    params: dict = {"lim": limit}
+    if stack_layer:
+        conditions.append("s.stack_layer = :stack_layer")
+        params["stack_layer"] = stack_layer
+
+    where_clause = "WHERE " + " AND ".join(conditions)
+
+    with readonly_engine.connect() as conn:
+        rows = _safe_mv_query(conn, f"""
+            SELECT s.slug, s.name, s.category, s.stack_layer, s.domain,
+                   s.stars, s.commits_30d, s.contributors_30d_delta,
+                   vel.contributors, vel.velocity_band,
+                   s.lifecycle_stage, COALESCE(s.tier, 4) AS tier
+            FROM mv_project_summary s
+            LEFT JOIN mv_velocity vel ON s.project_id = vel.project_id
+            {where_clause}
+            ORDER BY s.contributors_30d_delta DESC NULLS LAST
             LIMIT :lim
         """, params)
     return rows

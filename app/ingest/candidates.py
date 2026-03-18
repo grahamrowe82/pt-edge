@@ -200,6 +200,29 @@ AUTO_PROMOTE_HN_STARS = 1_000
 # >5K stars from any source = significant project regardless of how we found it
 AUTO_PROMOTE_ANY_STARS = 5_000
 
+# Domain-specific overrides (lower bar for commercially relevant domains)
+DOMAIN_PROMOTE_STARS = {
+    "eval": 2_000,
+    "orchestration": 2_000,
+    "data": 2_500,
+    "infra": 2_500,
+}
+
+# Domain weight multipliers for watchlist scoring
+DOMAIN_WEIGHTS = {
+    "eval": 1.4,
+    "orchestration": 1.3,
+    "data": 1.3,
+    "infra": 1.3,
+    "agents": 1.2,
+    "rag": 1.2,
+    "ai-coding": 1.1,
+}
+DEFAULT_DOMAIN_WEIGHT = 1.0
+
+# Minimum watchlist tenure before auto-promotion (prevents flash-in-the-pan repos)
+AUTO_PROMOTE_MIN_AGE_DAYS = 14
+
 # Language → likely category mapping
 LANG_CATEGORY = {
     "python": "library",
@@ -252,19 +275,34 @@ async def _auto_promote_candidates() -> list[dict]:
     """
     with engine.connect() as conn:
         rows = conn.execute(text("""
-            SELECT id, github_url, github_owner, github_repo, name, description,
-                   stars, language, topics, source
-            FROM project_candidates
-            WHERE status = 'pending'
-              AND stars IS NOT NULL
+            SELECT pc.id, pc.github_url, pc.github_owner, pc.github_repo,
+                   pc.name, pc.description, pc.stars, pc.language, pc.topics,
+                   pc.source, ar.domain
+            FROM project_candidates pc
+            LEFT JOIN ai_repos ar
+                ON LOWER(pc.github_owner) = LOWER(ar.github_owner)
+               AND LOWER(pc.github_repo) = LOWER(ar.github_repo)
+            WHERE pc.status = 'pending'
+              AND pc.stars IS NOT NULL
+              AND pc.discovered_at <= NOW() - make_interval(days => :age_days)
               AND (
-                  (stars >= :hn_threshold AND source = 'hn')
-                  OR stars >= :any_threshold
+                  (pc.stars >= :hn_threshold AND pc.source = 'hn')
+                  OR pc.stars >= :any_threshold
+                  -- Domain-specific lower thresholds
+                  OR (ar.domain = 'eval' AND pc.stars >= :eval_threshold)
+                  OR (ar.domain = 'orchestration' AND pc.stars >= :orch_threshold)
+                  OR (ar.domain = 'data' AND pc.stars >= :data_threshold)
+                  OR (ar.domain = 'infra' AND pc.stars >= :infra_threshold)
               )
-            ORDER BY stars DESC
+            ORDER BY pc.stars DESC
         """), {
+            "age_days": AUTO_PROMOTE_MIN_AGE_DAYS,
             "hn_threshold": AUTO_PROMOTE_HN_STARS,
             "any_threshold": AUTO_PROMOTE_ANY_STARS,
+            "eval_threshold": DOMAIN_PROMOTE_STARS.get("eval", AUTO_PROMOTE_ANY_STARS),
+            "orch_threshold": DOMAIN_PROMOTE_STARS.get("orchestration", AUTO_PROMOTE_ANY_STARS),
+            "data_threshold": DOMAIN_PROMOTE_STARS.get("data", AUTO_PROMOTE_ANY_STARS),
+            "infra_threshold": DOMAIN_PROMOTE_STARS.get("infra", AUTO_PROMOTE_ANY_STARS),
         }).fetchall()
 
     if not rows:
@@ -305,10 +343,12 @@ async def _auto_promote_candidates() -> list[dict]:
             # Create project — default to binary distribution (most HN/trending
             # discoveries are apps, not pip-installable packages)
             candidate_topics = list(c.get("topics") or [])
+            candidate_domain = c.get("domain")  # from ai_repos JOIN
             project = Project(
                 slug=slug,
                 name=c.get("name") or c.get("github_repo") or slug,
                 category=category,
+                domain=candidate_domain,
                 github_owner=c.get("github_owner"),
                 github_repo=c.get("github_repo"),
                 url=c.get("github_url"),
@@ -421,7 +461,7 @@ async def refresh_candidate_watchlist() -> dict:
                 id, github_owner, github_repo, full_name, name, description,
                 stars, forks, language, topics, domain,
                 last_pushed_at, commits_30d,
-                -- Blended score
+                -- Blended score with domain weight multiplier
                 (
                     COALESCE(LN(GREATEST(stars, 1) + 1) * 7, 0)
                     + COALESCE(LN(GREATEST(commits_30d, 0) + 1) * 10, 0)
@@ -432,7 +472,16 @@ async def refresh_candidate_watchlist() -> dict:
                         WHEN last_pushed_at >= NOW() - INTERVAL '90 days' THEN 5
                         ELSE 0
                       END
-                ) AS watchlist_score
+                ) * CASE domain
+                    WHEN 'eval' THEN 1.4
+                    WHEN 'orchestration' THEN 1.3
+                    WHEN 'data' THEN 1.3
+                    WHEN 'infra' THEN 1.3
+                    WHEN 'agents' THEN 1.2
+                    WHEN 'rag' THEN 1.2
+                    WHEN 'ai-coding' THEN 1.1
+                    ELSE 1.0
+                  END AS watchlist_score
             FROM ai_repos
             WHERE stars >= 100
               AND archived = false
