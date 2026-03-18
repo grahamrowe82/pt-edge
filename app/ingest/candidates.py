@@ -375,3 +375,121 @@ async def _embed_promoted_projects(promoted: list[dict]) -> None:
 
     embedded = sum(1 for v in vectors if v is not None)
     logger.info(f"Embedded {embedded}/{len(promoted)} promoted projects")
+
+
+# ---------------------------------------------------------------------------
+# Watchlist: top-1000 ai_repos → project_candidates
+# ---------------------------------------------------------------------------
+
+# Scoring weights (tuned from EDA natural breaks)
+# Score = (star_weight * star_score) + (velocity_weight * velocity_score) + (recency_weight * recency_score)
+WATCHLIST_LIMIT = 1000
+
+
+async def refresh_candidate_watchlist() -> dict:
+    """Identify the top-1000 most interesting ai_repos and upsert into project_candidates.
+
+    Scoring blends:
+      - stars (log-scaled, max ~50 points)
+      - commits_30d velocity (log-scaled, max ~30 points)
+      - recency of last push (linear decay, max ~20 points)
+
+    Excludes repos already tracked as projects or already accepted/rejected candidates.
+    """
+    with engine.connect() as conn:
+        # Get already-tracked project github identities to exclude
+        tracked = conn.execute(text("""
+            SELECT LOWER(github_owner) || '/' || LOWER(github_repo)
+            FROM projects
+            WHERE github_owner IS NOT NULL
+        """)).fetchall()
+        tracked_set = {r[0] for r in tracked}
+
+        # Get accepted/rejected candidates to exclude
+        resolved = conn.execute(text("""
+            SELECT LOWER(github_owner) || '/' || LOWER(github_repo)
+            FROM project_candidates
+            WHERE status IN ('accepted', 'rejected')
+              AND github_owner IS NOT NULL
+        """)).fetchall()
+        resolved_set = {r[0] for r in resolved}
+
+        # Score and rank ai_repos
+        # Using SQL for efficiency — log scaling + recency decay
+        rows = conn.execute(text("""
+            SELECT
+                id, github_owner, github_repo, full_name, name, description,
+                stars, forks, language, topics, domain,
+                last_pushed_at, commits_30d,
+                -- Blended score
+                (
+                    COALESCE(LN(GREATEST(stars, 1) + 1) * 7, 0)
+                    + COALESCE(LN(GREATEST(commits_30d, 0) + 1) * 10, 0)
+                    + CASE
+                        WHEN last_pushed_at >= NOW() - INTERVAL '7 days' THEN 20
+                        WHEN last_pushed_at >= NOW() - INTERVAL '30 days' THEN 15
+                        WHEN last_pushed_at >= NOW() - INTERVAL '60 days' THEN 10
+                        WHEN last_pushed_at >= NOW() - INTERVAL '90 days' THEN 5
+                        ELSE 0
+                      END
+                ) AS watchlist_score
+            FROM ai_repos
+            WHERE stars >= 100
+              AND archived = false
+              AND last_pushed_at >= NOW() - INTERVAL '90 days'
+              AND commits_30d IS NOT NULL
+            ORDER BY watchlist_score DESC
+            LIMIT :fetch_limit
+        """), {"fetch_limit": WATCHLIST_LIMIT * 2}).fetchall()
+        # Fetch 2x to have headroom after filtering
+
+    # Filter out already-tracked and resolved
+    candidates = []
+    for r in rows:
+        m = dict(r._mapping)
+        key = f"{m['github_owner'].lower()}/{m['github_repo'].lower()}"
+        if key in tracked_set or key in resolved_set:
+            continue
+        candidates.append(m)
+        if len(candidates) >= WATCHLIST_LIMIT:
+            break
+
+    if not candidates:
+        logger.info("No new watchlist candidates found")
+        return {"upserted": 0}
+
+    # Upsert into project_candidates
+    upserted = 0
+    with engine.connect() as conn:
+        for c in candidates:
+            github_url = f"https://github.com/{c['github_owner']}/{c['github_repo']}"
+            conn.execute(text("""
+                INSERT INTO project_candidates
+                    (github_url, github_owner, github_repo, name, description,
+                     stars, language, source, source_detail, topics,
+                     commit_trend, discovered_at, status)
+                VALUES
+                    (:url, :owner, :repo, :name, :desc,
+                     :stars, :lang, 'watchlist', :detail, :topics,
+                     :commits, NOW(), 'pending')
+                ON CONFLICT (github_url) DO UPDATE SET
+                    stars = EXCLUDED.stars,
+                    commit_trend = EXCLUDED.commit_trend,
+                    stars_updated_at = NOW()
+            """), {
+                "url": github_url,
+                "owner": c["github_owner"],
+                "repo": c["github_repo"],
+                "name": c["name"],
+                "desc": (c["description"] or "")[:500],
+                "stars": c["stars"],
+                "lang": c["language"],
+                "detail": f"watchlist_score={c['watchlist_score']:.1f}, domain={c['domain']}",
+                "topics": c.get("topics"),
+                "commits": c.get("commits_30d"),
+            })
+            upserted += 1
+        conn.commit()
+
+    logger.info(f"Watchlist refresh: upserted {upserted} candidates from ai_repos")
+    return {"upserted": upserted, "scored": len(rows)}

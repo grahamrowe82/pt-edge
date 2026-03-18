@@ -144,6 +144,19 @@ async def trending(
     return _ok(results, count=len(results), query_params={"category": category, "window": window, "limit": limit})
 
 
+@router.get("/velocity")
+async def velocity(
+    request: Request,
+    category: str = Query(None),
+    band: str = Query(None, pattern="^(dormant|slow|moderate|fast|hyperspeed)$"),
+    sort: str = Query("commits_30d", pattern="^(commits_30d|commits_delta|cpc)$"),
+    limit: int = Query(20, le=50, ge=1),
+    key_data: dict = Depends(_auth),
+):
+    results = queries.get_velocity(category=category, band=band, sort=sort, limit=limit)
+    return _ok(results, count=len(results), query_params={"category": category, "band": band, "sort": sort, "limit": limit})
+
+
 @router.get("/whats-new")
 async def whats_new(
     request: Request,

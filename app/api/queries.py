@@ -109,6 +109,11 @@ def get_project(slug: str) -> dict | None:
                 FROM mv_hype_ratio WHERE project_id = :pid
             """, {"pid": proj.id})
 
+            velocity = _safe_mv_query(conn, """
+                SELECT velocity_band, commits_per_contributor, cpc_is_capped, contributors
+                FROM mv_velocity WHERE project_id = :pid
+            """, {"pid": proj.id})
+
             if tier_rows:
                 result["tier"] = tier_rows[0].get("tier")
             if lc_rows:
@@ -117,6 +122,8 @@ def get_project(slug: str) -> dict | None:
                 result["momentum"] = momentum[0]
             if hype:
                 result["hype"] = hype[0]
+            if velocity:
+                result["velocity"] = velocity[0]
 
         # Recent releases
         releases = (
@@ -229,6 +236,7 @@ def get_projects_bulk(slugs: list[str]) -> list[dict]:
         mv_lc = {}
         mv_momentum = {}
         mv_hype = {}
+        mv_vel = {}
         with readonly_engine.connect() as conn:
             for r in _safe_mv_query(conn, "SELECT project_id, tier, is_override FROM mv_project_tier WHERE project_id = ANY(:pids)", {"pids": project_ids}):
                 mv_tier[int(r["project_id"])] = r
@@ -245,6 +253,11 @@ def get_projects_bulk(slugs: list[str]) -> list[dict]:
                 FROM mv_hype_ratio WHERE project_id = ANY(:pids)
             """, {"pids": project_ids}):
                 mv_hype[int(r["project_id"])] = {k: v for k, v in r.items() if k != "project_id"}
+            for r in _safe_mv_query(conn, """
+                SELECT project_id, velocity_band, commits_per_contributor, cpc_is_capped, contributors
+                FROM mv_velocity WHERE project_id = ANY(:pids)
+            """, {"pids": project_ids}):
+                mv_vel[int(r["project_id"])] = {k: v for k, v in r.items() if k != "project_id"}
 
         # Batch-fetch recent releases (last 5 per project)
         rel_map: dict[int, list] = {}
@@ -300,6 +313,8 @@ def get_projects_bulk(slugs: list[str]) -> list[dict]:
                 result["momentum"] = mv_momentum[proj.id]
             if proj.id in mv_hype:
                 result["hype"] = mv_hype[proj.id]
+            if proj.id in mv_vel:
+                result["velocity"] = mv_vel[proj.id]
             if proj.id in rel_map:
                 result["recent_releases"] = rel_map[proj.id]
             results.append(result)
@@ -331,6 +346,41 @@ def get_trending(category: str = None, window: str = "7d", limit: int = 20) -> l
             ORDER BY {delta_col} DESC NULLS LAST
             LIMIT :lim
         """, {**params, "lim": limit})
+    return rows
+
+
+def get_velocity(category: str = None, band: str = None, sort: str = "commits_30d", limit: int = 20) -> list[dict]:
+    conditions = []
+    params: dict = {"lim": limit}
+    if category:
+        conditions.append("s.category = :cat")
+        params["cat"] = category
+    if band:
+        conditions.append("vel.velocity_band = :band")
+        params["band"] = band
+
+    where_clause = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    sort_map = {
+        "commits_30d": "s.commits_30d DESC NULLS LAST",
+        "commits_delta": "s.commits_30d_delta DESC NULLS LAST",
+        "cpc": "vel.commits_per_contributor DESC NULLS LAST",
+    }
+    order = sort_map.get(sort, sort_map["commits_30d"])
+
+    with readonly_engine.connect() as conn:
+        rows = _safe_mv_query(conn, f"""
+            SELECT s.slug, s.name, s.category, s.stars, s.commits_30d,
+                   s.commits_7d_delta, s.commits_30d_delta,
+                   vel.velocity_band, vel.commits_per_contributor, vel.cpc_is_capped,
+                   vel.contributors,
+                   s.lifecycle_stage, COALESCE(s.tier, 4) AS tier
+            FROM mv_project_summary s
+            JOIN mv_velocity vel ON s.project_id = vel.project_id
+            {where_clause}
+            ORDER BY {order}
+            LIMIT :lim
+        """, params)
     return rows
 
 
