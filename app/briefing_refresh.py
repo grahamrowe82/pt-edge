@@ -154,6 +154,72 @@ async def refresh_briefing_evidence() -> dict:
 
         conn.commit()
 
+    # Also refresh evidence in project_briefs and domain_briefs
+    for table in ("project_briefs", "domain_briefs"):
+        try:
+            with engine.connect() as conn:
+                brief_rows = conn.execute(text(f"""
+                    SELECT id, evidence
+                    FROM {table}
+                    WHERE evidence IS NOT NULL
+                """)).fetchall()
+
+                for r in brief_rows:
+                    m = r._mapping
+                    evidence = m["evidence"]
+                    if isinstance(evidence, str):
+                        evidence = json.loads(evidence)
+                    if not isinstance(evidence, list):
+                        continue
+
+                    changed = False
+                    for ev in evidence:
+                        if ev.get("type") != "project" or not ev.get("metric"):
+                            continue
+
+                        old_val = ev.get("value")
+                        current = _lookup_current(conn, ev["slug"], ev["metric"])
+                        if current is None:
+                            continue
+
+                        try:
+                            current = int(current)
+                            old_val_int = int(old_val) if old_val is not None else None
+                        except (ValueError, TypeError):
+                            continue
+
+                        if old_val_int is not None and old_val_int != current:
+                            pct = ((current - old_val_int) / old_val_int * 100) if old_val_int != 0 else 0
+                            if abs(pct) > 10:
+                                logger.warning(
+                                    f"  {table}/{m['id']}: {ev['slug']}/{ev['metric']} "
+                                    f"{old_val_int:,} → {current:,} ({pct:+.1f}%)"
+                                )
+                            delta_count += 1
+
+                        ev["value"] = current
+                        ev["as_of"] = now
+                        changed = True
+
+                    if changed:
+                        conn.execute(
+                            text(f"""
+                                UPDATE {table}
+                                SET evidence = CAST(:evidence AS jsonb),
+                                    updated_at = NOW()
+                                WHERE id = :id
+                            """),
+                            {"evidence": json.dumps(evidence), "id": m["id"]},
+                        )
+                        updated_count += 1
+
+                conn.commit()
+        except Exception as e:
+            if "does not exist" in str(e) or "relation" in str(e).lower():
+                logger.debug(f"Table {table} not available yet: {e}")
+            else:
+                logger.warning(f"Failed to refresh {table} evidence: {e}")
+
     logger.info(f"Briefing refresh: {updated_count} briefings updated, {delta_count} value deltas")
     return {"updated": updated_count, "deltas": delta_count}
 

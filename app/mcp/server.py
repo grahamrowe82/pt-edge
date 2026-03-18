@@ -959,6 +959,21 @@ async def project_pulse(project: str) -> str:
             lines.append("  No HN posts linked to this project.")
         lines.append("")
 
+        # LLM-generated brief
+        try:
+            with engine.connect() as conn:
+                brief_rows = conn.execute(text("""
+                    SELECT title, summary FROM project_briefs WHERE project_id = :pid
+                """), {"pid": proj.id}).fetchall()
+                if brief_rows:
+                    b = brief_rows[0]._mapping
+                    lines.insert(1, "")
+                    lines.insert(2, f"INTELLIGENCE BRIEF: {b['title']}")
+                    lines.insert(3, f"  {b['summary']}")
+                    lines.insert(4, "")
+        except Exception:
+            pass  # Table may not exist yet
+
         # Active corrections
         corrections = (
             session.query(Correction)
