@@ -29,6 +29,7 @@ from app.ingest.npm_mcp import ingest_npm_mcp
 from app.ingest.builder_tools import ingest_builder_tools
 from app.ingest.ai_repo_package_detect import detect_packages_llm
 from app.ingest.ai_repo_subcategory import ingest_subcategories, classify_subcategory_llm
+from app.ingest.stack_layer import classify_stack_layers
 from app.ingest.hn_llm_match import match_hn_posts_llm
 from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis, backfill_hf_datasets, backfill_hf_models
 from app.briefing_refresh import refresh_briefing_evidence
@@ -163,6 +164,14 @@ async def run_all() -> dict:
     except Exception as e:
         logger.exception(f"subcategory_llm failed: {e}")
         results["subcategory_llm"] = {"error": str(e)}
+
+    # Classify projects by AI stack layer
+    try:
+        results["stack_layer"] = await _run_with_retry("stack_layer", classify_stack_layers)
+        logger.info(f"stack_layer: {results['stack_layer']}")
+    except Exception as e:
+        logger.exception(f"stack_layer failed: {e}")
+        results["stack_layer"] = {"error": str(e)}
 
     # Link projects ↔ ai_repos by matching github_owner/github_repo
     try:
