@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from app.db import engine, SessionLocal
 from app.embeddings import build_ai_repo_text, embed_batch, is_enabled
-from app.ingest.ai_repo_domains import DOMAINS, DOMAIN_ORDER
+from app.ingest.ai_repo_domains import DOMAINS, DOMAIN_ORDER, DOMAIN_OVERRIDES
 from app.ingest.github_search import adaptive_search
 from app.models import SyncLog
 from app.settings import settings
@@ -100,6 +100,11 @@ async def ingest_ai_repos(domains: list[str] | None = None) -> dict:
     if total_found == 0:
         logger.warning("No AI repos found")
 
+    # Apply manual domain overrides for known misclassifications
+    overrides_applied = _apply_domain_overrides()
+    if overrides_applied:
+        logger.info(f"Applied {overrides_applied} domain overrides")
+
     _log_sync(started_at, total_upserted, None)
     return {
         "repos_found": total_found,
@@ -107,6 +112,26 @@ async def ingest_ai_repos(domains: list[str] | None = None) -> dict:
         "embedded": total_embedded,
         "domains": domain_results,
     }
+
+
+def _apply_domain_overrides() -> int:
+    """Apply manual domain overrides from DOMAIN_OVERRIDES dict."""
+    if not DOMAIN_OVERRIDES:
+        return 0
+    count = 0
+    with engine.connect() as conn:
+        for (owner, repo), domain in DOMAIN_OVERRIDES.items():
+            result = conn.execute(
+                text("""
+                    UPDATE ai_repos SET domain = :domain, updated_at = NOW()
+                    WHERE github_owner = :owner AND github_repo = :repo
+                      AND domain != :domain
+                """),
+                {"owner": owner, "repo": repo, "domain": domain},
+            )
+            count += result.rowcount
+        conn.commit()
+    return count
 
 
 def _batch_upsert(repos: list[dict]) -> int:
