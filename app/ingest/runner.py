@@ -5,6 +5,7 @@ from sqlalchemy.exc import OperationalError
 
 from app.ingest.candidates import ingest_candidate_velocity
 from app.ingest.dockerhub import ingest_dockerhub
+from app.ingest.vscode_marketplace import ingest_vscode
 from app.ingest.downloads import ingest_downloads
 from app.ingest.github import ingest_github
 from app.ingest.hn import ingest_hn, backfill_hn_links, backfill_hn_lab_links
@@ -78,6 +79,7 @@ async def run_all() -> dict:
         ("github", ingest_github),
         ("downloads", ingest_downloads),
         ("dockerhub", ingest_dockerhub),
+        ("vscode", ingest_vscode),
         ("huggingface", ingest_huggingface),
         ("hn", ingest_hn),
         ("v2ex", ingest_v2ex),

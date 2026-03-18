@@ -44,16 +44,17 @@ def seed():
                 text("""
                     INSERT INTO projects (name, slug, category, lab_id, github_owner, github_repo,
                                          pypi_package, npm_package, description, url, distribution_type,
-                                         hf_model_id, docker_image)
+                                         hf_model_id, docker_image, vscode_extension_id)
                     VALUES (:name, :slug, :category, :lab_id, :github_owner, :github_repo,
                             :pypi_package, :npm_package, :description, :url, :distribution_type,
-                            :hf_model_id, :docker_image)
+                            :hf_model_id, :docker_image, :vscode_extension_id)
                     ON CONFLICT (slug) DO UPDATE SET
                         github_owner = EXCLUDED.github_owner,
                         github_repo = EXCLUDED.github_repo,
                         distribution_type = EXCLUDED.distribution_type,
                         hf_model_id = EXCLUDED.hf_model_id,
-                        docker_image = EXCLUDED.docker_image
+                        docker_image = EXCLUDED.docker_image,
+                        vscode_extension_id = EXCLUDED.vscode_extension_id
                 """),
                 {
                     "name": p["name"],
@@ -69,6 +70,7 @@ def seed():
                     "distribution_type": p.get("distribution_type", "package"),
                     "hf_model_id": p.get("hf_model_id"),
                     "docker_image": p.get("docker_image"),
+                    "vscode_extension_id": p.get("vscode_extension_id"),
                 },
             )
         conn.commit()
