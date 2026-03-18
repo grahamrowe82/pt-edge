@@ -609,7 +609,8 @@
     "npm_package": null,
     "description": "Open-source AI code assistant for VS Code and JetBrains",
     "url": "https://continue.dev",
-    "distribution_type": "extension"
+    "distribution_type": "extension",
+    "vscode_extension_id": "Continue.continue"
   },
   {
     "name": "Open Interpreter",
@@ -1160,7 +1161,8 @@
     "npm_package": null,
     "description": "Autonomous coding agent for VS Code that can create and edit files",
     "url": "https://cline.bot",
-    "distribution_type": "extension"
+    "distribution_type": "extension",
+    "vscode_extension_id": "saoudrizwan.claude-dev"
   },
   {
     "name": "Bolt",
@@ -1199,7 +1201,8 @@
     "npm_package": null,
     "description": "Block's autonomous developer agent that operates on your machine",
     "url": "https://www.block.xyz/solutions/goose",
-    "distribution_type": "package"
+    "distribution_type": "package",
+    "vscode_extension_id": "block.goose"
   },
   {
     "name": "LM Evaluation Harness",

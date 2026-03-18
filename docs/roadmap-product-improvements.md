@@ -67,44 +67,25 @@ Inspect AI (18.6M monthly PyPI downloads) and Goose (+386 stars in 7 days) both 
 
 These limit what PT-Edge can analyze. Each opens a new data dimension.
 
-### 2.1 VS Code Marketplace extension tracking
+### 2.1 VS Code Marketplace extension tracking ✅ Done (2026-03-18, PR #73)
 
 **Problem:** Major agent projects (Cline, Goose, Cursor, Continue) are distributed as VS Code extensions, not PyPI/npm packages. We can't measure their download-based adoption, which undermines hype-ratio analysis — our strongest differentiator.
 
-**Proposed solution:**
-- Integrate the [VS Code Marketplace API](https://marketplace.visualstudio.com/_apis/public/gallery) to pull install counts, ratings, and version history
-- Add a `vscode_extension` column to `projects` (extension ID)
-- Create a `vscode_snapshots` table: `project_id, snapshot_date, installs, rating, rating_count`
-- Include VS Code installs in the hype-ratio calculation alongside PyPI/npm/Docker
-
-**Implementation notes:**
-- The Marketplace API is unauthenticated and rate-limited but workable for ~50 extensions
-- JetBrains Marketplace is a secondary target (same pattern, different API)
-- Map extensions to existing projects where possible (Cline → cline project)
-
-**Effort:** Medium (new data source, new table, ingestion job)
+**Implemented:**
+- Added `vscode_extension_id` column to `projects` table (migration 035)
+- Created `app/ingest/vscode_marketplace.py` — fetches install counts from VS Code Marketplace API
+- Stores in `download_snapshots` with `source='vscode'` (reuses existing table, no new table needed)
+- Added to Phase 1 of `runner.py` for daily ingestion
+- Seeded Cline (`saoudrizwan.claude-dev`) and Continue (`Continue.continue`)
+- JetBrains Marketplace remains a future target
 
 ---
 
-### 2.2 Python `package_deps` ingestion
+### 2.2 Python `package_deps` ingestion ✅ Done (infrastructure exists, 2026-03-18 PR #73 confirmed)
 
 **Problem:** The `package_deps` table only has data for npm packages. Python dependency graphs are missing for all projects, which blocks dependency analysis — a high-value signal for tool selection recommendations.
 
-**Evidence:** The Promptfoo dependency analysis was compelling (85 production deps, revealing architectural decisions), but we could only do it for one tool because it's the only npm-based eval framework.
-
-**Proposed solution:**
-- Parse `pyproject.toml`, `setup.py`, `setup.cfg`, and `requirements.txt` from GitHub for all curated projects with a `pypi_package`
-- Populate `package_deps` with `source = 'pypi'`
-- Prioritize: eval, agent, and framework categories first (highest value for research)
-- Run as a batch job after GitHub snapshot ingestion
-
-**Implementation notes:**
-- `pyproject.toml` (PEP 621) is the modern standard — parse `[project.dependencies]`
-- Fall back to `setup.cfg` `[options] install_requires` or `requirements.txt`
-- Skip version specifiers for now, just capture dependency names
-- Consider using the PyPI JSON API (`/pypi/{package}/json`) for the `requires_dist` field as an alternative to parsing repo files
-
-**Effort:** Medium (file parsing + batch job)
+**Status:** The infrastructure already exists in `app/ingest/package_deps.py` — it fetches PyPI `requires_dist` via the PyPI JSON API and stores in `package_deps` with `source='pypi'`. 35K+ PyPI deps are already stored for `ai_repos`. Curated projects access deps via the `projects.ai_repo_id → ai_repos → package_deps` join path. Remaining pending repos are processed by the regular cron cycle.
 
 ---
 
@@ -129,17 +110,11 @@ These limit what PT-Edge can analyze. Each opens a new data dimension.
 
 ---
 
-### 2.4 Tutorial/demo repo classification
+### 2.4 Tutorial/demo repo classification ✅ Done (2026-03-18, PR #72)
 
 **Problem:** PT-Edge metrics (downloads, lifecycle stage) don't apply well to tutorial/demo repos. Awesome-lists and example collections get flagged as "no downloads" when that's expected behavior, not a negative signal.
 
-**Proposed solution:**
-- Add a `repo_type` enum to `ai_repos`: `library`, `tool`, `tutorial`, `awesome-list`, `model`, `dataset`
-- Classify based on heuristics: repo name contains "awesome-", README structure (list of links), absence of `setup.py`/`package.json`, topics array contains "tutorial" or "examples"
-- Exclude tutorial/awesome-list repos from hype-ratio calculations
-- Display repo_type in API responses so consumers can filter
-
-**Effort:** Low (new column + classification heuristics)
+**Implemented:** Added `content_type` column to `ai_repos` (migration 034) with values: `tool` (default), `awesome-list`, `tutorial`, `course`. Classified via heuristics on repo name and topics array.
 
 ---
 
@@ -351,15 +326,19 @@ These add depth to existing data. Lower urgency but high value for differentiati
 
 ## Summary
 
-| Phase | Items | Total effort | Unlocks |
-|-------|------:|:-------------|:--------|
-| 1. Data Integrity | 3 | Low-Medium | Trustworthy existing data |
-| 2. Coverage Gaps | 5 | Low-Medium | Agent ecosystem, Python deps, repo classification |
-| 3. New Data Sources | 3 | Medium-High | Papers, social signals, methodology transparency |
-| 4. Enhanced Signals | 6 | Medium-High | Velocity detection, contributor health, China, MCP taxonomy, qualitative layer |
+| Phase | Items | Done | Remaining | Unlocks |
+|-------|------:|:-----|:----------|:--------|
+| 1. Data Integrity | 3 | 0 | 3 | Trustworthy existing data |
+| 2. Coverage Gaps | 5 | 3 (2.1, 2.2, 2.4) | 2 (2.3, 2.5) | Agent ecosystem, Python deps, repo classification |
+| 3. New Data Sources | 3 | 0 | 3 | Papers, social signals, methodology transparency |
+| 4. Enhanced Signals | 6 | 0 | 6 | Velocity detection, contributor health, China, MCP taxonomy, qualitative layer |
 
-**Recommended execution order within each phase:**
+**Additional improvements shipped (not in original roadmap):**
+- **Domain taxonomy expansion** (2026-03-18, PR #73): Expanded from 10 → 17 domains. Added `ai-coding`, `diffusion`, `voice-ai`, `nlp`, `computer-vision`, `mlops`, `data-engineering`. Splits the `ml-frameworks` (65K repos) and `llm-tools` (34K) catch-all buckets into actionable categories.
+- **Snapshot backfill** (2026-03-18, PR #73): Ran GitHub, PyPI/npm, and Docker Hub ingest for 17 new seed projects that had no snapshots.
+
+**Recommended execution order for remaining items:**
 - Phase 1: 1.1 (commits bug) → 1.2 (contributors) → 1.3 (retention)
-- Phase 2: 2.2 (Python deps) → 2.1 (VS Code) → 2.3 (reverse lookup) → 2.4 (repo types) → 2.5 (commercial)
+- Phase 2: 2.3 (reverse lookup) → 2.5 (commercial)
 - Phase 3: 3.3 (methodology docs) → 3.2 (Reddit) → 3.1 (papers)
 - Phase 4: 4.5 (MCP taxonomy) → 4.2 (contributor quality) → 4.1 (breakout detection) → 4.3 (maintainer health) → 4.4 (China) → 4.6 (qualitative)

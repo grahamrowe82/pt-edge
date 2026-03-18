@@ -5475,8 +5475,9 @@ async def find_ai_tool(query: str, domain: str = "", limit: int = 5, offset: int
     Searches ~100K indexed AI repos from GitHub. Use when someone asks
     "is there a tool for X?" or "what libraries exist for Y?".
 
-    Optional domain filter: mcp, agents, rag, llm-tools, generative-ai,
-    embeddings, vector-db, prompt-engineering, transformers, ml-frameworks
+    Optional domain filter: mcp, agents, ai-coding, rag, llm-tools, generative-ai,
+    diffusion, voice-ai, nlp, computer-vision, embeddings, vector-db,
+    prompt-engineering, transformers, mlops, data-engineering, ml-frameworks
 
     Examples:
       find_ai_tool("database query tool for postgres", domain="mcp")
