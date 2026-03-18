@@ -214,3 +214,34 @@ async def briefing_detail(slug: str, request: Request, key_data: dict = Depends(
     if not result:
         _not_found(f"Briefing '{slug}'")
     return _ok(result)
+
+
+@router.get("/methodology")
+async def methodology_list(
+    request: Request,
+    category: str = Query(None, pattern="^(metric|tool|algorithm|design)$"),
+    key_data: dict = Depends(_auth),
+):
+    results = queries.get_methodology_list(category=category)
+    return _ok(results, count=len(results), query_params={"category": category})
+
+
+@router.get("/methodology/{topic}")
+async def methodology_detail(topic: str, request: Request, key_data: dict = Depends(_auth)):
+    result = queries.get_methodology_detail(topic)
+    if not result:
+        _not_found(f"Methodology topic '{topic}'")
+    return _ok(result)
+
+
+@router.get("/papers")
+async def papers_list(
+    request: Request,
+    q: str = Query(None),
+    project: str = Query(None),
+    year: int = Query(None),
+    limit: int = Query(20, le=50, ge=1),
+    key_data: dict = Depends(_auth),
+):
+    results = queries.get_papers(q=q, project_slug=project, year=year, limit=limit)
+    return _ok(results, count=len(results), query_params={"q": q, "project": project, "year": year, "limit": limit})

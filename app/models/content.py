@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 from pgvector.sqlalchemy import Vector
@@ -203,6 +203,57 @@ class CommercialProject(Base):
     last_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class Paper(Base):
+    __tablename__ = "papers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    semantic_scholar_id: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    arxiv_id: Mapped[str | None] = mapped_column(String(50))
+    doi: Mapped[str | None] = mapped_column(String(200))
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    authors: Mapped[dict | None] = mapped_column(JSONB)
+    abstract: Mapped[str | None] = mapped_column(Text)
+    venue: Mapped[str | None] = mapped_column(String(300))
+    year: Mapped[int | None] = mapped_column(Integer)
+    publication_date: Mapped[datetime | None] = mapped_column(Date)
+    citation_count: Mapped[int] = mapped_column(Integer, default=0)
+    open_access_url: Mapped[str | None] = mapped_column(Text)
+    project_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("projects.id"))
+    lab_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("labs.id"))
+    discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class PaperSnapshot(Base):
+    __tablename__ = "paper_snapshots"
+    __table_args__ = (UniqueConstraint("paper_id", "snapshot_date"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    paper_id: Mapped[int] = mapped_column(Integer, ForeignKey("papers.id"), nullable=False)
+    snapshot_date: Mapped[datetime] = mapped_column(Date, nullable=False, server_default=func.current_date())
+    citation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class RedditPost(Base):
+    __tablename__ = "reddit_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    reddit_id: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    subreddit: Mapped[str] = mapped_column(String(100), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str | None] = mapped_column(Text)
+    selftext: Mapped[str | None] = mapped_column(Text)
+    author: Mapped[str | None] = mapped_column(String(100))
+    score: Mapped[int] = mapped_column(Integer, default=0)
+    num_comments: Mapped[int] = mapped_column(Integer, default=0)
+    permalink: Mapped[str | None] = mapped_column(Text)
+    posted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    project_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("projects.id"))
+    lab_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("labs.id"))
 
 
 class HFModel(Base):
