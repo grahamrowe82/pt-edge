@@ -171,6 +171,20 @@ Each adds a new platform or signal type to the tracking index.
 
 These add depth to existing data. Lower urgency but high value for differentiation.
 
+### 4.0 Development velocity index ✅ Done (2026-03-18)
+
+**Problem:** `commits_30d` and `contributors` are captured daily but there's no velocity classification, no commit deltas over time, and no commits-per-contributor (CPC) calculation exposed via the API.
+
+**Implemented:**
+- New `mv_velocity` materialized view classifying projects into 5 velocity bands (`dormant`, `slow`, `moderate`, `fast`, `hyperspeed`) based on `commits_30d` natural breaks
+- Computes `commits_per_contributor` with `cpc_is_capped` flag (true when contributors >= 100 due to GitHub API pagination limits)
+- Extended `mv_momentum` with `commits_7d_delta` and `commits_30d_delta` columns
+- Extended `mv_project_summary` with velocity band, CPC, and commit delta columns
+- `GET /api/v1/velocity` endpoint with `category`, `band`, `sort` (commits_30d | commits_delta | cpc), and `limit` filters
+- Enriched `/api/v1/projects/{slug}` and `/api/v1/projects/bulk` responses with `velocity` object
+
+---
+
 ### 4.1 Intra-day velocity and breakout detection
 
 **Problem:** Daily snapshots catch trends after they've already trended. Projects can gain thousands of stars in hours from a viral post, and we don't see it until the next day's snapshot.

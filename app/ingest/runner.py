@@ -3,7 +3,7 @@ import logging
 
 from sqlalchemy.exc import OperationalError
 
-from app.ingest.candidates import ingest_candidate_velocity
+from app.ingest.candidates import ingest_candidate_velocity, refresh_candidate_watchlist
 from app.ingest.dockerhub import ingest_dockerhub
 from app.ingest.vscode_marketplace import ingest_vscode
 from app.ingest.downloads import ingest_downloads
@@ -16,6 +16,7 @@ from app.ingest.huggingface import ingest_huggingface
 from app.ingest.releases import ingest_releases
 from app.ingest.trending import ingest_trending
 from app.ingest.ai_repos import ingest_ai_repos
+from app.ingest.ai_repo_commits import ingest_ai_repo_commits
 from app.ingest.ai_repo_downloads import ingest_ai_repo_downloads
 from app.ingest.semantic_scholar import ingest_semantic_scholar
 from app.ingest.public_apis import ingest_public_apis
@@ -95,6 +96,8 @@ async def run_all() -> dict:
         ("builder_tools", ingest_builder_tools),
         ("npm_mcp", ingest_npm_mcp),
         ("ai_repo_downloads", ingest_ai_repo_downloads),
+        ("ai_repo_commits", ingest_ai_repo_commits),
+        ("candidate_watchlist", refresh_candidate_watchlist),
         ("semantic_scholar", ingest_semantic_scholar),
         # ai_repos removed — runs on its own weekly cron (Saturday 12:00 UTC)
         # Phase 3: LLM-dependent (rate-limited, at end so they don't block)

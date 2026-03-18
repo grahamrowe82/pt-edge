@@ -108,6 +108,8 @@ class AIRepo(Base):
     deps_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     subcategory: Mapped[str | None] = mapped_column(String(50))
     crate_package: Mapped[str | None] = mapped_column(String(200))
+    commits_30d: Mapped[int | None] = mapped_column(Integer)
+    commits_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class PublicAPI(Base):
