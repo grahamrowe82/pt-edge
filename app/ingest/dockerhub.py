@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import text
@@ -38,9 +38,10 @@ async def collect_dockerhub_pulls_for_project(
         "source": "dockerhub",
         "snapshot_date": date.today(),
         "captured_at": datetime.now(timezone.utc),
-        "downloads_daily": 0,  # Docker Hub only gives cumulative total
+        "downloads_daily": 0,
         "downloads_weekly": 0,
-        "downloads_monthly": pulls,
+        "downloads_monthly": 0,  # computed from historical delta below
+        "cumulative_pulls": pulls,
     }
 
 
@@ -75,6 +76,25 @@ async def ingest_dockerhub() -> dict:
 
     if snapshots:
         with engine.connect() as conn:
+            # Compute monthly delta from historical snapshots
+            for snap in snapshots:
+                cumulative = snap.pop("cumulative_pulls")
+                prev = conn.execute(
+                    text("""
+                        SELECT downloads_monthly FROM download_snapshots
+                        WHERE project_id = :pid AND source = 'dockerhub'
+                          AND snapshot_date <= :cutoff
+                        ORDER BY snapshot_date DESC LIMIT 1
+                    """),
+                    {"pid": snap["project_id"], "cutoff": date.today() - timedelta(days=30)},
+                ).fetchone()
+                if prev and prev[0] > 0:
+                    # Previous downloads_monthly stored the cumulative total
+                    snap["downloads_monthly"] = max(0, cumulative - prev[0])
+                else:
+                    # No prior snapshot — store cumulative as-is for future delta
+                    snap["downloads_monthly"] = cumulative
+
             conn.execute(
                 text("""
                     INSERT INTO download_snapshots

@@ -62,3 +62,16 @@ DOMAIN_ORDER: list[str] = [
     "generative-ai",
     "ml-frameworks",
 ]
+
+# Manual domain overrides for known misclassifications.
+# Key: (github_owner, github_repo) → correct domain.
+DOMAIN_OVERRIDES: dict[tuple[str, str], str] = {
+    ("ollama", "ollama"): "llm-tools",
+    ("run-llama", "llama_index"): "rag",
+    ("mlflow", "mlflow"): "ml-frameworks",
+    ("iterative", "dvc"): "ml-frameworks",
+    ("dagster-io", "dagster"): "ml-frameworks",
+    ("PrefectHQ", "prefect"): "ml-frameworks",
+    ("deepseek-ai", "DeepSeek-V3"): "transformers",
+    ("deepseek-ai", "DeepSeek-R1"): "transformers",
+}

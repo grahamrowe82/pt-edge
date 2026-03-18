@@ -217,7 +217,16 @@ async def ingest_github() -> dict:
                     DO UPDATE SET
                         stars = EXCLUDED.stars, forks = EXCLUDED.forks,
                         open_issues = EXCLUDED.open_issues, watchers = EXCLUDED.watchers,
-                        commits_30d = EXCLUDED.commits_30d, contributors = EXCLUDED.contributors,
+                        commits_30d = CASE
+                            WHEN EXCLUDED.commits_30d = 0 AND github_snapshots.commits_30d > 0
+                            THEN github_snapshots.commits_30d
+                            ELSE EXCLUDED.commits_30d
+                        END,
+                        contributors = CASE
+                            WHEN EXCLUDED.contributors <= 0 AND github_snapshots.contributors > 0
+                            THEN github_snapshots.contributors
+                            ELSE EXCLUDED.contributors
+                        END,
                         last_commit_at = EXCLUDED.last_commit_at, license = EXCLUDED.license,
                         captured_at = EXCLUDED.captured_at
                 """),
