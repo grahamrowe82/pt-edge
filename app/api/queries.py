@@ -6,7 +6,7 @@ from datetime import datetime, date, timezone, timedelta
 from sqlalchemy import text
 
 from app.db import readonly_engine, SessionLocal
-from app.models import Project, Lab, Release, HNPost, GitHubSnapshot, DownloadSnapshot, Briefing
+from app.models import Project, Lab, Release, HNPost, GitHubSnapshot, DownloadSnapshot, Briefing, CommercialProject
 
 logger = logging.getLogger(__name__)
 
@@ -488,6 +488,83 @@ def get_briefings(domain: str = None) -> list[dict]:
                 "verified_at": _serialize(b.verified_at) if b.verified_at else None,
             }
             for b in rows
+        ]
+    finally:
+        session.close()
+
+
+def get_dependents(package_name: str, source: str = None, include_dev: bool = False, limit: int = 20) -> dict:
+    with readonly_engine.connect() as conn:
+        # Summary counts
+        summary = conn.execute(
+            text("""
+                SELECT COUNT(DISTINCT pd.repo_id) as dependent_count,
+                       COUNT(DISTINCT pd.repo_id) FILTER (WHERE pd.source = 'pypi') as pypi_count,
+                       COUNT(DISTINCT pd.repo_id) FILTER (WHERE pd.source = 'npm') as npm_count
+                FROM package_deps pd WHERE pd.dep_name = :pkg
+            """),
+            {"pkg": package_name},
+        ).fetchone()
+
+        # Dependent repos
+        rows = conn.execute(
+            text("""
+                SELECT ar.full_name, ar.stars, ar.domain, ar.language,
+                       pd.dep_spec, pd.source, pd.is_dev
+                FROM package_deps pd
+                JOIN ai_repos ar ON pd.repo_id = ar.id
+                WHERE pd.dep_name = :pkg
+                  AND (:source IS NULL OR pd.source = :source)
+                  AND (:include_dev OR pd.is_dev = false)
+                ORDER BY ar.stars DESC
+                LIMIT :limit
+            """),
+            {"pkg": package_name, "source": source, "include_dev": include_dev, "limit": limit},
+        ).fetchall()
+
+    s = summary._mapping if summary else {}
+    return {
+        "package_name": package_name,
+        "dependent_count": s.get("dependent_count", 0),
+        "by_source": {
+            "pypi": s.get("pypi_count", 0),
+            "npm": s.get("npm_count", 0),
+        },
+        "dependents": [
+            {
+                "repo": r._mapping["full_name"],
+                "stars": r._mapping["stars"],
+                "domain": r._mapping["domain"],
+                "language": r._mapping["language"],
+                "dep_spec": r._mapping["dep_spec"],
+                "source": r._mapping["source"],
+                "is_dev": r._mapping["is_dev"],
+            }
+            for r in rows
+        ],
+    }
+
+
+def get_commercial_projects(category: str = None, limit: int = 20) -> list[dict]:
+    session = SessionLocal()
+    try:
+        query = session.query(CommercialProject)
+        if category:
+            query = query.filter(CommercialProject.category == category)
+        query = query.order_by(CommercialProject.name).limit(limit)
+        rows = query.all()
+        return [
+            {
+                "slug": p.slug,
+                "name": p.name,
+                "url": p.url,
+                "category": p.category,
+                "description": p.description,
+                "pricing_model": p.pricing_model,
+                "last_verified_at": _serialize(p.last_verified_at) if p.last_verified_at else None,
+                "source": "curated",
+            }
+            for p in rows
         ]
     finally:
         session.close()

@@ -89,24 +89,16 @@ These limit what PT-Edge can analyze. Each opens a new data dimension.
 
 ---
 
-### 2.3 Dependency reverse-lookup
+### 2.3 Dependency reverse-lookup ✅ Done (2026-03-18)
 
 **Problem:** We track what projects depend on (forward graph), but can't answer "which projects depend on X?" (reverse graph). This is valuable for understanding a library's downstream impact.
 
-**Proposed solution:**
-- This is a query pattern, not a data gap — the data exists in `package_deps`
-- Create a helper view or API endpoint:
-  ```sql
-  SELECT pd.dep_name, COUNT(DISTINCT pd.repo_id) as dependent_repos,
-    STRING_AGG(ar.full_name, ', ' ORDER BY ar.stars DESC) as top_dependents
-  FROM package_deps pd
-  JOIN ai_repos ar ON pd.repo_id = ar.id
-  GROUP BY pd.dep_name
-  ORDER BY dependent_repos DESC;
-  ```
-- Expose via REST API as `/v1/dependencies/{package_name}/dependents`
-
-**Effort:** Low (view + API endpoint, data already exists once 2.2 is done)
+**Implemented:**
+- Added `GET /api/v1/dependencies/{package_name}/dependents` endpoint
+- Query function `get_dependents()` in `queries.py` — joins `package_deps` → `ai_repos`, returns dependents sorted by stars
+- Supports `source` filter (pypi/npm), `include_dev` flag, and `limit` param
+- Response includes summary counts (total, by source) plus detailed dependent list
+- Uses existing `ix_package_deps_dep_name` index — no migration needed
 
 ---
 
@@ -118,17 +110,16 @@ These limit what PT-Edge can analyze. Each opens a new data dimension.
 
 ---
 
-### 2.5 Closed-source project tracking
+### 2.5 Closed-source project tracking ✅ Done (2026-03-18)
 
 **Problem:** Major commercial AI tools (Devin, Windsurf, Cursor) have no public repos. They're invisible in our data but relevant to landscape analysis.
 
-**Proposed solution:**
-- Create a `commercial_projects` table: `name, url, category, description, pricing_model, last_verified_at`
-- Manually curate ~20-30 significant closed-source projects
-- Don't attempt to track metrics — just maintain a reference list with known features
-- Surface in API responses with a `source: 'curated'` flag and no metrics
-
-**Effort:** Low (manual table, no automation needed)
+**Implemented:**
+- Created `commercial_projects` table (migration 037) with name, slug, url, category, description, pricing_model, timestamps
+- Seeded 20 significant closed-source projects across ai-coding, llm-consumer, content-generation, ai-infra, and productivity categories
+- Added `CommercialProject` model in `app/models/content.py`
+- Added `GET /api/v1/commercial-projects` endpoint with optional `category` filter
+- All responses include `source: "curated"` flag — no metrics, just reference data
 
 ---
 
@@ -329,7 +320,7 @@ These add depth to existing data. Lower urgency but high value for differentiati
 | Phase | Items | Done | Remaining | Unlocks |
 |-------|------:|:-----|:----------|:--------|
 | 1. Data Integrity | 3 | 3 (1.1, 1.2, 1.3) | 0 | Trustworthy existing data |
-| 2. Coverage Gaps | 5 | 3 (2.1, 2.2, 2.4) | 2 (2.3, 2.5) | Agent ecosystem, Python deps, repo classification |
+| 2. Coverage Gaps | 5 | 5 (2.1, 2.2, 2.3, 2.4, 2.5) | 0 | Agent ecosystem, Python deps, repo classification, reverse-lookup, commercial tools |
 | 3. New Data Sources | 3 | 0 | 3 | Papers, social signals, methodology transparency |
 | 4. Enhanced Signals | 6 | 0 | 6 | Velocity detection, contributor health, China, MCP taxonomy, qualitative layer |
 
