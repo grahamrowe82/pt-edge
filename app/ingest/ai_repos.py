@@ -8,7 +8,7 @@ Run standalone:  python -m app.ingest.ai_repos [domain ...]
 """
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy import text
@@ -16,7 +16,9 @@ from sqlalchemy import text
 from app.db import engine, SessionLocal
 from app.embeddings import build_ai_repo_text, embed_batch, is_enabled
 from app.ingest.ai_repo_domains import DOMAINS, DOMAIN_ORDER, DOMAIN_OVERRIDES
-from app.ingest.github_search import adaptive_search
+from app.ingest.github_search import (
+    adaptive_search, BudgetExhausted, CallCounter,
+)
 from app.models import SyncLog
 from app.settings import settings
 
@@ -25,19 +27,58 @@ logger = logging.getLogger(__name__)
 AI_REPO_EMBED_DIM = 256
 
 
-async def ingest_ai_repos(domains: list[str] | None = None) -> dict:
+def _is_full_crawl_day() -> bool:
+    """Return True if today is the first Saturday of the month."""
+    today = datetime.now(timezone.utc).date()
+    if today.weekday() != 5:  # 5 = Saturday
+        return False
+    return today.day <= 7
+
+
+def _get_last_successful_sync() -> datetime | None:
+    """Return finished_at of the last successful ai_repos sync, or None."""
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT finished_at FROM sync_log
+            WHERE sync_type = 'ai_repos' AND status IN ('success', 'partial')
+            ORDER BY finished_at DESC LIMIT 1
+        """)).fetchone()
+    if row and row[0]:
+        return row[0]
+    return None
+
+
+async def ingest_ai_repos(
+    domains: list[str] | None = None,
+    force_full: bool = False,
+) -> dict:
     """Discover and upsert AI repos from GitHub Search API.
 
     Args:
         domains: specific domain keys to ingest, or None for all.
+        force_full: if True, skip incremental mode and crawl everything.
     """
     started_at = datetime.now(timezone.utc)
+
+    # Determine incremental vs full crawl
+    pushed_after: str | None = None
+    if force_full or _is_full_crawl_day():
+        logger.info("Full crawl mode" + (" (forced)" if force_full else " (first Saturday)"))
+    else:
+        last_sync = _get_last_successful_sync()
+        if last_sync:
+            cutoff = last_sync - timedelta(days=2)
+            pushed_after = cutoff.strftime("%Y-%m-%d")
+            logger.info(f"Incremental crawl: pushed:>={pushed_after}")
+        else:
+            logger.info("Full crawl mode (no prior successful sync)")
 
     headers = {"User-Agent": "pt-edge/1.0", "Accept": "application/vnd.github+json"}
     if settings.GITHUB_TOKEN:
         headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
 
     semaphore = asyncio.Semaphore(2)  # conservative for Search API
+    counter = CallCounter(budget=3000)
 
     # Pre-seed dedup set from DB so we skip already-known repos
     with engine.connect() as conn:
@@ -51,6 +92,7 @@ async def ingest_ai_repos(domains: list[str] | None = None) -> dict:
     total_upserted = 0
     total_found = 0
     total_embedded = 0
+    budget_exhausted_domains: list[str] = []
 
     # Process domains in priority order (specific → broad)
     ordered = [d for d in DOMAIN_ORDER if d in DOMAINS]
@@ -62,24 +104,33 @@ async def ingest_ai_repos(domains: list[str] | None = None) -> dict:
             cfg = DOMAINS[domain_key]
             domain_repos: list[dict] = []
 
-            for topic in cfg["topics"]:
-                base_query = f"topic:{topic}"
-                if cfg["min_stars"] > 0:
-                    base_query += f" stars:>={cfg['min_stars']}"
+            try:
+                for topic in cfg["topics"]:
+                    base_query = f"topic:{topic}"
+                    if cfg["min_stars"] > 0:
+                        base_query += f" stars:>={cfg['min_stars']}"
 
-                repos = await adaptive_search(
-                    client, base_query, semaphore, seen,
-                )
-                # Tag each repo with this domain
-                for r in repos:
-                    r["domain"] = domain_key
-                domain_repos.extend(repos)
+                    repos = await adaptive_search(
+                        client, base_query, semaphore, seen,
+                        pushed_after=pushed_after,
+                        counter=counter,
+                    )
+                    # Tag each repo with this domain
+                    for r in repos:
+                        r["domain"] = domain_key
+                    domain_repos.extend(repos)
 
-                logger.info(
-                    f"[{domain_key}] topic:{topic}: {len(repos)} new "
-                    f"(seen total: {len(seen)})"
+                    logger.info(
+                        f"[{domain_key}] topic:{topic}: {len(repos)} new "
+                        f"(seen total: {len(seen)}, API calls: {counter.count})"
+                    )
+                    await asyncio.sleep(0.3)
+            except BudgetExhausted:
+                logger.warning(
+                    f"Budget exhausted during domain '{domain_key}' "
+                    f"({counter.count} API calls). Moving to next domain."
                 )
-                await asyncio.sleep(1.0)
+                budget_exhausted_domains.append(domain_key)
 
             domain_results[domain_key] = len(domain_repos)
             total_found += len(domain_repos)
@@ -105,12 +156,19 @@ async def ingest_ai_repos(domains: list[str] | None = None) -> dict:
     if overrides_applied:
         logger.info(f"Applied {overrides_applied} domain overrides")
 
-    _log_sync(started_at, total_upserted, None)
+    status = "partial" if budget_exhausted_domains else None
+    _log_sync(started_at, total_upserted, status)
+
+    logger.info(f"Total API calls: {counter.count}")
+    if budget_exhausted_domains:
+        logger.warning(f"Budget-exhausted domains: {budget_exhausted_domains}")
+
     return {
         "repos_found": total_found,
         "upserted": total_upserted,
         "embedded": total_embedded,
         "domains": domain_results,
+        "api_calls": counter.count,
     }
 
 
@@ -274,14 +332,16 @@ async def _embed_new_repos() -> int:
     return count
 
 
-def _log_sync(started_at: datetime, records: int, error: str | None) -> None:
+def _log_sync(started_at: datetime, records: int, status: str | None) -> None:
+    if status is None:
+        status = "success"
     session = SessionLocal()
     try:
         session.add(SyncLog(
             sync_type="ai_repos",
-            status="success" if not error else "failed",
+            status=status,
             records_written=records,
-            error_message=error,
+            error_message=None if status != "partial" else "Budget exhausted on some domains",
             started_at=started_at,
             finished_at=datetime.now(timezone.utc),
         ))
@@ -293,8 +353,12 @@ def _log_sync(started_at: datetime, records: int, error: str | None) -> None:
 async def main():
     import sys
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-    domains = sys.argv[1:] or None
-    result = await ingest_ai_repos(domains=domains)
+
+    args = sys.argv[1:]
+    force_full = "--full" in args
+    domains = [a for a in args if not a.startswith("--")] or None
+
+    result = await ingest_ai_repos(domains=domains, force_full=force_full)
     logger.info(f"Result: {result}")
 
 
