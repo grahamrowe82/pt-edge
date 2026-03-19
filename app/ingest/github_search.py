@@ -58,31 +58,78 @@ CREATED_RANGES = [
 DIMENSIONS = [STAR_RANGES, LANGUAGES, CREATED_RANGES]
 
 
+# ── Budget guard ─────────────────────────────────────────────────────────
+
+class BudgetExhausted(Exception):
+    """Raised when the API call budget is exceeded."""
+    pass
+
+
+class CallCounter:
+    """Tracks API calls and raises BudgetExhausted when budget exceeded."""
+
+    def __init__(self, budget: int = 3000):
+        self.count = 0
+        self.budget = budget
+
+    def increment(self):
+        self.count += 1
+        if self.count > self.budget:
+            raise BudgetExhausted(
+                f"API call budget exhausted: {self.count}/{self.budget}"
+            )
+
+
+# ── Rate-limit retry helper ──────────────────────────────────────────────
+
+async def _retry_on_403(resp: httpx.Response, label: str, max_retries: int = 2) -> int | None:
+    """If resp is 403, sleep for Retry-After and return seconds waited. None if not 403."""
+    if resp.status_code != 403:
+        return None
+    retry_after = int(resp.headers.get("Retry-After", "60"))
+    logger.warning(f"Rate-limited on {label}, sleeping {retry_after}s")
+    await asyncio.sleep(retry_after)
+    return retry_after
+
+
 # ── Probe ─────────────────────────────────────────────────────────────────
 
 async def _probe_count(
     client: httpx.AsyncClient,
     query: str,
     semaphore: asyncio.Semaphore,
+    counter: CallCounter | None = None,
 ) -> int:
     """Check total_count for a query (1 API call, per_page=1)."""
-    async with semaphore:
-        try:
-            resp = await client.get(
-                SEARCH_URL,
-                params={"q": query, "per_page": 1},
-            )
-        except httpx.HTTPError as exc:
-            logger.warning(f"Probe failed for {query!r}: {exc}")
+    for attempt in range(3):  # initial + 2 retries
+        async with semaphore:
+            if counter:
+                counter.increment()
+            try:
+                resp = await client.get(
+                    SEARCH_URL,
+                    params={"q": query, "per_page": 1},
+                )
+            except httpx.HTTPError as exc:
+                logger.warning(f"Probe failed for {query!r}: {exc}")
+                return 0
+
+        if resp.status_code == 403:
+            if attempt < 2:
+                retry_after = int(resp.headers.get("Retry-After", "60"))
+                logger.warning(f"Rate-limited during probe (attempt {attempt+1}): {query!r}, retrying in {retry_after}s")
+                await asyncio.sleep(retry_after)
+                continue
+            else:
+                logger.warning(f"Rate-limited during probe, all retries exhausted: {query!r}")
+                return 0
+
+        if resp.status_code != 200:
+            logger.warning(f"Probe {resp.status_code} for {query!r}")
             return 0
-    if resp.status_code == 403:
-        logger.warning(f"Rate-limited during probe: {query!r}")
-        await asyncio.sleep(60)
-        return 0
-    if resp.status_code != 200:
-        logger.warning(f"Probe {resp.status_code} for {query!r}")
-        return 0
-    return resp.json().get("total_count", 0)
+        return resp.json().get("total_count", 0)
+
+    return 0
 
 
 # ── Paginate one leaf shard ───────────────────────────────────────────────
@@ -92,11 +139,14 @@ async def _paginate(
     query: str,
     semaphore: asyncio.Semaphore,
     seen: set[str],
+    counter: CallCounter | None = None,
 ) -> list[dict]:
     """Fetch up to 1,000 results for a query that fits within the limit."""
     repos: list[dict] = []
     for page in range(1, MAX_PAGES + 1):
         async with semaphore:
+            if counter:
+                counter.increment()
             try:
                 resp = await client.get(
                     SEARCH_URL,
@@ -113,9 +163,36 @@ async def _paginate(
                 break
 
         if resp.status_code == 403:
-            logger.warning(f"Rate-limited {query!r} p{page}")
-            await asyncio.sleep(60)
-            break
+            # Retry up to 2 times on rate limit
+            retried = False
+            for attempt in range(2):
+                retry_after = int(resp.headers.get("Retry-After", "60"))
+                logger.warning(f"Rate-limited {query!r} p{page} (attempt {attempt+1}), retrying in {retry_after}s")
+                await asyncio.sleep(retry_after)
+                async with semaphore:
+                    if counter:
+                        counter.increment()
+                    try:
+                        resp = await client.get(
+                            SEARCH_URL,
+                            params={
+                                "q": query,
+                                "sort": "stars",
+                                "order": "desc",
+                                "per_page": PER_PAGE,
+                                "page": page,
+                            },
+                        )
+                    except httpx.HTTPError as exc:
+                        logger.warning(f"Page retry error {query!r} p{page}: {exc}")
+                        break
+                if resp.status_code != 403:
+                    retried = True
+                    break
+            if not retried and resp.status_code == 403:
+                logger.warning(f"Rate-limited {query!r} p{page}, all retries exhausted")
+                break
+
         if resp.status_code == 422:
             logger.warning(f"422 on {query!r}: {resp.text[:200]}")
             break
@@ -165,6 +242,8 @@ async def adaptive_search(
     semaphore: asyncio.Semaphore,
     seen: set[str],
     depth: int = 0,
+    pushed_after: str | None = None,
+    counter: CallCounter | None = None,
 ) -> list[dict]:
     """Search GitHub, recursively sub-sharding if results exceed 1,000.
 
@@ -174,18 +253,26 @@ async def adaptive_search(
         semaphore: rate-limit semaphore
         seen: global dedup set (lowercase full_name)
         depth: current dimension depth (0=stars, 1=language, 2=created)
+        pushed_after: if set, append pushed:>=YYYY-MM-DD filter at depth 0
+        counter: optional API call budget counter
 
     Returns list of repo dicts.
     """
-    count = await _probe_count(client, base_query, semaphore)
-    await asyncio.sleep(0.3)
+    # Apply pushed_after filter at depth 0 (before any sub-sharding)
+    if depth == 0 and pushed_after:
+        base_query = f"{base_query} pushed:>={pushed_after}"
+
+    count = await _probe_count(client, base_query, semaphore, counter)
+    # Only sleep after probes that returned results (zero-result probes are cheap)
+    if count > 0:
+        await asyncio.sleep(0.3)
 
     if count == 0:
         return []
 
     if count <= OVERFLOW_THRESHOLD:
         # Fits — paginate directly
-        repos = await _paginate(client, base_query, semaphore, seen)
+        repos = await _paginate(client, base_query, semaphore, seen, counter)
         logger.debug(f"Leaf shard [{depth}] {base_query!r}: {count} total, {len(repos)} new")
         return repos
 
@@ -195,14 +282,17 @@ async def adaptive_search(
             f"Shard overflow at max depth: {base_query!r} has {count} results, "
             f"capping at {OVERFLOW_THRESHOLD}"
         )
-        return await _paginate(client, base_query, semaphore, seen)
+        return await _paginate(client, base_query, semaphore, seen, counter)
 
     # Split by next dimension
     dimension = DIMENSIONS[depth]
     all_repos: list[dict] = []
     for qualifier in dimension:
         sub_query = f"{base_query} {qualifier}"
-        repos = await adaptive_search(client, sub_query, semaphore, seen, depth + 1)
+        repos = await adaptive_search(
+            client, sub_query, semaphore, seen, depth + 1,
+            counter=counter,
+        )
         all_repos.extend(repos)
         await asyncio.sleep(0.3)
 
