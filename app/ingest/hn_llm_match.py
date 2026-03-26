@@ -65,7 +65,8 @@ async def match_hn_posts_llm(limit: int = 5000) -> dict:
         post_rows = conn.execute(text("""
             SELECT id, title, url
             FROM hn_posts
-            WHERE lab_id IS NULL OR project_id IS NULL
+            WHERE (lab_id IS NULL OR project_id IS NULL)
+              AND llm_reviewed_at IS NULL
             ORDER BY posted_at DESC
             LIMIT :lim
         """), {"lim": limit}).fetchall()
@@ -138,13 +139,16 @@ async def match_hn_posts_llm(limit: int = 5000) -> dict:
             f"{len(all_updates)} matches so far"
         )
 
-    # Batch write
+    # Batch write matches + mark all processed posts as reviewed
     matched_labs = 0
     matched_projects = 0
-    if all_updates:
-        raw_conn = engine.raw_connection()
-        try:
-            cur = raw_conn.cursor()
+    all_processed_ids = [r._mapping["id"] for r in post_rows]
+
+    raw_conn = engine.raw_connection()
+    try:
+        cur = raw_conn.cursor()
+
+        if all_updates:
             cur.execute("""
                 CREATE TEMP TABLE _hn_llm_batch (
                     id INTEGER PRIMARY KEY,
@@ -177,19 +181,28 @@ async def match_hn_posts_llm(limit: int = 5000) -> dict:
             """)
             matched_projects = cur.rowcount
 
-            raw_conn.commit()
-        except Exception as e:
-            try:
-                raw_conn.rollback()
-            except Exception:
-                pass
-            logger.error(f"HN LLM batch update failed: {e}")
-            errors += 1
-        finally:
-            try:
-                raw_conn.close()
-            except Exception:
-                pass
+        # Mark ALL processed posts as reviewed (match or no match)
+        # so they are not reprocessed on the next run
+        for chunk_start in range(0, len(all_processed_ids), 1000):
+            chunk = all_processed_ids[chunk_start:chunk_start + 1000]
+            cur.execute(
+                "UPDATE hn_posts SET llm_reviewed_at = NOW() WHERE id = ANY(%s)",
+                (chunk,)
+            )
+
+        raw_conn.commit()
+    except Exception as e:
+        try:
+            raw_conn.rollback()
+        except Exception:
+            pass
+        logger.error(f"HN LLM batch update failed: {e}")
+        errors += 1
+    finally:
+        try:
+            raw_conn.close()
+        except Exception:
+            pass
 
     # Sync log
     session = SessionLocal()

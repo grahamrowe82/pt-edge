@@ -96,7 +96,8 @@ async def fetch_releases(client: httpx.AsyncClient, owner: str, repo: str) -> li
 
 
 async def collect_releases_for_project(
-    client: httpx.AsyncClient, project: Project, semaphore: asyncio.Semaphore
+    client: httpx.AsyncClient, project: Project, semaphore: asyncio.Semaphore,
+    existing_urls: set[str],
 ) -> list[dict]:
     if not project.github_owner or not project.github_repo:
         return []
@@ -110,6 +111,8 @@ async def collect_releases_for_project(
         html_url = rel.get("html_url")
         published_at = rel.get("published_at")
         if not html_url or not published_at:
+            continue
+        if html_url in existing_urls:
             continue
 
         body = rel.get("body") or ""
@@ -231,9 +234,15 @@ async def ingest_releases() -> dict:
     if settings.GITHUB_TOKEN:
         headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
 
+    # Pre-fetch existing URLs to skip LLM calls for known releases
+    with engine.connect() as conn:
+        existing = conn.execute(text("SELECT url FROM releases")).fetchall()
+    existing_urls: set[str] = {r[0] for r in existing}
+    logger.info(f"Pre-seeded {len(existing_urls)} existing release URLs for dedup")
+
     semaphore = asyncio.Semaphore(5)
     async with httpx.AsyncClient(headers=headers, timeout=30.0, follow_redirects=True) as client:
-        tasks = [collect_releases_for_project(client, p, semaphore) for p in projects]
+        tasks = [collect_releases_for_project(client, p, semaphore, existing_urls) for p in projects]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     releases = []
@@ -250,19 +259,21 @@ async def ingest_releases() -> dict:
         with engine.connect() as conn:
             for rel in releases:
                 try:
-                    conn.execute(
+                    result = conn.execute(
                         text("""
                             INSERT INTO releases (project_id, lab_id, version, title, summary, body, url, released_at, captured_at, source)
                             VALUES (:project_id, :lab_id, :version, :title, :summary, :body, :url, :released_at, :captured_at, :source)
                             ON CONFLICT (url) DO NOTHING
+                            RETURNING id
                         """),
                         rel,
                     )
-                    new_count += 1
+                    if result.fetchone():
+                        new_count += 1
                 except Exception:
                     pass  # skip duplicates
             conn.commit()
-        logger.info(f"Batch wrote {new_count} releases")
+        logger.info(f"Inserted {new_count} new releases (skipped {len(releases) - new_count} duplicates)")
 
     # Embed newly ingested releases
     new_embed_count = 0
