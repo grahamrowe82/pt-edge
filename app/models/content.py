@@ -44,6 +44,7 @@ class HNPost(Base):
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     project_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("projects.id"))
     lab_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("labs.id"))
+    llm_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class V2EXPost(Base):
