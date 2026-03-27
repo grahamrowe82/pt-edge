@@ -18,9 +18,15 @@ fi
 cd "$SCRIPT_DIR/.."
 python scripts/export_dataset.py --output-dir "$WORK_DIR/data"
 
-# Commit and push (skip if no changes)
+# Update badge count in README
 cd "$WORK_DIR"
-git add data/
+SCORES=$(python3 -c "import json; print(json.load(open('data/metadata.json'))['datasets']['mcp-scores.json']['records'])")
+SCORES_FMT=$(printf "%'d" "$SCORES")
+sed -i.bak "s|servers_scored-[0-9,]*-blue|servers_scored-${SCORES_FMT}-blue|" README.md
+rm -f README.md.bak
+
+# Commit and push (skip if no changes)
+git add data/ README.md
 if git diff --cached --quiet; then
     echo "No changes to push"
     exit 0
@@ -28,6 +34,6 @@ fi
 
 git config user.name "PT-Edge Bot"
 git config user.email "bot@phasetransitions.ai"
-git commit -m "Daily update: $(date -u +%Y-%m-%d)"
+git commit -m "Daily update: ${SCORES_FMT} servers scored — $(date -u +%Y-%m-%d)"
 git push
 echo "Dataset pushed successfully"
