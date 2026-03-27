@@ -549,6 +549,7 @@ async def more_tools() -> str:
         ]),
         ("Discovery — MCP Ecosystem", [
             ("mcp_coverage", "MCP adoption across developer tools — which categories have servers"),
+            ("mcp_health",   "Quality score (0-100) for any MCP server — maintenance, adoption, maturity, community"),
         ]),
         ("Community Feedback", [
             ("submit_feedback", "Submit an observation, insight, bug report, or feature request"),
@@ -6166,6 +6167,103 @@ async def mcp_coverage(category: str = "") -> str:
 
 
 # ---------------------------------------------------------------------------
+# MCP health / quality score
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def mcp_health(repo: str) -> str:
+    """Quality score (0-100) for an MCP server repository.
+
+    Pass a GitHub full_name like 'owner/repo' or just the repo name.
+    Returns maintenance, adoption, maturity, and community sub-scores,
+    a quality tier (verified/established/emerging/experimental),
+    and active risk flags.
+
+    Examples:
+      mcp_health("modelcontextprotocol/servers")
+      mcp_health("punkpeye/fastmcp")
+    """
+    repo = repo.strip()
+    if not repo:
+        return "Please provide a repo name or owner/repo."
+
+    try:
+        with readonly_engine.connect() as conn:
+            rows = _safe_mv_query(conn, """
+                SELECT full_name, name, description, stars, forks,
+                       language, license, archived, subcategory,
+                       last_pushed_at, pypi_package, npm_package,
+                       downloads_monthly, dependency_count, commits_30d,
+                       reverse_dep_count,
+                       maintenance_score, adoption_score,
+                       maturity_score, community_score,
+                       quality_score, quality_tier, risk_flags
+                FROM mv_mcp_quality
+                WHERE LOWER(full_name) = LOWER(:repo)
+                   OR LOWER(name) = LOWER(:repo)
+                LIMIT 1
+            """, {"repo": repo})
+
+        if not rows:
+            return (
+                f"MCP server '{repo}' not found in quality index.\n"
+                f"Use find_mcp_server('{repo}') to check if it is indexed."
+            )
+
+        r = rows[0]
+        risk = r.get("risk_flags") or []
+        risk_str = ", ".join(risk) if risk else "none"
+
+        lines = [
+            f"MCP HEALTH: {r['full_name']}",
+            "=" * 50,
+            f"  Quality Score : {r['quality_score']} / 100",
+            f"  Quality Tier  : {r['quality_tier'].upper()}",
+            f"  Risk Flags    : {risk_str}",
+            "",
+            "SCORE BREAKDOWN",
+            "-" * 30,
+            f"  Maintenance   : {r['maintenance_score']} / 25  "
+            f"(commits: {_fmt_number(r.get('commits_30d'))}/30d, "
+            f"pushed: {_fmt_date(r.get('last_pushed_at'))})",
+            f"  Adoption      : {r['adoption_score']} / 25  "
+            f"(stars: {_fmt_number(r.get('stars'))}, "
+            f"downloads: {_fmt_number(r.get('downloads_monthly'))}/mo, "
+            f"dependents: {r.get('reverse_dep_count', 0)})",
+            f"  Maturity      : {r['maturity_score']} / 25  "
+            f"(license: {r.get('license') or 'none'}, "
+            f"package: {'yes' if r.get('pypi_package') or r.get('npm_package') else 'no'})",
+            f"  Community     : {r['community_score']} / 25  "
+            f"(forks: {_fmt_number(r.get('forks'))})",
+            "",
+            "DETAILS",
+            "-" * 30,
+            f"  Subcategory   : {r.get('subcategory') or 'n/a'}",
+            f"  Language      : {r.get('language') or 'n/a'}",
+            f"  Archived      : {'YES' if r.get('archived') else 'No'}",
+            f"  PyPI          : {r.get('pypi_package') or 'n/a'}",
+            f"  npm           : {r.get('npm_package') or 'n/a'}",
+        ]
+
+        if r.get("description"):
+            lines.append("")
+            lines.append(f"  {str(r['description'])[:200]}")
+
+        lines.extend([
+            "",
+            "-> Next: find_mcp_server() to find similar servers",
+            "-> Next: mcp_coverage() for ecosystem-wide MCP adoption stats",
+        ])
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"mcp_health failed for '{repo}': {e}")
+        return f"Error retrieving MCP health data: {e}"
+
+
+# ---------------------------------------------------------------------------
 # Public API search
 # ---------------------------------------------------------------------------
 
@@ -7360,7 +7458,7 @@ _TOOL_LIST = [
     lifecycle_map, hype_landscape, sniff_projects,
     accept_candidate, set_tier, movers, compare, related, market_map,
     radar, explain, topic, scout, hn_pulse, deep_dive,
-    find_ai_tool, find_mcp_server, mcp_coverage, find_public_api,
+    find_ai_tool, find_mcp_server, mcp_coverage, mcp_health, find_public_api,
     get_api_spec, get_api_endpoints,
     get_dependencies, find_dependents,
     find_dataset, find_model,

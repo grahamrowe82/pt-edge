@@ -936,6 +936,153 @@ def get_domain_brief(domain: str) -> dict | None:
     return _row_to_dict(rows[0])
 
 
+# ---------------------------------------------------------------------------
+# Public dataset endpoints
+# ---------------------------------------------------------------------------
+
+def get_dataset_projects(
+    category: str = None,
+    domain: str = None,
+    tier: int = None,
+    lifecycle_stage: str = None,
+    limit: int = 500,
+    offset: int = 0,
+) -> list[dict]:
+    """Full mv_project_summary export for public dataset."""
+    conditions = []
+    params: dict = {"lim": limit, "off": offset}
+    if category:
+        conditions.append("s.category = :category")
+        params["category"] = category
+    if domain:
+        conditions.append("s.domain = :domain")
+        params["domain"] = domain
+    if tier is not None:
+        conditions.append("COALESCE(s.tier, 4) = :tier")
+        params["tier"] = tier
+    if lifecycle_stage:
+        conditions.append("s.lifecycle_stage = :lifecycle_stage")
+        params["lifecycle_stage"] = lifecycle_stage
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    with readonly_engine.connect() as conn:
+        return _safe_mv_query(conn, f"""
+            SELECT
+                s.name, s.slug, s.category, s.domain, s.stack_layer, s.lab_name,
+                s.stars, s.forks, s.monthly_downloads, s.commits_30d,
+                s.stars_7d_delta, s.stars_30d_delta, s.dl_30d_delta,
+                s.commits_7d_delta, s.commits_30d_delta, s.contributors_30d_delta,
+                s.hype_ratio, s.hype_bucket,
+                s.velocity_band, s.commits_per_contributor, s.development_pace,
+                s.fork_star_ratio,
+                s.lifecycle_stage,
+                s.tier, s.tier_is_override,
+                s.traction_score, s.traction_bucket,
+                s.dl_trend, s.dl_weekly_velocity,
+                s.last_commit_at, s.last_release_at, s.days_since_release,
+                s.correction_count
+            FROM mv_project_summary s
+            {where}
+            ORDER BY s.traction_score DESC NULLS LAST, s.stars DESC NULLS LAST
+            LIMIT :lim OFFSET :off
+        """, params)
+
+
+def get_dataset_mcp_repos(
+    subcategory: str = None,
+    include_archived: bool = False,
+    limit: int = 500,
+    offset: int = 0,
+) -> list[dict]:
+    """AI repos in the MCP domain for public dataset."""
+    conditions = ["domain = 'mcp'"]
+    params: dict = {"lim": limit, "off": offset}
+    if subcategory:
+        conditions.append("subcategory = :subcategory")
+        params["subcategory"] = subcategory
+    if not include_archived:
+        conditions.append("archived = false")
+
+    where = "WHERE " + " AND ".join(conditions)
+
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(
+            text(f"""
+                SELECT full_name, name, description, stars, forks, language,
+                       topics, license, last_pushed_at, archived, subcategory,
+                       downloads_monthly, dependency_count,
+                       pypi_package, npm_package, commits_30d
+                FROM ai_repos
+                {where}
+                ORDER BY stars DESC NULLS LAST
+                LIMIT :lim OFFSET :off
+            """),
+            params,
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# MCP quality scores
+# ---------------------------------------------------------------------------
+
+_MCP_QUALITY_COLS = """
+    full_name, name, description, stars, forks,
+    language, license, archived, subcategory,
+    last_pushed_at, pypi_package, npm_package,
+    downloads_monthly, dependency_count, commits_30d,
+    reverse_dep_count,
+    maintenance_score, adoption_score, maturity_score, community_score,
+    quality_score, quality_tier, risk_flags
+"""
+
+
+def get_mcp_quality_scores(
+    quality_tier: str = None,
+    subcategory: str = None,
+    min_score: int = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict]:
+    """List MCP repos with quality scores."""
+    conditions = []
+    params: dict = {"lim": limit, "off": offset}
+    if quality_tier:
+        conditions.append("quality_tier = :quality_tier")
+        params["quality_tier"] = quality_tier
+    if subcategory:
+        conditions.append("subcategory = :subcategory")
+        params["subcategory"] = subcategory
+    if min_score is not None:
+        conditions.append("quality_score >= :min_score")
+        params["min_score"] = min_score
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    with readonly_engine.connect() as conn:
+        return _safe_mv_query(conn, f"""
+            SELECT {_MCP_QUALITY_COLS}
+            FROM mv_mcp_quality
+            {where}
+            ORDER BY quality_score DESC NULLS LAST, stars DESC NULLS LAST
+            LIMIT :lim OFFSET :off
+        """, params)
+
+
+def get_mcp_quality_by_repo(repo: str) -> dict | None:
+    """Single MCP repo quality lookup by full_name or name."""
+    with readonly_engine.connect() as conn:
+        rows = _safe_mv_query(conn, f"""
+            SELECT {_MCP_QUALITY_COLS}
+            FROM mv_mcp_quality
+            WHERE LOWER(full_name) = LOWER(:repo)
+               OR LOWER(name) = LOWER(:repo)
+            LIMIT 1
+        """, {"repo": repo})
+    return rows[0] if rows else None
+
+
 def get_papers(q: str = None, project_slug: str = None, year: int = None, limit: int = 20) -> list[dict]:
     with readonly_engine.connect() as conn:
         conditions = []

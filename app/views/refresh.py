@@ -22,6 +22,7 @@ VIEWS_IN_ORDER = [
     "mv_usage_sessions",       # standalone: tool_usage only
     "mv_usage_daily_summary",  # depends on: mv_usage_sessions
     "mv_ai_repo_ecosystem",    # standalone: ai_repos stats by domain+subcategory
+    "mv_mcp_quality",          # standalone: quality scores for MCP-domain repos
 ]
 
 
