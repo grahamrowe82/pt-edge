@@ -325,3 +325,102 @@ async def papers_list(
 ):
     results = queries.get_papers(q=q, project_slug=project, year=year, limit=limit)
     return _ok(results, count=len(results), query_params={"q": q, "project": project, "year": year, "limit": limit})
+
+
+# ---------------------------------------------------------------------------
+# Public dataset endpoints (no auth required)
+# ---------------------------------------------------------------------------
+
+@router.get("/datasets/projects")
+async def dataset_projects(
+    response: Response,
+    category: str = Query(None),
+    domain: str = Query(None),
+    tier: int = Query(None, ge=1, le=4),
+    lifecycle_stage: str = Query(None),
+    limit: int = Query(500, le=2000, ge=1),
+    offset: int = Query(0, ge=0),
+):
+    results = queries.get_dataset_projects(
+        category=category, domain=domain, tier=tier,
+        lifecycle_stage=lifecycle_stage, limit=limit, offset=offset,
+    )
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return _ok(results, count=len(results), query_params={
+        "category": category, "domain": domain, "tier": tier,
+        "lifecycle_stage": lifecycle_stage, "limit": limit, "offset": offset,
+    })
+
+
+@router.get("/datasets/mcp-repos")
+async def dataset_mcp_repos(
+    response: Response,
+    subcategory: str = Query(None),
+    include_archived: bool = Query(False),
+    limit: int = Query(500, le=2000, ge=1),
+    offset: int = Query(0, ge=0),
+):
+    results = queries.get_dataset_mcp_repos(
+        subcategory=subcategory, include_archived=include_archived,
+        limit=limit, offset=offset,
+    )
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return _ok(results, count=len(results), query_params={
+        "subcategory": subcategory, "include_archived": include_archived,
+        "limit": limit, "offset": offset,
+    })
+
+
+@router.get("/datasets/mcp-scores")
+async def dataset_mcp_scores(
+    response: Response,
+    quality_tier: str = Query(None, pattern="^(verified|established|emerging|experimental)$"),
+    subcategory: str = Query(None),
+    limit: int = Query(500, le=2000, ge=1),
+    offset: int = Query(0, ge=0),
+):
+    results = queries.get_mcp_quality_scores(
+        quality_tier=quality_tier, subcategory=subcategory,
+        limit=limit, offset=offset,
+    )
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return _ok(results, count=len(results), query_params={
+        "quality_tier": quality_tier, "subcategory": subcategory,
+        "limit": limit, "offset": offset,
+    })
+
+
+# ---------------------------------------------------------------------------
+# MCP quality endpoints (auth required)
+# ---------------------------------------------------------------------------
+
+@router.get("/mcp/scores")
+async def mcp_scores(
+    request: Request,
+    quality_tier: str = Query(None, pattern="^(verified|established|emerging|experimental)$"),
+    subcategory: str = Query(None),
+    min_score: int = Query(None, ge=0, le=100),
+    limit: int = Query(50, le=200, ge=1),
+    offset: int = Query(0, ge=0),
+    key_data: dict = Depends(_auth),
+):
+    results = queries.get_mcp_quality_scores(
+        quality_tier=quality_tier, subcategory=subcategory,
+        min_score=min_score, limit=limit, offset=offset,
+    )
+    return _ok(results, count=len(results), query_params={
+        "quality_tier": quality_tier, "subcategory": subcategory,
+        "min_score": min_score, "limit": limit, "offset": offset,
+    })
+
+
+@router.get("/mcp/health/{repo:path}")
+async def mcp_health(
+    repo: str,
+    request: Request,
+    key_data: dict = Depends(_auth),
+):
+    result = queries.get_mcp_quality_by_repo(repo)
+    if not result:
+        _not_found(f"MCP repo '{repo}'")
+    return _ok(result)
