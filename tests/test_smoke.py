@@ -940,36 +940,48 @@ class TestCrateDownloads:
 
 
 class TestSubcategoryClassifier:
-    """MCP subcategory classifier assigns correct labels."""
+    """Subcategory classifier assigns correct labels across domains."""
 
     def test_classify_framework(self):
-        from app.ingest.ai_repo_subcategory import _classify_mcp
-        assert _classify_mcp("fastmcp", "MCP framework", None) == "framework"
+        from app.ingest.ai_repo_subcategory import _classify_repo
+        assert _classify_repo("mcp", "fastmcp", "MCP framework", None) == "framework"
 
     def test_classify_gateway(self):
-        from app.ingest.ai_repo_subcategory import _classify_mcp
-        assert _classify_mcp("mcp-gateway", "API gateway for MCP", None) == "gateway"
+        from app.ingest.ai_repo_subcategory import _classify_repo
+        assert _classify_repo("mcp", "mcp-gateway", "API gateway for MCP", None) == "gateway"
 
     def test_classify_transport(self):
-        from app.ingest.ai_repo_subcategory import _classify_mcp
-        assert _classify_mcp("mcp-sse-transport", "SSE transport layer", None) == "transport"
+        from app.ingest.ai_repo_subcategory import _classify_repo
+        assert _classify_repo("mcp", "mcp-sse-transport", "SSE transport layer", None) == "transport"
 
     def test_classify_ide(self):
-        from app.ingest.ai_repo_subcategory import _classify_mcp
-        assert _classify_mcp("mcp-vscode", "VSCode extension for MCP", None) == "ide"
+        from app.ingest.ai_repo_subcategory import _classify_repo
+        assert _classify_repo("mcp", "mcp-vscode", "VSCode extension for MCP", None) == "ide"
 
     def test_classify_security(self):
-        from app.ingest.ai_repo_subcategory import _classify_mcp
-        assert _classify_mcp("mcp-auth", "OAuth provider for MCP", None) == "security"
+        from app.ingest.ai_repo_subcategory import _classify_repo
+        assert _classify_repo("mcp", "mcp-auth", "OAuth provider for MCP", None) == "security"
 
     def test_classify_none_for_generic(self):
-        from app.ingest.ai_repo_subcategory import _classify_mcp
-        assert _classify_mcp("my-mcp-server", "A server for weather data", None) is None
+        from app.ingest.ai_repo_subcategory import _classify_repo
+        assert _classify_repo("mcp", "my-mcp-server", "A server for weather data", None) is None
 
     def test_topics_contribute(self):
-        from app.ingest.ai_repo_subcategory import _classify_mcp
-        result = _classify_mcp("my-tool", "generic description", ["testing", "mcp"])
+        from app.ingest.ai_repo_subcategory import _classify_repo
+        result = _classify_repo("mcp", "my-tool", "generic description", ["testing", "mcp"])
         assert result == "testing"
+
+    def test_classify_agents_domain(self):
+        from app.ingest.ai_repo_subcategory import _classify_repo
+        assert _classify_repo("agents", "my-agent", "multi-agent swarm framework", None) == "multi-agent"
+
+    def test_classify_perception_domain(self):
+        from app.ingest.ai_repo_subcategory import _classify_repo
+        assert _classify_repo("perception", "webcrawler", "web scraping and crawling tool", None) == "scraper"
+
+    def test_classify_unknown_domain_returns_none(self):
+        from app.ingest.ai_repo_subcategory import _classify_repo
+        assert _classify_repo("unknown-domain", "some-tool", "some description", None) is None
 
 
 def test_ai_repo_subcategory_field():
