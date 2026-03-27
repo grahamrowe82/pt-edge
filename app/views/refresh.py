@@ -10,16 +10,18 @@ from app.models import SyncLog
 logger = logging.getLogger(__name__)
 
 VIEWS_IN_ORDER = [
-    "mv_momentum",         # base: no dependencies
-    "mv_hype_ratio",       # base: no dependencies
-    "mv_lab_velocity",     # base: no dependencies
-    "mv_project_tier",     # base: no dependencies
-    "mv_velocity",         # base: no dependencies
-    "mv_lifecycle",        # depends on: mv_momentum
-    "mv_project_summary",  # depends on: mv_momentum, mv_hype_ratio, mv_project_tier, mv_velocity, mv_lifecycle
-    "mv_usage_sessions",    # standalone: tool_usage only
+    "mv_momentum",             # base: no dependencies
+    "mv_hype_ratio",           # base: no dependencies
+    "mv_lab_velocity",         # base: no dependencies
+    "mv_project_tier",         # base: no dependencies
+    "mv_velocity",             # base: no dependencies
+    "mv_download_trends",      # base: no MV dependencies (uses download_snapshots)
+    "mv_lifecycle",            # depends on: mv_momentum
+    "mv_traction_score",       # depends on: mv_velocity, mv_download_trends
+    "mv_project_summary",      # depends on: mv_momentum, mv_hype_ratio, mv_project_tier, mv_velocity, mv_lifecycle, mv_traction_score, mv_download_trends
+    "mv_usage_sessions",       # standalone: tool_usage only
     "mv_usage_daily_summary",  # depends on: mv_usage_sessions
-    "mv_ai_repo_ecosystem",  # standalone: ai_repos stats by domain+subcategory
+    "mv_ai_repo_ecosystem",    # standalone: ai_repos stats by domain+subcategory
 ]
 
 

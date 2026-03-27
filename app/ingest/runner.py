@@ -241,7 +241,7 @@ async def run_all() -> dict:
         logger.exception(f"project_briefs failed: {e}")
         results["project_briefs"] = {"error": str(e)}
 
-    # Domain briefs weekly (Sunday)
+    # Domain + landscape briefs weekly (Sunday)
     from datetime import datetime as _dt, timezone as _tz
     if _dt.now(_tz.utc).weekday() == 6:
         try:
@@ -251,6 +251,14 @@ async def run_all() -> dict:
         except Exception as e:
             logger.exception(f"domain_briefs failed: {e}")
             results["domain_briefs"] = {"error": str(e)}
+
+        try:
+            from app.ingest.landscape_briefs import generate_landscape_briefs
+            results["landscape_briefs"] = await _run_with_retry("landscape_briefs", generate_landscape_briefs)
+            logger.info(f"landscape_briefs: {results['landscape_briefs']}")
+        except Exception as e:
+            logger.exception(f"landscape_briefs failed: {e}")
+            results["landscape_briefs"] = {"error": str(e)}
 
     # Refresh briefing evidence values against current data
     try:
