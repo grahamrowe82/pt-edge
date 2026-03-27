@@ -232,6 +232,23 @@ async def run_all() -> dict:
         logger.exception(f"views failed: {e}")
         results["views"] = {"error": str(e)}
 
+    # Export dataset to GitHub repo
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["bash", "scripts/push_dataset.sh"],
+            capture_output=True, text=True, timeout=120,
+        )
+        if result.returncode == 0:
+            results["dataset_export"] = {"status": "pushed"}
+            logger.info(f"dataset_export: pushed")
+        else:
+            results["dataset_export"] = {"error": result.stderr[:200]}
+            logger.warning(f"dataset_export failed: {result.stderr[:200]}")
+    except Exception as e:
+        logger.warning(f"dataset_export failed: {e}")
+        results["dataset_export"] = {"error": str(e)}
+
     # Generate LLM project briefs (needs fresh MV data)
     try:
         from app.ingest.project_briefs import generate_project_briefs, generate_domain_briefs
