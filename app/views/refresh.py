@@ -67,6 +67,32 @@ def refresh_all_views():
     except Exception as e:
         logger.warning(f"Could not snapshot lifecycle stages: {e}")
 
+    # Snapshot MCP quality scores for historical tracking
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("""
+                INSERT INTO mcp_quality_snapshots
+                    (repo_id, snapshot_date, quality_score, quality_tier,
+                     maintenance_score, adoption_score, maturity_score,
+                     community_score, risk_flags)
+                SELECT id, CURRENT_DATE, quality_score, quality_tier,
+                       maintenance_score, adoption_score, maturity_score,
+                       community_score, risk_flags
+                FROM mv_mcp_quality
+                ON CONFLICT (repo_id, snapshot_date) DO UPDATE SET
+                    quality_score = EXCLUDED.quality_score,
+                    quality_tier = EXCLUDED.quality_tier,
+                    maintenance_score = EXCLUDED.maintenance_score,
+                    adoption_score = EXCLUDED.adoption_score,
+                    maturity_score = EXCLUDED.maturity_score,
+                    community_score = EXCLUDED.community_score,
+                    risk_flags = EXCLUDED.risk_flags
+            """))
+            conn.commit()
+            logger.info("Snapshotted MCP quality scores")
+    except Exception as e:
+        logger.warning(f"Could not snapshot MCP quality scores: {e}")
+
     # Log sync
     session = SessionLocal()
     try:
