@@ -20,6 +20,8 @@ is available:
 - Find an MCP server → find_mcp_server('description')
 - State of a topic → topic('query') or briefing(domain='domain')
 - Find a public API → find_public_api('description')
+- Breakout detection → breakouts()
+- Explore an ecosystem layer → ecosystem_layer('layer-name')
 
 Run independent tool calls in parallel where possible. \
 Call more_tools() to discover 30+ additional tools beyond the core set.\

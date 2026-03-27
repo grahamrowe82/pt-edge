@@ -1,7 +1,7 @@
 """Classify ai_repos by subcategory using keyword matching + LLM fallback.
 
-Currently targets domain='mcp' repos, assigning ecosystem-layer subcategories
-(framework, gateway, transport, etc.) based on name + description + topics.
+Supports multiple domains: mcp, agents, perception, ai-coding.
+Each domain has its own subcategory taxonomy.
 
 Phase 1 (regex): Fast keyword matching — first-match-wins.
 Phase 2 (LLM):  For repos regex missed, batch to Claude Haiku for classification.
@@ -24,7 +24,10 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Ordered specific → general. First match wins.
+# ---------------------------------------------------------------------------
+# Subcategory patterns per domain — ordered specific → general, first match wins
+# ---------------------------------------------------------------------------
+
 MCP_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
     ("testing", re.compile(r"\btest|mock|fixture|bench", re.IGNORECASE)),
     ("security", re.compile(r"\bauth\b|\boauth\b|security|\brbac\b|permission", re.IGNORECASE)),
@@ -38,11 +41,46 @@ MCP_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
     ("framework", re.compile(r"fastmcp|mcp.framework|mcp.sdk|create.mcp|\bsdk\b", re.IGNORECASE)),
 ]
 
+AGENTS_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
+    ("browser-agent", re.compile(r"browser.agent|web.agent|browser.use|playwright.agent", re.IGNORECASE)),
+    ("coding-agent", re.compile(r"coding.agent|code.agent|devin|swe.agent|software.engineer", re.IGNORECASE)),
+    ("research-agent", re.compile(r"research.agent|deep.research|web.research|search.agent", re.IGNORECASE)),
+    ("multi-agent", re.compile(r"multi.agent|swarm|crew|orchestra|collaborative.agent", re.IGNORECASE)),
+    ("agent-framework", re.compile(r"agent.framework|agent.sdk|agent.platform|build.agent|create.agent", re.IGNORECASE)),
+]
 
-def _classify_mcp(name: str, description: str, topics: list[str] | None) -> str | None:
-    """Return the first matching subcategory or None."""
+PERCEPTION_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
+    ("browser-automation", re.compile(r"browser.autom|playwright|puppeteer|selenium|headless|browser.use", re.IGNORECASE)),
+    ("scraper", re.compile(r"scrap|crawl|spider|extract|parse.html", re.IGNORECASE)),
+    ("search", re.compile(r"\bsearch\b|serp|google.search|web.search", re.IGNORECASE)),
+    ("cli-access", re.compile(r"\bcli\b|command.line|terminal|shell.access", re.IGNORECASE)),
+]
+
+AI_CODING_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
+    ("code-editor", re.compile(r"editor|ide|vscode|cursor|neovim|copilot.plugin", re.IGNORECASE)),
+    ("code-review", re.compile(r"code.review|pull.request|pr.review|lint|static.analysis", re.IGNORECASE)),
+    ("code-generation", re.compile(r"code.gen|codegen|autocomplete|code.complet|generate.code", re.IGNORECASE)),
+    ("context-tools", re.compile(r"context|codebase.index|code.search|repo.map|code.graph", re.IGNORECASE)),
+]
+
+# Master mapping: domain → subcategory patterns
+DOMAIN_SUBCATEGORIES: dict[str, list[tuple[str, re.Pattern]]] = {
+    "mcp": MCP_SUBCATEGORIES,
+    "agents": AGENTS_SUBCATEGORIES,
+    "perception": PERCEPTION_SUBCATEGORIES,
+    "ai-coding": AI_CODING_SUBCATEGORIES,
+}
+
+CLASSIFIED_DOMAINS = list(DOMAIN_SUBCATEGORIES.keys())
+
+
+def _classify_repo(domain: str, name: str, description: str, topics: list[str] | None) -> str | None:
+    """Return the first matching subcategory for the given domain, or None."""
+    subcategories = DOMAIN_SUBCATEGORIES.get(domain)
+    if not subcategories:
+        return None
     search_text = f"{name} {description} {' '.join(topics or [])}"
-    for subcategory, pattern in MCP_SUBCATEGORIES:
+    for subcategory, pattern in subcategories:
         if pattern.search(search_text):
             return subcategory
     return None
@@ -97,30 +135,35 @@ def _batch_update_subcategory(updates: list[tuple[str, int]]) -> int:
 
 
 async def ingest_subcategories(limit: int = 50000) -> dict:
-    """Classify uncategorized MCP repos by subcategory."""
+    """Classify uncategorized repos by subcategory across all supported domains."""
     started_at = datetime.now(timezone.utc)
 
+    placeholders = ", ".join(f":d{i}" for i in range(len(CLASSIFIED_DOMAINS)))
+    params: dict = {"lim": limit}
+    params.update({f"d{i}": d for i, d in enumerate(CLASSIFIED_DOMAINS)})
+
     with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT id, name, description, topics
+        rows = conn.execute(text(f"""
+            SELECT id, domain, name, description, topics
             FROM ai_repos
-            WHERE domain = 'mcp' AND subcategory IS NULL
+            WHERE domain IN ({placeholders}) AND subcategory IS NULL
             ORDER BY stars DESC
             LIMIT :lim
-        """), {"lim": limit}).fetchall()
+        """), params).fetchall()
 
     if not rows:
-        logger.info("No uncategorized MCP repos to classify")
+        logger.info("No uncategorized repos to classify")
         return {"classified": 0, "unmatched": 0}
 
-    logger.info(f"Classifying {len(rows)} MCP repos by subcategory")
+    logger.info(f"Classifying {len(rows)} repos by subcategory across {CLASSIFIED_DOMAINS}")
 
     updates: list[tuple[str, int]] = []
     unmatched = 0
 
     for i, r in enumerate(rows):
         m = r._mapping
-        subcategory = _classify_mcp(
+        subcategory = _classify_repo(
+            m["domain"] or "",
             m["name"] or "",
             m["description"] or "",
             list(m["topics"]) if m["topics"] else None,
@@ -159,16 +202,38 @@ async def ingest_subcategories(limit: int = 50000) -> dict:
 # ---------------------------------------------------------------------------
 
 VALID_SUBCATEGORIES = {
+    # MCP
     "testing", "security", "observability", "transport", "gateway",
-    "discovery", "billing", "ide", "agent-memory", "framework", "other",
+    "discovery", "billing", "ide", "agent-memory", "framework",
+    # Agents
+    "agent-framework", "multi-agent", "coding-agent", "browser-agent", "research-agent",
+    # Perception
+    "scraper", "browser-automation", "cli-access", "search",
+    # AI-Coding
+    "code-editor", "code-review", "code-generation", "context-tools",
+    # Fallback
+    "other",
 }
 
 LLM_BATCH_SIZE = 30
 
+DOMAIN_LABELS = {
+    "mcp": "MCP (Model Context Protocol)",
+    "agents": "AI Agent",
+    "perception": "Perception / Web Data",
+    "ai-coding": "AI Coding",
+}
+
+DOMAIN_VALID_SUBCATEGORIES = {
+    "mcp": "testing, security, observability, transport, gateway, discovery, billing, ide, agent-memory, framework, other",
+    "agents": "agent-framework, multi-agent, coding-agent, browser-agent, research-agent, other",
+    "perception": "scraper, browser-automation, cli-access, search, other",
+    "ai-coding": "code-editor, code-review, code-generation, context-tools, other",
+}
+
 SUBCATEGORY_LLM_PROMPT = """\
-Classify each MCP (Model Context Protocol) repository into exactly one \
-subcategory. Choose from: testing, security, observability, transport, \
-gateway, discovery, billing, ide, agent-memory, framework, other.
+Classify each {domain_label} repository into exactly one subcategory. \
+Choose from: {valid_subcategories}.
 
 Rules:
 - "other" for repos that don't fit any specific subcategory.
@@ -183,72 +248,91 @@ Repos:
 
 
 async def classify_subcategory_llm(limit: int = 7500) -> dict:
-    """Use LLM to classify MCP repos that regex didn't match."""
+    """Use LLM to classify repos that regex didn't match, across all supported domains."""
     if not settings.ANTHROPIC_API_KEY:
         logger.info("No ANTHROPIC_API_KEY — skipping LLM subcategory classification")
         return {"classified": 0, "skipped": "no API key"}
 
     started_at = datetime.now(timezone.utc)
 
+    placeholders = ", ".join(f":d{i}" for i in range(len(CLASSIFIED_DOMAINS)))
+    params: dict = {"lim": limit}
+    params.update({f"d{i}": d for i, d in enumerate(CLASSIFIED_DOMAINS)})
+
     with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT id, name, LEFT(description, 200) AS description, topics
+        rows = conn.execute(text(f"""
+            SELECT id, domain, name, LEFT(description, 200) AS description, topics
             FROM ai_repos
-            WHERE domain = 'mcp' AND subcategory IS NULL
+            WHERE domain IN ({placeholders}) AND subcategory IS NULL
             ORDER BY stars DESC
             LIMIT :lim
-        """), {"lim": limit}).fetchall()
+        """), params).fetchall()
 
     if not rows:
-        logger.info("No unclassified MCP repos for LLM")
+        logger.info("No unclassified repos for LLM")
         return {"classified": 0, "batches": 0}
 
     logger.info(f"LLM subcategory classification: processing {len(rows)} repos")
 
-    # Build batches
-    batches = [rows[i:i + LLM_BATCH_SIZE] for i in range(0, len(rows), LLM_BATCH_SIZE)]
-    id_set = {r._mapping["id"] for r in rows}
+    # Group rows by domain for domain-specific prompts
+    domain_rows: dict[str, list] = {}
+    for r in rows:
+        d = r._mapping["domain"]
+        domain_rows.setdefault(d, []).append(r)
 
+    id_set = {r._mapping["id"] for r in rows}
     total_classified = 0
     errors = 0
 
-    for batch_idx, batch in enumerate(batches):
-        lines = []
-        for r in batch:
-            m = r._mapping
-            desc = (m["description"] or "").replace("\n", " ").strip()
-            topics_csv = ", ".join(m["topics"]) if m["topics"] else ""
-            lines.append(f'{m["id"]}. {m["name"]} — "{desc}" [topics: {topics_csv}]')
-        repos_text = "\n".join(lines)
-
-        predictions = await call_haiku(
-            SUBCATEGORY_LLM_PROMPT.format(repos_text=repos_text)
-        )
-        if not predictions:
-            logger.warning(f"Batch {batch_idx + 1}/{len(batches)}: LLM returned no results")
-            errors += 1
+    for domain, d_rows in domain_rows.items():
+        domain_label = DOMAIN_LABELS.get(domain, domain)
+        valid_subs = DOMAIN_VALID_SUBCATEGORIES.get(domain)
+        if not valid_subs:
             continue
 
-        updates: list[tuple[str, int]] = []
-        for pred in predictions:
-            if not isinstance(pred, dict):
-                continue
-            rid = pred.get("id")
-            sub = (pred.get("subcategory") or "").lower().strip()
-            if rid not in id_set or sub not in VALID_SUBCATEGORIES:
-                continue
-            if sub == "other":
-                continue  # Leave NULL for manual review
-            updates.append((sub, rid))
+        batches = [d_rows[i:i + LLM_BATCH_SIZE] for i in range(0, len(d_rows), LLM_BATCH_SIZE)]
 
-        if updates:
-            written = _batch_update_subcategory(updates)
-            total_classified += written
+        for batch_idx, batch in enumerate(batches):
+            lines = []
+            for r in batch:
+                m = r._mapping
+                desc = (m["description"] or "").replace("\n", " ").strip()
+                topics_csv = ", ".join(m["topics"]) if m["topics"] else ""
+                lines.append(f'{m["id"]}. {m["name"]} — "{desc}" [topics: {topics_csv}]')
+            repos_text = "\n".join(lines)
 
-        logger.info(
-            f"Batch {batch_idx + 1}/{len(batches)}: "
-            f"{len(updates)} classified, {total_classified} total"
-        )
+            predictions = await call_haiku(
+                SUBCATEGORY_LLM_PROMPT.format(
+                    domain_label=domain_label,
+                    valid_subcategories=valid_subs,
+                    repos_text=repos_text,
+                )
+            )
+            if not predictions:
+                logger.warning(f"[{domain}] Batch {batch_idx + 1}/{len(batches)}: LLM returned no results")
+                errors += 1
+                continue
+
+            updates: list[tuple[str, int]] = []
+            for pred in predictions:
+                if not isinstance(pred, dict):
+                    continue
+                rid = pred.get("id")
+                sub = (pred.get("subcategory") or "").lower().strip()
+                if rid not in id_set or sub not in VALID_SUBCATEGORIES:
+                    continue
+                if sub == "other":
+                    continue  # Leave NULL for manual review
+                updates.append((sub, rid))
+
+            if updates:
+                written = _batch_update_subcategory(updates)
+                total_classified += written
+
+            logger.info(
+                f"[{domain}] Batch {batch_idx + 1}/{len(batches)}: "
+                f"{len(updates)} classified, {total_classified} total"
+            )
 
     # Sync log
     session = SessionLocal()
@@ -265,7 +349,7 @@ async def classify_subcategory_llm(limit: int = 7500) -> dict:
     finally:
         session.close()
 
-    result = {"classified": total_classified, "batches": len(batches), "errors": errors}
+    result = {"classified": total_classified, "batches": sum(len(v) for v in domain_rows.values()) // LLM_BATCH_SIZE + 1, "errors": errors}
     logger.info(f"LLM subcategory classification complete: {result}")
     return result
 

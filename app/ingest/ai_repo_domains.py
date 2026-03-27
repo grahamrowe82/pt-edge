@@ -14,6 +14,10 @@ DOMAINS: dict[str, dict] = {
         "topics": ["ai-agents", "ai-agent", "multi-agent"],
         "min_stars": 0,
     },
+    "perception": {
+        "topics": ["web-scraping", "browser-automation", "web-crawler", "web-crawling", "scraping"],
+        "min_stars": 2,
+    },
     "rag": {
         "topics": ["rag", "retrieval-augmented-generation"],
         "min_stars": 0,
@@ -84,6 +88,7 @@ DOMAIN_ORDER: list[str] = [
     "embeddings",
     "rag",
     "agents",
+    "perception",
     "ai-coding",
     "prompt-engineering",
     "diffusion",
@@ -109,6 +114,13 @@ DOMAIN_OVERRIDES: dict[tuple[str, str], str] = {
     ("PrefectHQ", "prefect"): "data-engineering",
     ("deepseek-ai", "DeepSeek-V3"): "transformers",
     ("deepseek-ai", "DeepSeek-R1"): "transformers",
+    # perception
+    ("browser-use", "browser-use"): "perception",
+    ("unclecode", "crawl4ai"): "perception",
+    ("D4Vinci", "Scrapling"): "perception",
+    ("firecrawl", "firecrawl"): "perception",
+    ("Skyvern-AI", "skyvern"): "perception",
+    ("Panniantong", "Agent-Reach"): "perception",
     # ai-coding
     ("Aider-AI", "aider"): "ai-coding",
     ("cline", "cline"): "ai-coding",

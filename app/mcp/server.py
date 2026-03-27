@@ -533,6 +533,10 @@ async def more_tools() -> str:
             ("scout", "Rising projects ranked by stars/day — candidates and small tracked projects"),
             ("hn_pulse", "HN discourse intelligence — what the community is discussing"),
         ]),
+        ("Traction & Velocity", [
+            ("breakouts", "Small repos with explosive % growth — the breakout detector"),
+            ("ecosystem_layer", "Explore an ecosystem layer — MCP gateways, perception tools, agent frameworks"),
+        ]),
         ("Discovery — HuggingFace", [
             ("find_dataset", "Search ~42K HuggingFace datasets by description. Filter by task/language"),
             ("find_model", "Search ~18K HuggingFace models by description. Filter by task/library"),
@@ -842,6 +846,32 @@ async def project_pulse(project: str) -> str:
             ])
         else:
             lines.append("  No GitHub snapshots yet.")
+        lines.append("")
+
+        # Velocity profile from mv_velocity
+        lines.append("VELOCITY PROFILE")
+        lines.append("-" * 30)
+        try:
+            with engine.connect() as conn:
+                vel = _safe_mv_query(conn, """
+                    SELECT velocity_band, commits_per_contributor, development_pace,
+                           cpc_is_capped
+                    FROM mv_velocity WHERE project_id = :pid
+                """, {"pid": proj.id})
+                if vel:
+                    v = vel[0]
+                    cpc_display = f"{v.get('commits_per_contributor', 'n/a')}"
+                    if v.get("cpc_is_capped"):
+                        cpc_display += " (capped — 100+ contributors)"
+                    lines.extend([
+                        f"  Velocity Band:          {v.get('velocity_band', 'n/a')}",
+                        f"  Commits/Contributor:    {cpc_display}",
+                        f"  Development Pace:       {v.get('development_pace', 'n/a')}",
+                    ])
+                else:
+                    lines.append("  Velocity data not yet available.")
+        except Exception:
+            lines.append("  Velocity data not yet available.")
         lines.append("")
 
         # Latest download snapshot
@@ -1843,8 +1873,13 @@ _LAYER_FILTERS = {
     "mcp-ide":        {"domain": "mcp", "subcategory": "ide"},
     "mcp-observability": {"domain": "mcp", "subcategory": "observability"},
     "mcp":            {"domain": "mcp"},
-    # Agent perception
-    "perception":     {"domain_in": ["computer-vision", "web-scraping"], "description_like": "%scrape%browser%crawl%"},
+    # Perception
+    "perception":     {"domain": "perception"},
+    # Agent subcategories
+    "agent-framework": {"domain": "agents", "subcategory": "agent-framework"},
+    "multi-agent":     {"domain": "agents", "subcategory": "multi-agent"},
+    "coding-agent":    {"domain": "agents", "subcategory": "coding-agent"},
+    "browser-agent":   {"domain": "agents", "subcategory": "browser-agent"},
     # Stack layers
     "orchestration":  {"stack_layer": "orchestration"},
     "inference":      {"stack_layer": "inference"},
