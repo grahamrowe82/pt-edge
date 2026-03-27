@@ -92,3 +92,16 @@ class DomainBrief(Base):
     generation_hash: Mapped[str | None] = mapped_column(String(64))
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
+class LandscapeBrief(Base):
+    __tablename__ = "landscape_briefs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    layer: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence: Mapped[dict | None] = mapped_column(JSONB)
+    generation_hash: Mapped[str | None] = mapped_column(String(64))
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

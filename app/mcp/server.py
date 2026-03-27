@@ -917,6 +917,123 @@ async def project_pulse(project: str) -> str:
             lines.append("  Hype data not yet available.")
         lines.append("")
 
+        # Download Trends from mv_download_trends
+        lines.append("DOWNLOAD TRENDS")
+        lines.append("-" * 30)
+        try:
+            with engine.connect() as conn:
+                dl_trend = _safe_mv_query(conn, """
+                    SELECT dl_weekly_now, dl_weekly_prev, dl_weekly_velocity,
+                           dl_weekly_pct_change, dl_trend
+                    FROM mv_download_trends WHERE project_id = :pid
+                """, {"pid": proj.id})
+                if dl_trend:
+                    d = dl_trend[0]
+                    lines.extend([
+                        f"  Trend:         {d.get('dl_trend', 'n/a')}",
+                        f"  This Week:     {_fmt_number(d.get('dl_weekly_now'))}",
+                        f"  Last Week:     {_fmt_number(d.get('dl_weekly_prev'))}",
+                        f"  WoW Change:    {_fmt_delta(d.get('dl_weekly_velocity'))} "
+                        f"({d.get('dl_weekly_pct_change', 'n/a')}%)",
+                    ])
+                else:
+                    lines.append("  No download trend data (project may not have a package).")
+        except Exception:
+            lines.append("  Download trend data not yet available.")
+        lines.append("")
+
+        # Traction Score from mv_traction_score
+        lines.append("TRACTION SCORE")
+        lines.append("-" * 30)
+        try:
+            with engine.connect() as conn:
+                traction = _safe_mv_query(conn, """
+                    SELECT traction_score, traction_bucket,
+                           fork_score, adoption_score, dependency_score,
+                           velocity_score, contributor_score, dl_trend
+                    FROM mv_traction_score WHERE project_id = :pid
+                """, {"pid": proj.id})
+                if traction:
+                    t = traction[0]
+                    lines.extend([
+                        f"  Score:        {t.get('traction_score', 'n/a')}/100",
+                        f"  Bucket:       {t.get('traction_bucket', 'n/a')}",
+                        f"  Breakdown:    fork={_fmt_ratio(t.get('fork_score'))}/20  "
+                        f"adoption={_fmt_ratio(t.get('adoption_score'))}/25  "
+                        f"deps={_fmt_ratio(t.get('dependency_score'))}/20  "
+                        f"velocity={_fmt_ratio(t.get('velocity_score'))}/20  "
+                        f"contributors={_fmt_ratio(t.get('contributor_score'))}/15",
+                    ])
+                else:
+                    lines.append("  Traction data not yet available.")
+        except Exception:
+            lines.append("  Traction data not yet available.")
+        lines.append("")
+
+        # Dependency Influence
+        lines.append("DEPENDENCY INFLUENCE")
+        lines.append("-" * 30)
+        try:
+            with engine.connect() as conn:
+                # Find this project's package names
+                pkg_names = conn.execute(text("""
+                    SELECT COALESCE(p2.pypi_package, '') AS pypi,
+                           COALESCE(p2.npm_package, '') AS npm,
+                           COALESCE(a.pypi_package, '') AS ar_pypi,
+                           COALESCE(a.npm_package, '') AS ar_npm
+                    FROM projects p2
+                    LEFT JOIN ai_repos a ON a.id = p2.ai_repo_id
+                    WHERE p2.id = :pid
+                """), {"pid": proj.id}).fetchone()
+
+                if pkg_names:
+                    m = pkg_names._mapping
+                    names = [n for n in [m['pypi'], m['npm'], m['ar_pypi'], m['ar_npm']] if n]
+                    names = list(set(names))  # dedupe
+
+                    if names:
+                        placeholders = ", ".join(f":pkg{i}" for i in range(len(names)))
+                        pkg_params = {f"pkg{i}": n for i, n in enumerate(names)}
+
+                        dep_rows = conn.execute(text(f"""
+                            SELECT d.dep_name, d.source, COUNT(*) AS cnt
+                            FROM package_deps d
+                            WHERE d.dep_name IN ({placeholders})
+                            GROUP BY d.dep_name, d.source
+                            ORDER BY cnt DESC
+                        """), pkg_params).fetchall()
+
+                        if dep_rows:
+                            total = sum(r._mapping["cnt"] for r in dep_rows)
+                            lines.append(f"  Indexed dependents: {total}")
+                            for dr in dep_rows:
+                                dm = dr._mapping
+                                lines.append(f"    {dm['dep_name']} ({dm['source']}): {dm['cnt']} repos")
+
+                            # Trend from dep_velocity_snapshots
+                            trend_rows = conn.execute(text(f"""
+                                SELECT dependent_count, snapshot_date
+                                FROM dep_velocity_snapshots
+                                WHERE dep_name IN ({placeholders})
+                                ORDER BY snapshot_date DESC
+                                LIMIT 5
+                            """), pkg_params).fetchall()
+                            if len(trend_rows) >= 2:
+                                latest_cnt = trend_rows[0]._mapping["dependent_count"]
+                                oldest_cnt = trend_rows[-1]._mapping["dependent_count"]
+                                delta = latest_cnt - oldest_cnt
+                                lines.append(f"  Trend: {'+' if delta >= 0 else ''}{delta} dependents "
+                                             f"over {len(trend_rows)} snapshots")
+                        else:
+                            lines.append("  No downstream dependents indexed.")
+                    else:
+                        lines.append("  No package name associated with this project.")
+                else:
+                    lines.append("  No package data available.")
+        except Exception:
+            lines.append("  Dependency data not available.")
+        lines.append("")
+
         # Last 5 releases
         releases = (
             session.query(Release)
@@ -1517,7 +1634,9 @@ async def trending(category: str = None, window: str = "7d") -> str:
                        s.days_since_release, s.commits_30d,
                        s.has_7d_baseline, s.has_30d_baseline,
                        COALESCE(s.tier, 4) AS tier,
-                       s.lifecycle_stage
+                       s.lifecycle_stage,
+                       s.traction_score,
+                       s.traction_bucket
                 FROM mv_project_summary s
                 {where_clause}
                 ORDER BY {delta_col} DESC NULLS LAST
@@ -1528,13 +1647,15 @@ async def trending(category: str = None, window: str = "7d") -> str:
                 lines.append(
                     f"  {'#':<3} {'Project':<24} {'Tier':<5} {'Stage':<12} {'Category':<10} "
                     f"{'Stars':<10} {'7d':<10} {'30d':<10} "
-                    f"{'DL/mo':<12} {'Hype':<12}"
+                    f"{'DL/mo':<12} {'Traction':<10} {'Bucket':<16}"
                 )
-                lines.append("  " + "-" * 120)
+                lines.append("  " + "-" * 135)
                 for i, r in enumerate(rows, 1):
                     has_bl = r.get(baseline_col, False)
                     delta_7d = _fmt_delta_safe(r.get('stars_7d_delta'), r.get('has_7d_baseline', False))
                     delta_30d = _fmt_delta_safe(r.get('stars_30d_delta'), r.get('has_30d_baseline', False))
+                    traction = str(r.get('traction_score', '')) if r.get('traction_score') is not None else ''
+                    bucket = str(r.get('traction_bucket', '')) or ''
                     lines.append(
                         f"  {i:<3} {str(r.get('name', '')):<24} "
                         f"T{int(r.get('tier', 4)):<4} "
@@ -1544,7 +1665,8 @@ async def trending(category: str = None, window: str = "7d") -> str:
                         f"{delta_7d:<10} "
                         f"{delta_30d:<10} "
                         f"{_fmt_number(r.get('monthly_downloads')):<12} "
-                        f"{str(r.get('hype_bucket', 'n/a')):<12}"
+                        f"{traction:<10} "
+                        f"{bucket:<16}"
                     )
             else:
                 lines.append("")
@@ -1597,6 +1719,275 @@ async def trending(category: str = None, window: str = "7d") -> str:
         lines.append(f"  Error querying trending data: {e}")
 
     return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Tool: breakouts — small repos with explosive % growth
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def breakouts(
+    min_stars: int = 100,
+    max_stars: int = 5000,
+    window: str = "7d",
+    limit: int = 15,
+) -> str:
+    """Surface small repos with explosive percentage growth — the breakout detector.
+
+    Finds repos that are small but growing disproportionately fast. These are
+    the projects gaining traction before anyone's talking about them.
+
+    Args:
+        min_stars: Minimum stars at start of window (default 100)
+        max_stars: Maximum stars at start of window (default 5000)
+        window: '7d' or '30d' (default '7d')
+        limit: Max results (default 15, max 30)
+
+    Examples:
+      breakouts()                          — 7-day breakouts, 100-5000 stars
+      breakouts(max_stars=1000)            — micro-repos only
+      breakouts(min_stars=5000, max_stars=20000) — mid-tier breakouts
+      breakouts(window='30d', limit=20)    — 30-day breakouts
+    """
+    limit = min(max(1, limit), 30)
+    days = 30 if window == "30d" else 7
+    window_label = "7 days" if days == 7 else "30 days"
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                WITH then_snapshot AS (
+                    SELECT DISTINCT ON (project_id)
+                        project_id, stars AS stars_then
+                    FROM github_snapshots
+                    WHERE snapshot_date <= (SELECT MAX(snapshot_date) - :days FROM github_snapshots)
+                    ORDER BY project_id, snapshot_date DESC
+                ),
+                now_snapshot AS (
+                    SELECT DISTINCT ON (project_id)
+                        project_id, stars AS stars_now
+                    FROM github_snapshots
+                    ORDER BY project_id, snapshot_date DESC
+                )
+                SELECT
+                    p.name, p.slug, p.category, p.domain, p.stack_layer,
+                    LEFT(p.description, 100) AS description,
+                    now_snapshot.stars_now,
+                    then_snapshot.stars_then,
+                    now_snapshot.stars_now - then_snapshot.stars_then AS gain,
+                    ROUND(100.0 * (now_snapshot.stars_now - then_snapshot.stars_then)
+                          / NULLIF(then_snapshot.stars_then, 0), 1) AS pct
+                FROM now_snapshot
+                JOIN then_snapshot USING (project_id)
+                JOIN projects p ON p.id = now_snapshot.project_id
+                WHERE then_snapshot.stars_then BETWEEN :min_stars AND :max_stars
+                  AND now_snapshot.stars_now - then_snapshot.stars_then > 0
+                  AND p.is_active = true
+                ORDER BY pct DESC
+                LIMIT :limit
+            """), {
+                "days": days,
+                "min_stars": min_stars,
+                "max_stars": max_stars,
+                "limit": limit,
+            }).fetchall()
+
+        lines = [
+            f"BREAKOUT DETECTION (last {window_label})",
+            f"Star range at start of window: {min_stars:,} – {max_stars:,}",
+            "=" * 60,
+        ]
+
+        if not rows:
+            lines.append("  No breakouts detected in this range.")
+            return "\n".join(lines)
+
+        lines.append("")
+        for i, r in enumerate(rows, 1):
+            m = r._mapping
+            lines.append(
+                f"  {i}. {m['name']}  (+{m['pct']}%)"
+            )
+            lines.append(
+                f"     {_fmt_number(m['stars_then'])} → {_fmt_number(m['stars_now'])} stars  "
+                f"(+{_fmt_number(m['gain'])})"
+            )
+            if m.get('domain') or m.get('category'):
+                parts = [x for x in [m.get('domain'), m.get('category'), m.get('stack_layer')] if x]
+                lines.append(f"     {' / '.join(parts)}")
+            if m.get('description'):
+                lines.append(f"     {m['description']}")
+            lines.append("")
+
+        lines.append("Tip: Use project_pulse('name') for full details on any breakout.")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"breakouts failed: {e}")
+        return "Error detecting breakouts. Please try again."
+
+
+# ---------------------------------------------------------------------------
+# Tool: ecosystem_layer — explore a specific ecosystem layer
+# ---------------------------------------------------------------------------
+
+# Mapping of user-friendly layer names to query filters
+_LAYER_FILTERS = {
+    # MCP plumbing
+    "mcp-gateway":    {"domain": "mcp", "subcategory": "gateway"},
+    "mcp-transport":  {"domain": "mcp", "subcategory": "transport"},
+    "mcp-security":   {"domain": "mcp", "subcategory": "security"},
+    "mcp-framework":  {"domain": "mcp", "subcategory": "framework"},
+    "mcp-ide":        {"domain": "mcp", "subcategory": "ide"},
+    "mcp-observability": {"domain": "mcp", "subcategory": "observability"},
+    "mcp":            {"domain": "mcp"},
+    # Agent perception
+    "perception":     {"domain_in": ["computer-vision", "web-scraping"], "description_like": "%scrape%browser%crawl%"},
+    # Stack layers
+    "orchestration":  {"stack_layer": "orchestration"},
+    "inference":      {"stack_layer": "inference"},
+    "model":          {"stack_layer": "model"},
+    "data":           {"stack_layer": "data"},
+    "eval":           {"stack_layer": "eval"},
+    "interface":      {"stack_layer": "interface"},
+    "infra":          {"stack_layer": "infra"},
+    # AI repo domains
+    "agents":         {"domain": "agents"},
+    "nlp":            {"domain": "nlp"},
+    "ai-coding":      {"domain": "ai-coding"},
+    "llm-tools":      {"domain": "llm-tools"},
+}
+
+
+@mcp.tool()
+@track_usage
+async def ecosystem_layer(
+    layer: str,
+    sort_by: str = "stars",
+    limit: int = 20,
+) -> str:
+    """Explore an ecosystem layer — e.g. MCP gateways, perception tools, agent frameworks.
+
+    Shows repos in that layer with stars, downloads, growth, and traction data.
+
+    Args:
+        layer: Layer to explore. Options: mcp-gateway, mcp-transport, mcp-security,
+               mcp-framework, mcp-ide, mcp-observability, mcp, perception,
+               orchestration, inference, model, data, eval, interface, infra,
+               agents, nlp, ai-coding, llm-tools
+        sort_by: 'stars', 'downloads', or 'growth' (default: stars)
+        limit: Max results (default 20, max 50)
+
+    Examples:
+      ecosystem_layer('mcp-gateway')
+      ecosystem_layer('orchestration', sort_by='growth')
+      ecosystem_layer('perception', limit=30)
+    """
+    layer = layer.strip().lower()
+    limit = min(max(1, limit), 50)
+
+    filters = _LAYER_FILTERS.get(layer)
+    if not filters:
+        available = ", ".join(sorted(_LAYER_FILTERS.keys()))
+        return f"Unknown layer '{layer}'. Available layers:\n{available}"
+
+    # Build WHERE clause
+    conditions = []
+    params: dict = {"limit": limit}
+
+    if "domain" in filters:
+        conditions.append("ar.domain = :domain")
+        params["domain"] = filters["domain"]
+    if "subcategory" in filters:
+        conditions.append("ar.subcategory = :subcategory")
+        params["subcategory"] = filters["subcategory"]
+    if "stack_layer" in filters:
+        conditions.append("p.stack_layer = :stack_layer")
+        params["stack_layer"] = filters["stack_layer"]
+
+    where_clause = " AND ".join(conditions) if conditions else "TRUE"
+
+    order_col = {
+        "downloads": "ar.downloads_monthly DESC NULLS LAST",
+        "growth": "star_gain DESC NULLS LAST",
+    }.get(sort_by, "ar.stars DESC NULLS LAST")
+
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text(f"""
+                WITH latest_gh AS (
+                    SELECT DISTINCT ON (project_id)
+                        project_id, stars AS stars_now
+                    FROM github_snapshots
+                    ORDER BY project_id, snapshot_date DESC
+                ),
+                prev_7d AS (
+                    SELECT DISTINCT ON (gs.project_id)
+                        gs.project_id, gs.stars AS stars_7d_ago
+                    FROM github_snapshots gs
+                    JOIN latest_gh l ON gs.project_id = l.project_id
+                    WHERE gs.snapshot_date <= (SELECT MAX(snapshot_date) - 7 FROM github_snapshots)
+                    ORDER BY gs.project_id, gs.snapshot_date DESC
+                )
+                SELECT
+                    ar.full_name, ar.name, ar.description,
+                    ar.stars, ar.forks, ar.language, ar.domain, ar.subcategory,
+                    ar.downloads_monthly, ar.dependency_count,
+                    COALESCE(l.stars_now, 0) - COALESCE(p7.stars_7d_ago, 0) AS star_gain,
+                    CASE WHEN COALESCE(p7.stars_7d_ago, 0) > 0
+                         THEN ROUND(100.0 * (COALESCE(l.stars_now, 0) - COALESCE(p7.stars_7d_ago, 0))
+                              / p7.stars_7d_ago, 1)
+                         ELSE NULL END AS star_pct
+                FROM ai_repos ar
+                LEFT JOIN projects p ON p.ai_repo_id = ar.id
+                LEFT JOIN latest_gh l ON l.project_id = p.id
+                LEFT JOIN prev_7d p7 ON p7.project_id = p.id
+                WHERE {where_clause}
+                  AND ar.archived = false
+                ORDER BY {order_col}
+                LIMIT :limit
+            """), params).fetchall()
+
+        sort_label = {"downloads": "downloads", "growth": "7d growth"}.get(sort_by, "stars")
+        lines = [
+            f"ECOSYSTEM LAYER: {layer}",
+            f"Sorted by: {sort_label}  |  {len(rows)} results",
+            "=" * 60,
+            "",
+        ]
+
+        if not rows:
+            lines.append(f"  No repos found for layer '{layer}'.")
+            return "\n".join(lines)
+
+        for i, r in enumerate(rows, 1):
+            m = r._mapping
+            star_info = f"{_fmt_number(m['stars'])} stars"
+            if m.get('star_gain') and m['star_gain'] > 0:
+                star_info += f"  (+{_fmt_number(m['star_gain'])} / +{m.get('star_pct', '?')}% 7d)"
+
+            dl_info = ""
+            if m.get('downloads_monthly') and m['downloads_monthly'] > 0:
+                dl_info = f"  |  {_fmt_number(m['downloads_monthly'])} dl/mo"
+
+            dep_info = ""
+            if m.get('dependency_count') and m['dependency_count'] > 0:
+                dep_info = f"  |  {m['dependency_count']} dependents"
+
+            lines.append(f"  {i}. {m['full_name']}  ({m.get('language', '?')})")
+            lines.append(f"     {star_info}{dl_info}{dep_info}")
+            if m.get('description'):
+                desc = str(m['description'])[:120]
+                lines.append(f"     {desc}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        logger.exception(f"ecosystem_layer failed: {e}")
+        return f"Error querying ecosystem layer '{layer}'. Please try again."
 
 
 # ---------------------------------------------------------------------------
@@ -4003,11 +4394,56 @@ async def briefing(topic: str = None, domain: str = "") -> str:
                     lines.append(f"    Verified: {freshness}")
                     lines.append("")
 
+                # Also show landscape briefs if they exist
+                try:
+                    lb_rows = conn.execute(text("""
+                        SELECT layer, title, generated_at FROM landscape_briefs
+                        ORDER BY layer
+                    """)).fetchall()
+                    if lb_rows:
+                        lines.append("")
+                        lines.append("LANDSCAPE BRIEFS (weekly, per ecosystem layer)")
+                        lines.append("=" * 60)
+                        lines.append("")
+                        lines.append("Auto-generated weekly overviews of ecosystem layers.")
+                        lines.append("Call briefing('layer-name') for the full analysis.")
+                        lines.append("")
+                        for lb in lb_rows:
+                            lm = lb._mapping
+                            lines.append(f"  {lm['layer']}")
+                            lines.append(f"    {lm['title']}")
+                            lines.append(f"    Generated: {_fmt_date(lm['generated_at'])}")
+                            lines.append("")
+                except Exception:
+                    pass  # landscape_briefs table may not exist yet
+
                 return "\n".join(lines)
 
             # ---------------------------------------------------------------
             # Detail mode — specific topic
             # ---------------------------------------------------------------
+
+            # 0. Check landscape_briefs first
+            lb_row = None
+            try:
+                lb_row = conn.execute(text("""
+                    SELECT layer, title, summary, evidence, generated_at
+                    FROM landscape_briefs
+                    WHERE LOWER(layer) = LOWER(:topic)
+                """), {"topic": topic.strip()}).fetchone()
+            except Exception:
+                pass
+
+            if lb_row:
+                lm = lb_row._mapping
+                lines = [
+                    f"LANDSCAPE BRIEF: {lm['title']}",
+                    f"Layer: {lm['layer']}  |  Generated: {_fmt_date(lm['generated_at'])}",
+                    "=" * 60,
+                    "",
+                    lm["summary"],
+                ]
+                return "\n".join(lines)
 
             # 1. Exact slug match
             row = conn.execute(text("""
@@ -4018,6 +4454,19 @@ async def briefing(topic: str = None, domain: str = "") -> str:
 
             if not row:
                 # 2. Partial match on slug, title, or summary
+                # Also search landscape_briefs
+                lb_similar = []
+                try:
+                    lb_similar = conn.execute(text("""
+                        SELECT layer AS slug, title FROM landscape_briefs
+                        WHERE LOWER(layer) LIKE '%' || LOWER(:q) || '%'
+                           OR LOWER(title) LIKE '%' || LOWER(:q) || '%'
+                        ORDER BY layer
+                        LIMIT 5
+                    """), {"q": topic.strip()}).fetchall()
+                except Exception:
+                    pass
+
                 similar = conn.execute(text("""
                     SELECT slug, title FROM briefings
                     WHERE LOWER(slug) LIKE '%' || LOWER(:q) || '%'
@@ -4027,11 +4476,14 @@ async def briefing(topic: str = None, domain: str = "") -> str:
                     LIMIT 10
                 """), {"q": topic.strip()}).fetchall()
 
-                if similar:
+                if similar or lb_similar:
                     lines = [
                         f"No exact match for '{topic}'. Did you mean one of these?",
                         "",
                     ]
+                    for s in lb_similar:
+                        sm = s._mapping
+                        lines.append(f"  briefing('{sm['slug']}')  — {sm['title']}  [landscape]")
                     for s in similar:
                         sm = s._mapping
                         lines.append(f"  briefing('{sm['slug']}')  — {sm['title']}")
@@ -6312,33 +6764,61 @@ async def find_dependents(package_name: str, source: str = "") -> str:
     try:
         with engine.connect() as conn:
             rows = conn.execute(text(f"""
-                SELECT r.full_name, r.stars, r.language, r.domain,
+                SELECT r.full_name, r.stars, r.language, r.domain, r.subcategory,
                        r.downloads_monthly, d.source, d.dep_spec, d.is_dev
                 FROM package_deps d
                 JOIN ai_repos r ON r.id = d.repo_id
                 WHERE d.dep_name = :pkg
                   {source_filter}
                 ORDER BY r.stars DESC
-                LIMIT 20
+                LIMIT 30
             """), params).fetchall()
 
-        if not rows:
-            scope = f" ({source})" if source else ""
-            return f"No indexed repos found that depend on '{package_name}'{scope}."
+            if not rows:
+                scope = f" ({source})" if source else ""
+                return f"No indexed repos found that depend on '{package_name}'{scope}."
 
-        # Coverage context
-        total_repos = conn.execute(text("SELECT COUNT(*) FROM ai_repos")).scalar() or 0
+            total_repos = conn.execute(text("SELECT COUNT(*) FROM ai_repos")).scalar() or 0
+
+            # Dependency count trend
+            trend_rows = conn.execute(text("""
+                SELECT dependent_count, snapshot_date
+                FROM dep_velocity_snapshots
+                WHERE dep_name = :pkg
+                ORDER BY snapshot_date DESC
+                LIMIT 10
+            """), {"pkg": package_name}).fetchall()
+
+            # Domain breakdown
+            domain_counts: dict = {}
+            for r in rows:
+                d = r._mapping.get("domain") or "unknown"
+                domain_counts[d] = domain_counts.get(d, 0) + 1
 
         lines = []
         lines.append(f"DEPENDENTS OF: {package_name}")
         if source:
             lines.append(f"Source: {source}")
         lines.append(f"Found {len(rows)} indexed repo{'s' if len(rows) != 1 else ''} (searched {total_repos:,} indexed repos)")
+
+        # Trend
+        if len(trend_rows) >= 2:
+            latest = trend_rows[0]._mapping["dependent_count"]
+            oldest = trend_rows[-1]._mapping["dependent_count"]
+            delta = latest - oldest
+            lines.append(f"Trend: {'+' if delta >= 0 else ''}{delta} dependents over {len(trend_rows)} snapshots")
+
+        # Domain breakdown
+        if len(domain_counts) > 1:
+            sorted_domains = sorted(domain_counts.items(), key=lambda x: -x[1])
+            domain_str = ", ".join(f"{d}: {c}" for d, c in sorted_domains[:6])
+            lines.append(f"By domain: {domain_str}")
+
         lines.append("=" * 50)
 
         for i, r in enumerate(rows, 1):
             m = r._mapping
-            stars = f"⭐ {m['stars']:,}" if m["stars"] else ""
+            stars = f"{m['stars']:,} stars" if m["stars"] else ""
             lang = m["language"] or ""
             domain = f"[{m['domain']}]" if m["domain"] else ""
             dev_marker = " (dev)" if m["is_dev"] else ""
@@ -6350,10 +6830,9 @@ async def find_dependents(package_name: str, source: str = "") -> str:
             lines.append(f"\n{i}. {m['full_name']} {domain}")
             lines.append(f"   {stars}{dl} · {lang}")
             lines.append(f"   Depends: {package_name}{spec}{dev_marker} ({m['source']})")
-            lines.append(f"   https://github.com/{m['full_name']}")
 
-        if len(rows) == 20:
-            lines.append("\n... showing top 20 by stars. There may be more.")
+        if len(rows) == 30:
+            lines.append("\n... showing top 30 by stars. There may be more.")
 
         if len(rows) < 5:
             lines.append("\nNote: This reflects indexed coverage only, not real-world adoption.")

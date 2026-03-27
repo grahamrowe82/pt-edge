@@ -1,0 +1,369 @@
+"""Add traction score, download trends, and landscape briefs
+
+Revision ID: 047
+Revises: 046
+Create Date: 2026-03-27
+
+New table: landscape_briefs for weekly ecosystem layer intelligence.
+New MVs: mv_download_trends (weekly download velocity + trend direction),
+         mv_traction_score (0-100 compound builder signal).
+Updated mv_project_summary with traction + trend columns.
+"""
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+# revision identifiers
+revision: str = "047"
+down_revision: Union[str, None] = "046"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    # --- 1. Create landscape_briefs table ---
+    op.execute("""
+CREATE TABLE landscape_briefs (
+    id SERIAL PRIMARY KEY,
+    layer VARCHAR(50) NOT NULL,
+    title VARCHAR(300) NOT NULL,
+    summary TEXT NOT NULL,
+    evidence JSONB,
+    generation_hash VARCHAR(64),
+    generated_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (layer)
+)
+    """)
+
+    # --- 2. Drop mv_project_summary (depends on everything) ---
+    op.execute("DROP MATERIALIZED VIEW IF EXISTS mv_project_summary CASCADE")
+
+    # --- 3. Create mv_download_trends (base, no MV dependencies) ---
+    op.execute("""
+CREATE MATERIALIZED VIEW mv_download_trends AS
+WITH dl_this_week AS (
+    SELECT DISTINCT ON (project_id)
+        project_id, downloads_weekly, snapshot_date
+    FROM download_snapshots
+    ORDER BY project_id, snapshot_date DESC
+),
+dl_last_week AS (
+    SELECT DISTINCT ON (ds.project_id)
+        ds.project_id, ds.downloads_weekly
+    FROM download_snapshots ds
+    JOIN dl_this_week tw ON ds.project_id = tw.project_id
+    WHERE ds.snapshot_date <= tw.snapshot_date - 7
+    ORDER BY ds.project_id, ds.snapshot_date DESC
+),
+dl_two_weeks_ago AS (
+    SELECT DISTINCT ON (ds.project_id)
+        ds.project_id, ds.downloads_weekly
+    FROM download_snapshots ds
+    JOIN dl_this_week tw ON ds.project_id = tw.project_id
+    WHERE ds.snapshot_date <= tw.snapshot_date - 14
+    ORDER BY ds.project_id, ds.snapshot_date DESC
+)
+SELECT
+    tw.project_id,
+    COALESCE(tw.downloads_weekly, 0) AS dl_weekly_now,
+    COALESCE(lw.downloads_weekly, 0) AS dl_weekly_prev,
+    COALESCE(tw.downloads_weekly, 0) - COALESCE(lw.downloads_weekly, 0) AS dl_weekly_velocity,
+    CASE
+        WHEN COALESCE(lw.downloads_weekly, 0) = 0 THEN NULL
+        ELSE ROUND(100.0 * (COALESCE(tw.downloads_weekly, 0) - COALESCE(lw.downloads_weekly, 0))
+             / NULLIF(lw.downloads_weekly, 0), 1)
+    END AS dl_weekly_pct_change,
+    CASE
+        WHEN lw.downloads_weekly IS NULL THEN 'new'
+        WHEN COALESCE(tw.downloads_weekly, 0) > COALESCE(lw.downloads_weekly, 0) * 1.1
+             AND COALESCE(lw.downloads_weekly, 0) > COALESCE(twoa.downloads_weekly, 0) * 1.1
+            THEN 'accelerating'
+        WHEN COALESCE(tw.downloads_weekly, 0) > COALESCE(lw.downloads_weekly, 0) * 1.1
+            THEN 'growing'
+        WHEN COALESCE(tw.downloads_weekly, 0) < COALESCE(lw.downloads_weekly, 0) * 0.9
+             AND COALESCE(lw.downloads_weekly, 0) < COALESCE(twoa.downloads_weekly, 0) * 0.9
+            THEN 'declining'
+        WHEN COALESCE(tw.downloads_weekly, 0) < COALESCE(lw.downloads_weekly, 0) * 0.9
+            THEN 'slowing'
+        ELSE 'stable'
+    END AS dl_trend
+FROM dl_this_week tw
+LEFT JOIN dl_last_week lw ON tw.project_id = lw.project_id
+LEFT JOIN dl_two_weeks_ago twoa ON tw.project_id = twoa.project_id
+    """)
+    op.execute("CREATE UNIQUE INDEX idx_mv_download_trends_project_id ON mv_download_trends (project_id)")
+
+    # --- 4. Create mv_traction_score (depends on mv_velocity, mv_download_trends) ---
+    op.execute("""
+CREATE MATERIALIZED VIEW mv_traction_score AS
+WITH latest_gh AS (
+    SELECT DISTINCT ON (project_id)
+        project_id, stars, forks
+    FROM github_snapshots
+    ORDER BY project_id, snapshot_date DESC
+),
+latest_dl AS (
+    SELECT DISTINCT ON (project_id)
+        project_id, downloads_monthly
+    FROM download_snapshots
+    ORDER BY project_id, snapshot_date DESC
+),
+dep_counts AS (
+    SELECT p.id AS project_id, COALESCE(a.dependency_count, 0) AS dependency_count
+    FROM projects p
+    LEFT JOIN ai_repos a ON a.id = p.ai_repo_id
+),
+raw_scores AS (
+    SELECT
+        p.id AS project_id,
+        p.name,
+        p.slug,
+        -- Component 1: fork_ratio (0-20 points)
+        LEAST(20, COALESCE(vel.fork_star_ratio, 0) * 100) AS fork_score,
+        -- Component 2: adoption_ratio (0-25 points)
+        CASE
+            WHEN COALESCE(gh.stars, 0) = 0 THEN 0
+            ELSE LEAST(25, (COALESCE(dl.downloads_monthly, 0)::numeric / NULLIF(gh.stars, 0)) * 2.5)
+        END AS adoption_score,
+        -- Component 3: dependency_count (0-20 points, log scale)
+        CASE
+            WHEN dc.dependency_count = 0 THEN 0
+            ELSE LEAST(20, LN(dc.dependency_count + 1) * 5)
+        END AS dependency_score,
+        -- Component 4: commit velocity (0-20 points)
+        CASE
+            WHEN COALESCE(vel.commits_30d, 0) = 0 THEN 0
+            WHEN vel.commits_30d <= 10 THEN 5
+            WHEN vel.commits_30d <= 50 THEN 10
+            WHEN vel.commits_30d <= 200 THEN 15
+            ELSE 20
+        END AS velocity_score,
+        -- Component 5: contributor diversity (0-15 points)
+        CASE
+            WHEN COALESCE(vel.contributors, 0) <= 1 THEN 0
+            WHEN vel.contributors <= 5 THEN 5
+            WHEN vel.contributors <= 20 THEN 10
+            ELSE 15
+        END AS contributor_score,
+        -- Raw values for bucket assignment
+        COALESCE(vel.fork_star_ratio, 0) AS fork_star_ratio,
+        COALESCE(dl.downloads_monthly, 0) AS monthly_downloads,
+        COALESCE(gh.stars, 0) AS stars,
+        dc.dependency_count,
+        COALESCE(vel.contributors, 0) AS contributors,
+        COALESCE(vel.commits_30d, 0) AS commits_30d,
+        COALESCE(dt.dl_trend, 'stable') AS dl_trend
+    FROM projects p
+    LEFT JOIN latest_gh gh ON p.id = gh.project_id
+    LEFT JOIN latest_dl dl ON p.id = dl.project_id
+    LEFT JOIN mv_velocity vel ON p.id = vel.project_id
+    LEFT JOIN dep_counts dc ON p.id = dc.project_id
+    LEFT JOIN mv_download_trends dt ON p.id = dt.project_id
+    WHERE p.is_active = true
+)
+SELECT
+    project_id,
+    name,
+    slug,
+    ROUND(fork_score + adoption_score + dependency_score + velocity_score + contributor_score)::int AS traction_score,
+    fork_score,
+    adoption_score,
+    dependency_score,
+    velocity_score,
+    contributor_score,
+    CASE
+        WHEN fork_star_ratio > 0.15 AND dependency_count > 5 THEN 'infrastructure'
+        WHEN contributors > 10 AND commits_30d > 20 THEN 'community-driven'
+        WHEN stars > 1000 AND monthly_downloads < stars * 0.5 AND dependency_count < 3 THEN 'hype'
+        WHEN monthly_downloads > stars * 5 AND stars < 5000 THEN 'stealth-adoption'
+        WHEN contributors <= 1 AND commits_30d > 50 THEN 'company-driven'
+        ELSE 'balanced'
+    END AS traction_bucket,
+    fork_star_ratio,
+    monthly_downloads,
+    stars,
+    dependency_count,
+    contributors,
+    commits_30d,
+    dl_trend
+FROM raw_scores
+    """)
+    op.execute("CREATE UNIQUE INDEX idx_mv_traction_score_project_id ON mv_traction_score (project_id)")
+
+    # --- 5. Recreate mv_project_summary with traction + download trend columns ---
+    op.execute("""
+CREATE MATERIALIZED VIEW mv_project_summary AS
+WITH latest_gh AS (
+    SELECT DISTINCT ON (project_id)
+        project_id, stars, forks, commits_30d, last_commit_at
+    FROM github_snapshots
+    ORDER BY project_id, snapshot_date DESC
+),
+latest_dl AS (
+    SELECT DISTINCT ON (project_id)
+        project_id, downloads_monthly
+    FROM download_snapshots
+    ORDER BY project_id, snapshot_date DESC
+),
+latest_release AS (
+    SELECT DISTINCT ON (project_id)
+        project_id, released_at AS last_release_at, title AS last_release_title
+    FROM releases
+    WHERE project_id IS NOT NULL
+    ORDER BY project_id, released_at DESC
+),
+correction_counts AS (
+    SELECT
+        topic,
+        COUNT(*) AS correction_count
+    FROM corrections
+    WHERE status = 'active'
+    GROUP BY topic
+)
+SELECT
+    p.id AS project_id,
+    p.name,
+    p.slug,
+    p.category,
+    p.domain,
+    p.stack_layer,
+    l.name AS lab_name,
+    COALESCE(gh.stars, 0) AS stars,
+    COALESCE(gh.forks, 0) AS forks,
+    COALESCE(dl.downloads_monthly, 0) AS monthly_downloads,
+    COALESCE(m.stars_7d_delta, 0) AS stars_7d_delta,
+    COALESCE(m.stars_30d_delta, 0) AS stars_30d_delta,
+    COALESCE(m.dl_30d_delta, 0) AS dl_30d_delta,
+    hr.hype_ratio,
+    hr.hype_bucket,
+    lr.last_release_at,
+    lr.last_release_title,
+    EXTRACT(DAY FROM NOW() - lr.last_release_at)::int AS days_since_release,
+    gh.last_commit_at,
+    COALESCE(gh.commits_30d, 0) AS commits_30d,
+    COALESCE(cc.correction_count, 0) AS correction_count,
+    COALESCE(tier.tier, 4) AS tier,
+    tier.is_override AS tier_is_override,
+    lc.lifecycle_stage,
+    m.has_7d_baseline,
+    m.has_30d_baseline,
+    vel.velocity_band,
+    vel.commits_per_contributor,
+    vel.cpc_is_capped,
+    vel.fork_star_ratio,
+    COALESCE(m.commits_7d_delta, 0) AS commits_7d_delta,
+    COALESCE(m.commits_30d_delta, 0) AS commits_30d_delta,
+    COALESCE(m.contributors_30d_delta, 0) AS contributors_30d_delta,
+    ts.traction_score,
+    ts.traction_bucket,
+    dt.dl_trend,
+    dt.dl_weekly_velocity
+FROM projects p
+LEFT JOIN labs l ON p.lab_id = l.id
+LEFT JOIN latest_gh gh ON p.id = gh.project_id
+LEFT JOIN latest_dl dl ON p.id = dl.project_id
+LEFT JOIN mv_momentum m ON p.id = m.project_id
+LEFT JOIN mv_hype_ratio hr ON p.id = hr.project_id
+LEFT JOIN latest_release lr ON p.id = lr.project_id
+LEFT JOIN correction_counts cc ON LOWER(cc.topic) = LOWER(p.slug)
+LEFT JOIN mv_project_tier tier ON p.id = tier.project_id
+LEFT JOIN mv_lifecycle lc ON p.id = lc.project_id
+LEFT JOIN mv_velocity vel ON p.id = vel.project_id
+LEFT JOIN mv_traction_score ts ON p.id = ts.project_id
+LEFT JOIN mv_download_trends dt ON p.id = dt.project_id
+WHERE p.is_active = true
+    """)
+    op.execute("CREATE UNIQUE INDEX idx_mv_project_summary_project_id ON mv_project_summary (project_id)")
+
+
+def downgrade() -> None:
+    # --- 1. Drop landscape_briefs ---
+    op.execute("DROP TABLE IF EXISTS landscape_briefs")
+
+    # --- 2. Drop mv_project_summary (depends on everything) ---
+    op.execute("DROP MATERIALIZED VIEW IF EXISTS mv_project_summary CASCADE")
+
+    # --- 3. Drop new MVs ---
+    op.execute("DROP MATERIALIZED VIEW IF EXISTS mv_traction_score CASCADE")
+    op.execute("DROP MATERIALIZED VIEW IF EXISTS mv_download_trends CASCADE")
+
+    # --- 4. Recreate mv_project_summary (043 definition) ---
+    op.execute("""
+CREATE MATERIALIZED VIEW mv_project_summary AS
+WITH latest_gh AS (
+    SELECT DISTINCT ON (project_id)
+        project_id, stars, forks, commits_30d, last_commit_at
+    FROM github_snapshots
+    ORDER BY project_id, snapshot_date DESC
+),
+latest_dl AS (
+    SELECT DISTINCT ON (project_id)
+        project_id, downloads_monthly
+    FROM download_snapshots
+    ORDER BY project_id, snapshot_date DESC
+),
+latest_release AS (
+    SELECT DISTINCT ON (project_id)
+        project_id, released_at AS last_release_at, title AS last_release_title
+    FROM releases
+    WHERE project_id IS NOT NULL
+    ORDER BY project_id, released_at DESC
+),
+correction_counts AS (
+    SELECT
+        topic,
+        COUNT(*) AS correction_count
+    FROM corrections
+    WHERE status = 'active'
+    GROUP BY topic
+)
+SELECT
+    p.id AS project_id,
+    p.name,
+    p.slug,
+    p.category,
+    p.domain,
+    p.stack_layer,
+    l.name AS lab_name,
+    COALESCE(gh.stars, 0) AS stars,
+    COALESCE(gh.forks, 0) AS forks,
+    COALESCE(dl.downloads_monthly, 0) AS monthly_downloads,
+    COALESCE(m.stars_7d_delta, 0) AS stars_7d_delta,
+    COALESCE(m.stars_30d_delta, 0) AS stars_30d_delta,
+    COALESCE(m.dl_30d_delta, 0) AS dl_30d_delta,
+    hr.hype_ratio,
+    hr.hype_bucket,
+    lr.last_release_at,
+    lr.last_release_title,
+    EXTRACT(DAY FROM NOW() - lr.last_release_at)::int AS days_since_release,
+    gh.last_commit_at,
+    COALESCE(gh.commits_30d, 0) AS commits_30d,
+    COALESCE(cc.correction_count, 0) AS correction_count,
+    COALESCE(tier.tier, 4) AS tier,
+    tier.is_override AS tier_is_override,
+    lc.lifecycle_stage,
+    m.has_7d_baseline,
+    m.has_30d_baseline,
+    vel.velocity_band,
+    vel.commits_per_contributor,
+    vel.cpc_is_capped,
+    vel.fork_star_ratio,
+    COALESCE(m.commits_7d_delta, 0) AS commits_7d_delta,
+    COALESCE(m.commits_30d_delta, 0) AS commits_30d_delta,
+    COALESCE(m.contributors_30d_delta, 0) AS contributors_30d_delta
+FROM projects p
+LEFT JOIN labs l ON p.lab_id = l.id
+LEFT JOIN latest_gh gh ON p.id = gh.project_id
+LEFT JOIN latest_dl dl ON p.id = dl.project_id
+LEFT JOIN mv_momentum m ON p.id = m.project_id
+LEFT JOIN mv_hype_ratio hr ON p.id = hr.project_id
+LEFT JOIN latest_release lr ON p.id = lr.project_id
+LEFT JOIN correction_counts cc ON LOWER(cc.topic) = LOWER(p.slug)
+LEFT JOIN mv_project_tier tier ON p.id = tier.project_id
+LEFT JOIN mv_lifecycle lc ON p.id = lc.project_id
+LEFT JOIN mv_velocity vel ON p.id = vel.project_id
+WHERE p.is_active = true
+    """)
+    op.execute("CREATE UNIQUE INDEX idx_mv_project_summary_project_id ON mv_project_summary (project_id)")
