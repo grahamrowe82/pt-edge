@@ -36,4 +36,24 @@ git config user.name "PT-Edge Bot"
 git config user.email "bot@phasetransitions.ai"
 git commit -m "Daily update: ${SCORES_FMT} servers scored — $(date -u +%Y-%m-%d)"
 git push
-echo "Dataset pushed successfully"
+echo "Dataset pushed to GitHub successfully"
+
+# Push to Hugging Face (best-effort, don't fail the pipeline)
+if [ -n "${HF_TOKEN:-}" ]; then
+    python3 -c "
+from huggingface_hub import HfApi
+import os
+api = HfApi(token=os.environ['HF_TOKEN'])
+repo_id = 'grahamrowe82/mcp-quality-index'
+api.upload_folder(
+    folder_path='data',
+    path_in_repo='data',
+    repo_id=repo_id,
+    repo_type='dataset',
+    commit_message='Daily update: $(date -u +%Y-%m-%d)',
+)
+print('Dataset pushed to Hugging Face successfully')
+" || echo "Warning: Hugging Face push failed (non-fatal)"
+else
+    echo "Skipping Hugging Face push (HF_TOKEN not set)"
+fi
