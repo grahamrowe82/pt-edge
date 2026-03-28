@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}MCP Server Directory | PT-Edge{% endblock %}</title>
+  <title>{% block title %}{{ domain_label }} Directory | PT-Edge{% endblock %}</title>
   {% block meta %}{% endblock %}
   {% block canonical %}{% endblock %}
   <script src="https://cdn.tailwindcss.com"></script>
@@ -19,13 +19,13 @@
 
   <nav class="border-b border-gray-200 bg-white sticky top-0 z-50">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
-      <a href="/" class="text-lg font-bold text-gray-900 hover:text-blue-600 transition-colors">
-        PT-Edge <span class="font-normal text-gray-500">MCP Directory</span>
+      <a href="{{ base_path }}/" class="text-lg font-bold text-gray-900 hover:text-blue-600 transition-colors">
+        PT-Edge <span class="font-normal text-gray-500">{{ domain_label }} Directory</span>
       </a>
       <div class="flex items-center gap-6 text-sm font-medium text-gray-600">
-        <a href="/servers/" class="hover:text-gray-900">Servers</a>
-        <a href="/categories/" class="hover:text-gray-900">Categories</a>
-        <a href="/trending/" class="hover:text-gray-900">Trending</a>
+        <a href="{{ base_path }}/servers/" class="hover:text-gray-900">{{ noun_plural | capitalize }}</a>
+        <a href="{{ base_path }}/categories/" class="hover:text-gray-900">Categories</a>
+        <a href="{{ base_path }}/trending/" class="hover:text-gray-900">Trending</a>
         <a href="/api/docs" class="hover:text-gray-900">API</a>
       </div>
     </div>
@@ -36,9 +36,17 @@
   </main>
 
   <footer class="border-t border-gray-200 mt-16">
-    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 text-center text-sm text-gray-500">
-      <p>Powered by <a href="https://phasetransitions.ai" class="text-blue-600 hover:underline">PT-Edge</a> &middot; Updated daily &middot; {{ total_count | default('11,000+') }} servers tracked</p>
-      <p class="mt-1">Quality scores computed from GitHub activity, package adoption, maintenance signals, and community metrics.</p>
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      <div class="flex flex-wrap items-center justify-center gap-4 text-xs text-gray-400 mb-4">
+        <span>Directories:</span>
+        {% for d in directories %}
+        <a href="{{ d.path }}" class="hover:text-gray-600{% if d.domain == domain %} text-gray-600 font-medium{% endif %}">{{ d.label }}</a>
+        {% endfor %}
+      </div>
+      <div class="text-center text-sm text-gray-500">
+        <p>Powered by <a href="https://phasetransitions.ai" class="text-blue-600 hover:underline">PT-Edge</a> &middot; Updated daily &middot; {{ total_count | default('11,000+') }} {{ noun_plural }} tracked</p>
+        <p class="mt-1">Quality scores computed from GitHub activity, package adoption, maintenance signals, and community metrics.</p>
+      </div>
     </div>
   </footer>
 

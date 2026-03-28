@@ -23,6 +23,9 @@ VIEWS_IN_ORDER = [
     "mv_usage_daily_summary",  # depends on: mv_usage_sessions
     "mv_ai_repo_ecosystem",    # standalone: ai_repos stats by domain+subcategory
     "mv_mcp_quality",          # standalone: quality scores for MCP-domain repos
+    "mv_agents_quality",       # standalone: quality scores for agents-domain repos
+    "mv_rag_quality",          # standalone: quality scores for rag-domain repos
+    "mv_ai_coding_quality",    # standalone: quality scores for ai-coding-domain repos
 ]
 
 
@@ -92,6 +95,33 @@ def refresh_all_views():
             logger.info("Snapshotted MCP quality scores")
     except Exception as e:
         logger.warning(f"Could not snapshot MCP quality scores: {e}")
+
+    # Snapshot quality scores for agents, rag, ai-coding domains
+    for domain, view in [("agents", "mv_agents_quality"), ("rag", "mv_rag_quality"), ("ai-coding", "mv_ai_coding_quality")]:
+        try:
+            with engine.connect() as conn:
+                conn.execute(text(f"""
+                    INSERT INTO quality_snapshots
+                        (repo_id, domain, snapshot_date, quality_score, quality_tier,
+                         maintenance_score, adoption_score, maturity_score,
+                         community_score, risk_flags)
+                    SELECT id, :domain, CURRENT_DATE, quality_score, quality_tier,
+                           maintenance_score, adoption_score, maturity_score,
+                           community_score, risk_flags
+                    FROM {view}
+                    ON CONFLICT (repo_id, snapshot_date) DO UPDATE SET
+                        quality_score = EXCLUDED.quality_score,
+                        quality_tier = EXCLUDED.quality_tier,
+                        maintenance_score = EXCLUDED.maintenance_score,
+                        adoption_score = EXCLUDED.adoption_score,
+                        maturity_score = EXCLUDED.maturity_score,
+                        community_score = EXCLUDED.community_score,
+                        risk_flags = EXCLUDED.risk_flags
+                """), {"domain": domain})
+                conn.commit()
+                logger.info(f"Snapshotted {domain} quality scores")
+        except Exception as e:
+            logger.warning(f"Could not snapshot {domain} quality scores: {e}")
 
     # Log sync
     session = SessionLocal()

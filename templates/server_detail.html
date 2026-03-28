@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}{{ server.name }} &mdash; MCP Server Quality Score {{ server.quality_score | int }}/100 | PT-Edge{% endblock %}
+{% block title %}{{ server.name }} &mdash; {{ domain_label }} Quality Score {{ server.quality_score | int }}/100 | PT-Edge{% endblock %}
 
 {% block meta %}
 <meta name="description" content="{{ server.description | truncate(155) }} Quality tier: {{ server.quality_tier }}. {{ server.stars | int }} stars, {{ server.language or 'unknown language' }}. Scored {{ server.quality_score | int }}/100.">
-<meta property="og:title" content="{{ server.name }} &mdash; MCP Server Score {{ server.quality_score | int }}/100">
+<meta property="og:title" content="{{ server.name }} &mdash; {{ domain_label }} Score {{ server.quality_score | int }}/100">
 <meta property="og:description" content="{{ server.description | truncate(200) }}">
 <meta property="og:type" content="article">
-<meta property="og:url" content="{{ base_url }}/servers/{{ server.full_name }}/">
+<meta property="og:url" content="{{ base_url }}{{ base_path }}/servers/{{ server.full_name }}/">
 {% endblock %}
 
-{% block canonical %}<link rel="canonical" href="{{ base_url }}/servers/{{ server.full_name }}/">{% endblock %}
+{% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/servers/{{ server.full_name }}/">{% endblock %}
 
 {% block jsonld %}
 <script type="application/ld+json">
@@ -41,8 +41,8 @@
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
-    {"@type": "ListItem", "position": 1, "name": "Home", "item": "{{ base_url }}/"},
-    {"@type": "ListItem", "position": 2, "name": "Servers", "item": "{{ base_url }}/servers/"},
+    {"@type": "ListItem", "position": 1, "name": "Home", "item": "{{ base_url }}{{ base_path }}/"},
+    {"@type": "ListItem", "position": 2, "name": "{{ noun_plural | capitalize }}", "item": "{{ base_url }}{{ base_path }}/servers/"},
     {"@type": "ListItem", "position": 3, "name": "{{ server.full_name }}"}
   ]
 }
@@ -52,16 +52,14 @@
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
 
-  <!-- Breadcrumb -->
   <nav class="text-sm text-gray-500 mb-6">
-    <a href="/" class="hover:text-gray-700">Home</a>
+    <a href="{{ base_path }}/" class="hover:text-gray-700">Home</a>
     <span class="mx-1">/</span>
-    <a href="/servers/" class="hover:text-gray-700">Servers</a>
+    <a href="{{ base_path }}/servers/" class="hover:text-gray-700">{{ noun_plural | capitalize }}</a>
     <span class="mx-1">/</span>
     <span class="text-gray-700">{{ server.full_name }}</span>
   </nav>
 
-  <!-- Header -->
   <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
     <div class="flex-1 min-w-0">
       <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 break-words">{{ server.full_name }}</h1>
@@ -77,7 +75,6 @@
     </div>
   </div>
 
-  <!-- Score breakdown -->
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
     {% for label, key, max_score in [('Maintenance', 'maintenance_score', 25), ('Adoption', 'adoption_score', 25), ('Maturity', 'maturity_score', 25), ('Community', 'community_score', 25)] %}
     <div class="rounded-lg border border-gray-200 p-4">
@@ -92,7 +89,6 @@
     {% endfor %}
   </div>
 
-  <!-- Metadata grid -->
   <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-8">
     <div class="rounded-lg bg-gray-50 p-3">
       <p class="text-xs text-gray-500">Stars</p>
@@ -113,7 +109,7 @@
     {% if server.subcategory %}
     <div class="rounded-lg bg-gray-50 p-3">
       <p class="text-xs text-gray-500">Category</p>
-      <p class="text-lg font-semibold"><a href="/categories/{{ server.subcategory }}/" class="text-blue-600 hover:underline">{{ server.subcategory }}</a></p>
+      <p class="text-lg font-semibold"><a href="{{ base_path }}/categories/{{ server.subcategory }}/" class="text-blue-600 hover:underline">{{ server.subcategory }}</a></p>
     </div>
     {% endif %}
     <div class="rounded-lg bg-gray-50 p-3">
@@ -144,7 +140,6 @@
     {% endif %}
   </div>
 
-  <!-- Risk flags -->
   {% if server.risk_flags and server.risk_flags | length > 0 %}
   <div class="mb-8">
     <h2 class="text-sm font-medium text-gray-700 mb-2">Risk flags</h2>
@@ -156,31 +151,25 @@
   </div>
   {% endif %}
 
-  <!-- External links -->
   <div class="flex flex-wrap gap-3 mb-8">
     <a href="https://github.com/{{ server.full_name }}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
       <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
       GitHub
     </a>
     {% if server.pypi_package %}
-    <a href="https://pypi.org/project/{{ server.pypi_package }}/" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-      PyPI
-    </a>
+    <a href="https://pypi.org/project/{{ server.pypi_package }}/" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">PyPI</a>
     {% endif %}
     {% if server.npm_package %}
-    <a href="https://www.npmjs.com/package/{{ server.npm_package }}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-      npm
-    </a>
+    <a href="https://www.npmjs.com/package/{{ server.npm_package }}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">npm</a>
     {% endif %}
   </div>
 
-  <!-- Related servers -->
   {% if related_servers %}
   <div class="mb-8">
-    <h2 class="text-lg font-bold text-gray-900 mb-3">Related {{ server.subcategory or '' }} servers</h2>
+    <h2 class="text-lg font-bold text-gray-900 mb-3">Related {{ server.subcategory or '' }} {{ noun_plural }}</h2>
     <div class="space-y-2">
       {% for r in related_servers %}
-      <a href="/servers/{{ r.full_name }}/" class="block rounded-lg border border-gray-200 p-3 hover:border-blue-300 transition-colors">
+      <a href="{{ base_path }}/servers/{{ r.full_name }}/" class="block rounded-lg border border-gray-200 p-3 hover:border-blue-300 transition-colors">
         <div class="flex items-center justify-between">
           <div class="min-w-0">
             <p class="font-medium text-blue-600 truncate">{{ r.full_name }}</p>
