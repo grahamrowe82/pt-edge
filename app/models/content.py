@@ -111,6 +111,8 @@ class AIRepo(Base):
     crate_package: Mapped[str | None] = mapped_column(String(200))
     commits_30d: Mapped[int | None] = mapped_column(Integer)
     commits_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ai_summary: Mapped[str | None] = mapped_column(Text)
+    ai_summary_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class PublicAPI(Base):
