@@ -1,6 +1,6 @@
 """Classify ai_repos by subcategory using keyword matching + LLM fallback.
 
-Supports multiple domains: mcp, agents, perception, ai-coding.
+Supports multiple domains: mcp, agents, perception, ai-coding, rag.
 Each domain has its own subcategory taxonomy.
 
 Phase 1 (regex): Fast keyword matching — first-match-wins.
@@ -63,12 +63,21 @@ AI_CODING_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
     ("context-tools", re.compile(r"context|codebase.index|code.search|repo.map|code.graph", re.IGNORECASE)),
 ]
 
+RAG_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
+    ("chunking", re.compile(r"chunk|split|segment|partition|text.split", re.IGNORECASE)),
+    ("retrieval", re.compile(r"retriev|search|query|hybrid.search|rerank", re.IGNORECASE)),
+    ("ingestion", re.compile(r"ingest|loader|document.load|pdf|parse|extract", re.IGNORECASE)),
+    ("evaluation", re.compile(r"eval|benchmark|ragas|faithfulness|relevance.score", re.IGNORECASE)),
+    ("pipeline", re.compile(r"pipeline|rag.framework|orchestrat|chain|workflow", re.IGNORECASE)),
+]
+
 # Master mapping: domain → subcategory patterns
 DOMAIN_SUBCATEGORIES: dict[str, list[tuple[str, re.Pattern]]] = {
     "mcp": MCP_SUBCATEGORIES,
     "agents": AGENTS_SUBCATEGORIES,
     "perception": PERCEPTION_SUBCATEGORIES,
     "ai-coding": AI_CODING_SUBCATEGORIES,
+    "rag": RAG_SUBCATEGORIES,
 }
 
 CLASSIFIED_DOMAINS = list(DOMAIN_SUBCATEGORIES.keys())
