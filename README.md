@@ -1,91 +1,74 @@
-# PT-Edge — AI Project Intelligence
+# PT-Edge — AI Infrastructure Intelligence
 
-PT-Edge is an MCP server that gives AI assistants live, structured knowledge about the AI ecosystem. It indexes open-source projects, HuggingFace models and datasets, public APIs, and community discourse — then exposes 47 MCP tools, 3 resources, 3 resource templates, and 4 prompts for discovery, comparison, and trend analysis.
+PT-Edge tracks 220,000+ AI repos across GitHub, PyPI, npm, Docker Hub, and HuggingFace, scores them daily on quality, and publishes the results as a directory site and via MCP tools and REST API.
 
-**Built by [Phase Transitions](https://phasetransitionsai.substack.com/)** — a weekly newsletter on building with AI, from architecture decisions to production patterns.
+**Directory site:** [mcp.phasetransitions.ai](https://mcp.phasetransitions.ai) — 59,000+ pages across 9 domains, updated daily.
 
-<a href="https://glama.ai/mcp/servers/grahamrowe82/pt-edge">
-  <img width="380" height="200" src="https://glama.ai/mcp/servers/grahamrowe82/pt-edge/badge" alt="PT-Edge MCP server" />
-</a>
+**Built by [Phase Transitions](https://phasetransitionsai.substack.com/)**
 
-## What It Does
+## Directory Domains
 
-- **Daily ingests** pull GitHub stats, package downloads, releases, HN posts, V2EX discussions, newsletter coverage, HuggingFace models/datasets, public API specs, and npm registry MCP servers
-- **Discovery indexes** — 11K+ AI repos, 18K+ HuggingFace models, 42K+ datasets, 2,500+ public APIs, all with 256d semantic embeddings, hybrid search, name-match boosting, staleness signals, and pagination
-- **Materialized views** compute derived metrics: momentum, hype ratio, tiers, lifecycle stage
-- **LLM-powered enrichment** — Claude Haiku summarises releases and newsletter topics; OpenAI embeds everything for semantic search
-- **47 MCP tools** let you query this data naturally in conversation
-- **MCP resources & prompts** — 3 static resources (methodology, categories, coverage), 3 parameterised resource templates (project, lab, category), and 4 compound query prompts (evaluate-technology, build-something, due-diligence, weekly-briefing)
-- **Community feedback system** — corrections, article pitches, and lab event tracking
+| Domain | Pages | Path |
+|--------|-------|------|
+| MCP Servers | 11,400 | `/` |
+| AI Agents | 16,300 | `/agents/` |
+| RAG Tools | 7,800 | `/rag/` |
+| AI Coding Tools | 3,400 | `/ai-coding/` |
+| Voice AI | 6,500 | `/voice-ai/` |
+| Diffusion Models | 3,900 | `/diffusion/` |
+| Vector Databases | 2,700 | `/vector-db/` |
+| Embedding Tools | 3,700 | `/embeddings/` |
+| Prompt Engineering | 3,600 | `/prompt-engineering/` |
 
-## Available Tools
+Every project page includes a composite quality score (0-100) computed from four dimensions — maintenance, adoption, maturity, community — plus AI-generated technical summaries, live metrics paragraphs, risk flags, and structured data for search engines.
 
-| Category | Tools |
-|----------|-------|
-| **Discovery** | `about`, `whats_new`, `trending`, `lifecycle_map`, `hype_landscape` |
-| **Deep Dives** | `project_pulse`, `lab_pulse`, `hype_check` |
-| **Comparison** | `compare`, `movers`, `related`, `market_map` |
-| **Project Discovery** | `radar`, `scout`, `deep_dive`, `sniff_projects`, `accept_candidate`, `topic`, `hn_pulse` |
-| **AI Ecosystem Search** | `find_ai_tool`, `find_mcp_server`, `find_public_api`, `find_dataset`, `find_model` (all support `offset` for pagination) |
-| **API Intelligence** | `get_api_spec`, `get_api_endpoints`, `get_dependencies`, `find_dependents` |
-| **Community** | `submit_feedback`, `upvote_feedback`, `list_feedback`, `amend_feedback`, `propose_article`, `list_pitches`, `upvote_pitch`, `amend_pitch` |
-| **Lab Intelligence** | `submit_lab_event`, `list_lab_events`, `lab_models` |
-| **Methodology** | `explain` |
-| **Power User** | `describe_schema`, `query`, `set_tier` |
+## How It Works
 
-### MCP Resources & Prompts
+- **Daily ingest pipeline** pulls GitHub stats, package downloads, releases, HN posts, HuggingFace models/datasets, public API specs, and npm registry data
+- **Quality scoring** via materialized views: composite 0-100 score from maintenance (commits, push recency), adoption (stars, downloads, reverse deps), maturity (license, packaging, age), and community (forks, fork/star ratio)
+- **AI summaries** from READMEs via Claude Haiku — 2-3 sentences of technical depth beyond the GitHub description
+- **Daily metric snapshots** for all 220K repos — stars, forks, downloads, commits tracked over time
+- **Static site generation** via Jinja2 templates + Tailwind CSS, served from FastAPI alongside the MCP server and REST API
+- **47 MCP tools** for programmatic access via Claude Desktop, Claude.ai, and any MCP client
+- **REST API** with keyed access for B2B integrations
 
-| Type | Items |
-|------|-------|
-| **Resources** | `methodology`, `categories`, `coverage` |
-| **Resource Templates** | `project/{slug}`, `lab/{slug}`, `category/{category}` |
-| **Prompts** | `evaluate-technology`, `build-something`, `due-diligence`, `weekly-briefing` |
+## Quality Scoring
 
-## Key Concepts
+| Dimension | Max | Signals |
+|-----------|-----|---------|
+| Maintenance | 25 | Commit activity (30d), push recency |
+| Adoption | 25 | Stars (log scale), monthly downloads, reverse dependents |
+| Maturity | 25 | License, PyPI/npm packaging, repo age |
+| Community | 25 | Forks (log scale), fork-to-star ratio |
 
-- **Hype Ratio** — stars / monthly downloads. High = GitHub tourism. Low = invisible infrastructure.
-- **Tiers** — T1 Foundational (>10M downloads), T2 Major (>100K), T3 Notable (>10K), T4 Emerging
-- **Lifecycle** — emerging → launching → growing → established → fading → dormant
-- **Momentum** — star and download deltas over 7-day and 30-day windows
-
-## Connecting
-
-PT-Edge uses the MCP Streamable HTTP transport. Connect via:
-
-```
-https://mcp.phasetransitions.ai/mcp?token=YOUR_TOKEN
-```
-
-Works with Claude Desktop, Claude.ai (web connector), and any MCP-compatible client.
+**Tiers:** Verified (70-100), Established (50-69), Emerging (30-49), Experimental (10-29)
 
 ## Stack
 
 - **Runtime:** Python 3.11, FastAPI, FastMCP
 - **Database:** PostgreSQL 16 with pgvector
-- **Embeddings:** OpenAI text-embedding-3-large (256d Matryoshka for discovery indexes, 1536d for project/methodology)
-- **LLM:** Claude Haiku 4.5 (release + newsletter summarisation)
+- **Embeddings:** OpenAI text-embedding-3-large (256d)
+- **LLM:** Claude Haiku 4.5 (summaries, classification, enrichment)
+- **Site:** Jinja2 + Tailwind CSS (static, generated at startup)
 - **Hosting:** Render (web service + cron + managed Postgres)
 
 ## Development
 
 ```bash
-# Clone and set up
 git clone https://github.com/grahamrowe82/pt-edge.git
 cd pt-edge
 cp .env.example .env  # Add your API keys
-
-# Start database
-docker compose up -d
-
-# Run migrations
-python -m app.migrations.run
-
-# Start server
-uvicorn app.main:app --reload
-
-# Run daily ingest
-python scripts/ingest_all.py
+docker compose up -d  # Start database
+alembic upgrade head  # Run migrations
+uvicorn app.main:app --reload  # Start server
+python scripts/ingest_all.py   # Run daily ingest
+python scripts/generate_site.py --domain mcp --output-dir site  # Generate directory
 ```
+
+## Documentation
+
+- [`docs/strategy.md`](docs/strategy.md) — strategic positioning and reasoning
+- [`docs/roadmap.md`](docs/roadmap.md) — phased build plan
 
 ## License
 
