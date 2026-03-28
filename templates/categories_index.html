@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}MCP Server Categories | PT-Edge{% endblock %}
+
+{% block meta %}
+<meta name="description" content="Browse MCP servers by category: frameworks, gateways, IDE integrations, security, and more.">
+{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="{{ base_url }}/categories/">{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+
+  <nav class="text-sm text-gray-500 mb-6">
+    <a href="/" class="hover:text-gray-700">Home</a>
+    <span class="mx-1">/</span>
+    <span class="text-gray-700">Categories</span>
+  </nav>
+
+  <h1 class="text-2xl font-bold text-gray-900 mb-6">MCP Server Categories</h1>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+    {% for cat in categories %}
+    <a href="/categories/{{ cat.subcategory or 'uncategorized' }}/" class="block rounded-lg border border-gray-200 p-5 hover:border-blue-300 hover:shadow-sm transition-all">
+      <p class="text-lg font-semibold text-gray-900">{{ cat.label }}</p>
+      <p class="text-sm text-gray-500 mt-1">{{ cat.desc }}</p>
+      <p class="text-sm font-medium text-blue-600 mt-3">{{ "{:,}".format(cat.count) }} servers</p>
+    </a>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}

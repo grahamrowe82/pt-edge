@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 
 from sqlalchemy.exc import OperationalError
 
@@ -286,6 +287,20 @@ async def run_all() -> dict:
     except Exception as e:
         logger.exception(f"briefing_refresh failed: {e}")
         results["briefing_refresh"] = {"error": str(e)}
+
+    # Trigger static directory site rebuild
+    try:
+        import httpx
+        deploy_hook = os.environ.get("RENDER_DEPLOY_HOOK_URL")
+        if deploy_hook:
+            resp = httpx.post(deploy_hook, timeout=30)
+            results["static_site"] = {"status": "deploy_triggered", "code": resp.status_code}
+            logger.info(f"static_site: deploy triggered ({resp.status_code})")
+        else:
+            results["static_site"] = "skipped (no RENDER_DEPLOY_HOOK_URL)"
+    except Exception as e:
+        logger.warning(f"static_site deploy trigger failed: {e}")
+        results["static_site"] = {"error": str(e)}
 
     # Summary
     errors = [k for k, v in results.items() if isinstance(v, dict) and "error" in v]

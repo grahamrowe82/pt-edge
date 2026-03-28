@@ -42,6 +42,8 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: RENDER_DEPLOY_HOOK_URL
+        sync: false
 
   - type: cron
     name: pt-edge-ai-repos-weekly
@@ -58,3 +60,14 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+
+staticSites:
+  - type: static
+    name: pt-edge-directory
+    buildCommand: pip install -r requirements.txt && python scripts/generate_site.py --output-dir site
+    staticPublishPath: site
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pt-edge-db
+          property: connectionString
