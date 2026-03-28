@@ -133,6 +133,28 @@ def refresh_all_views():
         except Exception as e:
             logger.warning(f"Could not snapshot {domain} quality scores: {e}")
 
+    # Snapshot ai_repo metrics for historical tracking
+    try:
+        import time as _time
+        t0 = _time.time()
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                INSERT INTO ai_repo_snapshots
+                    (repo_id, snapshot_date, stars, forks, downloads_monthly, commits_30d)
+                SELECT id, CURRENT_DATE, stars, forks, downloads_monthly, commits_30d
+                FROM ai_repos
+                ON CONFLICT (repo_id, snapshot_date) DO UPDATE SET
+                    stars = EXCLUDED.stars,
+                    forks = EXCLUDED.forks,
+                    downloads_monthly = EXCLUDED.downloads_monthly,
+                    commits_30d = EXCLUDED.commits_30d
+            """))
+            conn.commit()
+            elapsed = _time.time() - t0
+            logger.info(f"Snapshotted {result.rowcount} ai_repo metrics in {elapsed:.1f}s")
+    except Exception as e:
+        logger.warning(f"Could not snapshot ai_repo metrics: {e}")
+
     # Log sync
     session = SessionLocal()
     try:

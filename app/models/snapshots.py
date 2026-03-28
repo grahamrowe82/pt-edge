@@ -48,3 +48,18 @@ class DownloadSnapshot(Base):
     downloads_daily: Mapped[int] = mapped_column(BigInteger, default=0)
     downloads_weekly: Mapped[int] = mapped_column(BigInteger, default=0)
     downloads_monthly: Mapped[int] = mapped_column(BigInteger, default=0)
+
+
+class AIRepoSnapshot(Base):
+    __tablename__ = "ai_repo_snapshots"
+    __table_args__ = (
+        UniqueConstraint("repo_id", "snapshot_date", name="uq_ai_repo_snap_day"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    repo_id: Mapped[int] = mapped_column(Integer, ForeignKey("ai_repos.id"), nullable=False)
+    snapshot_date: Mapped[date] = mapped_column(Date, default=_today)
+    stars: Mapped[int | None] = mapped_column(Integer)
+    forks: Mapped[int | None] = mapped_column(Integer)
+    downloads_monthly: Mapped[int | None] = mapped_column(BigInteger)
+    commits_30d: Mapped[int | None] = mapped_column(Integer)
