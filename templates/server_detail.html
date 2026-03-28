@@ -75,6 +75,16 @@
     </div>
   </div>
 
+  {% if server.ai_summary or metrics_paragraph(server) %}
+  <div class="mb-8">
+    <div class="text-gray-700 leading-relaxed">
+      {% if server.ai_summary %}<p>{{ server.ai_summary }}</p>{% endif %}
+      {% set metrics = metrics_paragraph(server) %}
+      {% if metrics %}<p class="{% if server.ai_summary %}mt-2 {% endif %}text-sm text-gray-500">{{ metrics }}</p>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
     {% for label, key, max_score in [('Maintenance', 'maintenance_score', 25), ('Adoption', 'adoption_score', 25), ('Maturity', 'maturity_score', 25), ('Community', 'community_score', 25)] %}
     <div class="rounded-lg border border-gray-200 p-4">

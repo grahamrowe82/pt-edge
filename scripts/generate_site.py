@@ -243,6 +243,37 @@ def score_bar_color(score, max_score):
         return "bg-yellow-500"
     return "bg-gray-400"
 
+def metrics_paragraph(server):
+    """Build a dynamic metrics context paragraph from live data."""
+    parts = []
+    stars = server.get("stars") or 0
+    downloads = server.get("downloads_monthly") or 0
+    if stars >= 100 or downloads >= 1000:
+        bits = []
+        if stars:
+            bits.append(f"{stars:,} stars")
+        if downloads:
+            bits.append(f"{downloads:,} monthly downloads")
+        parts.append(" and ".join(bits))
+    rev_deps = server.get("reverse_dep_count") or 0
+    if rev_deps > 0:
+        parts.append(f"Used by {rev_deps:,} other package{'s' if rev_deps != 1 else ''}")
+    commits = server.get("commits_30d") or 0
+    if commits > 0:
+        parts.append(f"Actively maintained with {commits:,} commit{'s' if commits != 1 else ''} in the last 30 days")
+    elif server.get("risk_flags") and "stale_6m" in server["risk_flags"]:
+        parts.append("No commits in the last 6 months")
+    pkgs = []
+    if server.get("pypi_package"):
+        pkgs.append("PyPI")
+    if server.get("npm_package"):
+        pkgs.append("npm")
+    if pkgs:
+        parts.append(f"Available on {' and '.join(pkgs)}")
+    if not parts:
+        return ""
+    return ". ".join(parts) + "."
+
 # ---------------------------------------------------------------------------
 # Data queries
 # ---------------------------------------------------------------------------
@@ -251,7 +282,7 @@ def fetch_servers(view_name):
     """All qualifying repos from the given quality view."""
     with readonly_engine.connect() as conn:
         rows = conn.execute(text(f"""
-            SELECT full_name, name, description, stars, forks,
+            SELECT full_name, name, description, ai_summary, stars, forks,
                    language, license, archived, subcategory,
                    last_pushed_at, pypi_package, npm_package,
                    downloads_monthly, dependency_count, commits_30d,
@@ -395,6 +426,7 @@ def main():
     env.globals["tier_classes"] = tier_classes
     env.globals["tier_bar_color"] = tier_bar_color
     env.globals["score_bar_color"] = score_bar_color
+    env.globals["metrics_paragraph"] = metrics_paragraph
     env.globals["base_url"] = base_url
     env.globals["base_path"] = base_path.rstrip("/")
     env.globals["directories"] = DIRECTORIES

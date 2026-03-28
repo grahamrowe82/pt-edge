@@ -32,6 +32,7 @@ from app.ingest.ai_repo_package_detect import detect_packages_llm
 from app.ingest.ai_repo_subcategory import ingest_subcategories, classify_subcategory_llm
 from app.ingest.stack_layer import classify_stack_layers
 from app.ingest.hn_llm_match import match_hn_posts_llm
+from app.ingest.ai_repo_summaries import generate_ai_summaries
 from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis, backfill_hf_datasets, backfill_hf_models
 from app.briefing_refresh import refresh_briefing_evidence
 from app.embeddings import is_enabled
@@ -173,6 +174,14 @@ async def run_all() -> dict:
     except Exception as e:
         logger.exception(f"stack_layer failed: {e}")
         results["stack_layer"] = {"error": str(e)}
+
+    # Generate AI summaries for top repos (200 per run)
+    try:
+        results["ai_summaries"] = await _run_with_retry("ai_summaries", generate_ai_summaries)
+        logger.info(f"ai_summaries: {results['ai_summaries']}")
+    except Exception as e:
+        logger.exception(f"ai_summaries failed: {e}")
+        results["ai_summaries"] = {"error": str(e)}
 
     # Link projects ↔ ai_repos by matching github_owner/github_repo
     try:
