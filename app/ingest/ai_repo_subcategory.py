@@ -71,6 +71,46 @@ RAG_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
     ("pipeline", re.compile(r"pipeline|rag.framework|orchestrat|chain|workflow", re.IGNORECASE)),
 ]
 
+VOICE_AI_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
+    ("tts", re.compile(r"\btts\b|text.to.speech|speech.synth|voice.clone|voice.gen", re.IGNORECASE)),
+    ("stt", re.compile(r"\bstt\b|speech.to.text|speech.recog|transcri|whisper|asr\b", re.IGNORECASE)),
+    ("voice-agent", re.compile(r"voice.agent|voice.assistant|voice.bot|conversation.ai|voice.ai", re.IGNORECASE)),
+    ("real-time-audio", re.compile(r"real.time.audio|streaming.audio|webrtc|audio.stream|live.audio", re.IGNORECASE)),
+    ("audio-processing", re.compile(r"audio.process|sound|noise|denois|audio.effect|music", re.IGNORECASE)),
+]
+
+DIFFUSION_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
+    ("image-generation", re.compile(r"image.gen|txt2img|text.to.image|stable.diffusion|sdxl|flux", re.IGNORECASE)),
+    ("video-generation", re.compile(r"video.gen|txt2vid|text.to.video|animate|motion", re.IGNORECASE)),
+    ("ui-workflow", re.compile(r"comfyui|webui|gradio|interface|gui|frontend", re.IGNORECASE)),
+    ("fine-tuning", re.compile(r"fine.tun|lora|dreambooth|textual.inversion|train", re.IGNORECASE)),
+    ("controlnet", re.compile(r"controlnet|inpaint|img2img|image.edit|upscal", re.IGNORECASE)),
+]
+
+VECTOR_DB_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
+    ("database", re.compile(r"vector.db|vector.database|vector.store|chroma|qdrant|weaviate|milvus|pinecone", re.IGNORECASE)),
+    ("client-sdk", re.compile(r"client|sdk|python.client|javascript.client|connector", re.IGNORECASE)),
+    ("indexing", re.compile(r"index|hnsw|ann\b|approximate.nearest|faiss|scann", re.IGNORECASE)),
+    ("hybrid-search", re.compile(r"hybrid.search|full.text|bm25|sparse|keyword", re.IGNORECASE)),
+    ("integration", re.compile(r"integrat|plugin|langchain|llamaindex|connector", re.IGNORECASE)),
+]
+
+EMBEDDINGS_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
+    ("model", re.compile(r"embedding.model|sentence.transform|e5\b|bge\b|instructor|nomic", re.IGNORECASE)),
+    ("server", re.compile(r"embedding.server|embedding.api|serve|inference|endpoint", re.IGNORECASE)),
+    ("fine-tuning", re.compile(r"fine.tun|train|contrastive|triplet|matryoshka", re.IGNORECASE)),
+    ("evaluation", re.compile(r"eval|benchmark|mteb|beir|retrieval.eval", re.IGNORECASE)),
+    ("utility", re.compile(r"util|chunk|cache|batch|compress|quantiz", re.IGNORECASE)),
+]
+
+PROMPT_ENGINEERING_SUBCATEGORIES: list[tuple[str, re.Pattern]] = [
+    ("prompt-framework", re.compile(r"dspy|prompt.framework|prompt.chain|prompt.flow|lmql", re.IGNORECASE)),
+    ("prompt-library", re.compile(r"prompt.library|prompt.template|awesome.prompt|collection", re.IGNORECASE)),
+    ("guardrails", re.compile(r"guardrail|safety|moderat|filter|content.policy|nemo", re.IGNORECASE)),
+    ("output-parsing", re.compile(r"output.pars|struct|json.mode|format|schema|extract", re.IGNORECASE)),
+    ("optimization", re.compile(r"optim|compress|token|cost|cach|few.shot|prompt.tun", re.IGNORECASE)),
+]
+
 # Master mapping: domain → subcategory patterns
 DOMAIN_SUBCATEGORIES: dict[str, list[tuple[str, re.Pattern]]] = {
     "mcp": MCP_SUBCATEGORIES,
@@ -78,6 +118,11 @@ DOMAIN_SUBCATEGORIES: dict[str, list[tuple[str, re.Pattern]]] = {
     "perception": PERCEPTION_SUBCATEGORIES,
     "ai-coding": AI_CODING_SUBCATEGORIES,
     "rag": RAG_SUBCATEGORIES,
+    "voice-ai": VOICE_AI_SUBCATEGORIES,
+    "diffusion": DIFFUSION_SUBCATEGORIES,
+    "vector-db": VECTOR_DB_SUBCATEGORIES,
+    "embeddings": EMBEDDINGS_SUBCATEGORIES,
+    "prompt-engineering": PROMPT_ENGINEERING_SUBCATEGORIES,
 }
 
 CLASSIFIED_DOMAINS = list(DOMAIN_SUBCATEGORIES.keys())

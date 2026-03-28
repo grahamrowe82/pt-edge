@@ -26,6 +26,11 @@ VIEWS_IN_ORDER = [
     "mv_agents_quality",       # standalone: quality scores for agents-domain repos
     "mv_rag_quality",          # standalone: quality scores for rag-domain repos
     "mv_ai_coding_quality",    # standalone: quality scores for ai-coding-domain repos
+    "mv_voice_ai_quality",     # standalone: quality scores for voice-ai-domain repos
+    "mv_diffusion_quality",    # standalone: quality scores for diffusion-domain repos
+    "mv_vector_db_quality",    # standalone: quality scores for vector-db-domain repos
+    "mv_embeddings_quality",   # standalone: quality scores for embeddings-domain repos
+    "mv_prompt_eng_quality",   # standalone: quality scores for prompt-engineering-domain repos
 ]
 
 
@@ -97,7 +102,12 @@ def refresh_all_views():
         logger.warning(f"Could not snapshot MCP quality scores: {e}")
 
     # Snapshot quality scores for agents, rag, ai-coding domains
-    for domain, view in [("agents", "mv_agents_quality"), ("rag", "mv_rag_quality"), ("ai-coding", "mv_ai_coding_quality")]:
+    for domain, view in [
+        ("agents", "mv_agents_quality"), ("rag", "mv_rag_quality"), ("ai-coding", "mv_ai_coding_quality"),
+        ("voice-ai", "mv_voice_ai_quality"), ("diffusion", "mv_diffusion_quality"),
+        ("vector-db", "mv_vector_db_quality"), ("embeddings", "mv_embeddings_quality"),
+        ("prompt-engineering", "mv_prompt_eng_quality"),
+    ]:
         try:
             with engine.connect() as conn:
                 conn.execute(text(f"""
