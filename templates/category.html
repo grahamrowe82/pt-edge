@@ -33,7 +33,14 @@
   </nav>
 
   <h1 class="text-2xl font-bold text-gray-900 mb-1">{{ category_label }} {{ domain_label_plural }}</h1>
-  <p class="text-gray-500 mb-6">{{ category_desc }} &middot; {{ servers | length }} {{ noun_plural }}</p>
+  {% if category_desc %}<p class="text-gray-500 mb-4">{{ category_desc }}</p>{% endif %}
+
+  {% set decision = decision_paragraph(category_label, servers, noun_plural) %}
+  {% if decision %}
+  <div class="mb-6 text-gray-700 leading-relaxed">
+    <p>{{ decision }}</p>
+  </div>
+  {% endif %}
 
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
