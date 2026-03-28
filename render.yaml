@@ -42,6 +42,8 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: RENDER_DEPLOY_HOOK_URL
+        sync: false
 
   - type: cron
     name: pt-edge-ai-repos-weekly

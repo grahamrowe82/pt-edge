@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block title %}MCP Servers{% if page > 1 %} &mdash; Page {{ page }}{% endif %} | PT-Edge{% endblock %}
+
+{% block meta %}
+<meta name="description" content="Browse {{ total_count | int }} MCP servers ranked by quality score{% if page > 1 %} (page {{ page }}){% endif %}. Updated daily.">
+{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="{{ base_url }}/servers/{% if page > 1 %}page/{{ page }}/{% endif %}">{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+
+  <!-- Breadcrumb -->
+  <nav class="text-sm text-gray-500 mb-6">
+    <a href="/" class="hover:text-gray-700">Home</a>
+    <span class="mx-1">/</span>
+    <span class="text-gray-700">Servers</span>
+  </nav>
+
+  <h1 class="text-2xl font-bold text-gray-900 mb-1">All MCP Servers</h1>
+  <p class="text-gray-500 text-sm mb-6">{{ "{:,}".format(total_count | int) }} servers ranked by quality score{% if page > 1 %} &middot; Page {{ page }} of {{ total_pages }}{% endif %}</p>
+
+  <!-- Pagination top -->
+  {% if total_pages > 1 %}
+  <div class="flex items-center justify-between mb-4">
+    <div class="text-sm text-gray-500">
+      Showing {{ offset + 1 }}&ndash;{{ [offset + per_page, total_count] | min }} of {{ "{:,}".format(total_count | int) }}
+    </div>
+    <div class="flex items-center gap-1">
+      {% if page > 1 %}
+      <a href="/servers/{% if page > 2 %}page/{{ page - 1 }}/{% endif %}" class="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50">&laquo; Prev</a>
+      {% endif %}
+      {% if page < total_pages %}
+      <a href="/servers/page/{{ page + 1 }}/" class="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50">Next &raquo;</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-gray-200 text-left text-gray-500">
+          <th class="py-2 pr-3 font-medium">#</th>
+          <th class="py-2 pr-3 font-medium">Server</th>
+          <th class="py-2 pr-3 font-medium">Score</th>
+          <th class="py-2 pr-3 font-medium">Tier</th>
+          <th class="py-2 pr-3 font-medium hidden sm:table-cell">Category</th>
+          <th class="py-2 pr-3 font-medium hidden sm:table-cell">Stars</th>
+          <th class="py-2 font-medium hidden md:table-cell">Language</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in servers %}
+        <tr class="border-b border-gray-100 hover:bg-gray-50">
+          <td class="py-2 pr-3 text-gray-400">{{ offset + loop.index }}</td>
+          <td class="py-2 pr-3">
+            <a href="/servers/{{ s.full_name }}/" class="font-medium text-blue-600 hover:underline">{{ s.full_name }}</a>
+            <p class="text-xs text-gray-500 truncate max-w-xs">{{ s.description | truncate(80) }}</p>
+          </td>
+          <td class="py-2 pr-3">
+            <div class="flex items-center gap-2">
+              <div class="w-12 h-2 bg-gray-200 rounded-full">
+                <div class="h-2 rounded-full {{ tier_bar_color(s.quality_tier) }}" style="width: {{ s.quality_score }}%"></div>
+              </div>
+              <span class="text-xs font-medium">{{ s.quality_score | int }}</span>
+            </div>
+          </td>
+          <td class="py-2 pr-3">
+            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium {{ tier_classes(s.quality_tier) }}">{{ s.quality_tier | capitalize }}</span>
+          </td>
+          <td class="py-2 pr-3 hidden sm:table-cell text-gray-500 text-xs">
+            {% if s.subcategory %}<a href="/categories/{{ s.subcategory }}/" class="hover:text-gray-700">{{ s.subcategory }}</a>{% else %}&mdash;{% endif %}
+          </td>
+          <td class="py-2 pr-3 hidden sm:table-cell text-gray-600">{{ "{:,}".format(s.stars | int) if s.stars else '&mdash;' }}</td>
+          <td class="py-2 hidden md:table-cell text-gray-500">{{ s.language or '&mdash;' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination bottom -->
+  {% if total_pages > 1 %}
+  <div class="flex items-center justify-center gap-1 mt-6">
+    {% if page > 1 %}
+    <a href="/servers/{% if page > 2 %}page/{{ page - 1 }}/{% endif %}" class="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50">&laquo; Prev</a>
+    {% endif %}
+
+    {% for p in range(1, total_pages + 1) %}
+      {% if p == page %}
+        <span class="px-3 py-1.5 text-sm rounded bg-blue-600 text-white font-medium">{{ p }}</span>
+      {% elif p <= 3 or p >= total_pages - 2 or (p >= page - 2 and p <= page + 2) %}
+        <a href="/servers/{% if p > 1 %}page/{{ p }}/{% endif %}" class="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50">{{ p }}</a>
+      {% elif p == 4 or p == total_pages - 3 %}
+        <span class="px-1 text-gray-400">&hellip;</span>
+      {% endif %}
+    {% endfor %}
+
+    {% if page < total_pages %}
+    <a href="/servers/page/{{ page + 1 }}/" class="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50">Next &raquo;</a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

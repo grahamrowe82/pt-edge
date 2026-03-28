@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}MCP Server Directory &mdash; {{ total_count | int }} Servers Ranked by Quality | PT-Edge{% endblock %}
+
+{% block meta %}
+<meta name="description" content="Browse {{ total_count | int }}+ MCP servers ranked by quality score. Maintenance, adoption, maturity, and community metrics updated daily.">
+<meta property="og:title" content="MCP Server Directory | PT-Edge">
+<meta property="og:description" content="Quality-scored directory of {{ total_count | int }}+ MCP servers, updated daily.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ base_url }}/">
+{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="{{ base_url }}/">{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "PT-Edge MCP Server Directory",
+  "url": "{{ base_url }}/",
+  "description": "Quality-scored directory of {{ total_count | int }}+ MCP servers",
+  "publisher": {
+    "@type": "Organization",
+    "name": "PT-Edge",
+    "url": "https://phasetransitions.ai"
+  }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6">
+
+  <!-- Hero -->
+  <div class="py-12 sm:py-16 text-center">
+    <h1 class="text-3xl sm:text-4xl font-bold text-gray-900">The MCP Server Directory</h1>
+    <p class="mt-4 text-lg text-gray-600 max-w-2xl mx-auto">
+      Quality-scored directory of <strong>{{ "{:,}".format(total_count | int) }}</strong> MCP servers, updated daily.
+      Every server scored on maintenance, adoption, maturity, and community signals.
+    </p>
+    <div class="mt-6">
+      <a href="/servers/" class="inline-block bg-blue-600 text-white font-medium px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors">Browse all servers</a>
+    </div>
+  </div>
+
+  <!-- Tier distribution -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-12">
+    {% for tier_name, tier_data in tiers.items() %}
+    <div class="rounded-lg border border-gray-200 p-4 text-center">
+      <span class="inline-block px-2.5 py-0.5 rounded-full text-xs font-medium {{ tier_data.classes }}">{{ tier_name | capitalize }}</span>
+      <p class="mt-2 text-2xl font-bold text-gray-900">{{ "{:,}".format(tier_data.count) }}</p>
+      <p class="text-xs text-gray-500">{{ tier_data.range }}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Top 20 servers -->
+  <div class="mb-12">
+    <h2 class="text-xl font-bold text-gray-900 mb-4">Top servers by quality score</h2>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-200 text-left text-gray-500">
+            <th class="py-2 pr-3 font-medium">#</th>
+            <th class="py-2 pr-3 font-medium">Server</th>
+            <th class="py-2 pr-3 font-medium">Score</th>
+            <th class="py-2 pr-3 font-medium hidden sm:table-cell">Category</th>
+            <th class="py-2 pr-3 font-medium hidden sm:table-cell">Stars</th>
+            <th class="py-2 font-medium hidden md:table-cell">Language</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in top_servers %}
+          <tr class="border-b border-gray-100 hover:bg-gray-50">
+            <td class="py-2 pr-3 text-gray-400">{{ loop.index }}</td>
+            <td class="py-2 pr-3">
+              <a href="/servers/{{ s.full_name }}/" class="font-medium text-blue-600 hover:underline">{{ s.full_name }}</a>
+              <p class="text-xs text-gray-500 truncate max-w-xs">{{ s.description | truncate(80) }}</p>
+            </td>
+            <td class="py-2 pr-3">
+              <div class="flex items-center gap-2">
+                <div class="w-16 h-2 bg-gray-200 rounded-full">
+                  <div class="h-2 rounded-full {{ tier_bar_color(s.quality_tier) }}" style="width: {{ s.quality_score }}%"></div>
+                </div>
+                <span class="text-xs font-medium">{{ s.quality_score | int }}</span>
+              </div>
+            </td>
+            <td class="py-2 pr-3 hidden sm:table-cell">
+              {% if s.subcategory %}<a href="/categories/{{ s.subcategory }}/" class="text-xs text-gray-500 hover:text-gray-700">{{ s.subcategory }}</a>{% endif %}
+            </td>
+            <td class="py-2 pr-3 hidden sm:table-cell text-gray-600">{{ "{:,}".format(s.stars | int) if s.stars else '&mdash;' }}</td>
+            <td class="py-2 hidden md:table-cell text-gray-500">{{ s.language or '&mdash;' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Categories -->
+  <div class="mb-12">
+    <h2 class="text-xl font-bold text-gray-900 mb-4">Browse by category</h2>
+    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+      {% for cat in categories %}
+      <a href="/categories/{{ cat.subcategory or 'uncategorized' }}/" class="block rounded-lg border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-all">
+        <p class="font-medium text-gray-900">{{ cat.label }}</p>
+        <p class="text-sm text-gray-500">{{ "{:,}".format(cat.count) }} servers</p>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}
