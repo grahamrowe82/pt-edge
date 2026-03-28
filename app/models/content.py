@@ -113,6 +113,8 @@ class AIRepo(Base):
     commits_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ai_summary: Mapped[str | None] = mapped_column(Text)
     ai_summary_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    embedding_1536 = mapped_column(Vector(1536), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(50))
 
 
 class PublicAPI(Base):
