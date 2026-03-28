@@ -211,7 +211,7 @@ def generate_robots(base_url, out_dir):
 def main():
     parser = argparse.ArgumentParser(description="Generate static MCP directory site")
     parser.add_argument("--output-dir", default="./site", help="Output directory")
-    parser.add_argument("--base-url", default="https://phasetransitions.ai", help="Base URL for canonical links")
+    parser.add_argument("--base-url", default="https://mcp.phasetransitions.ai", help="Base URL for canonical links")
     args = parser.parse_args()
 
     out_dir = args.output_dir
