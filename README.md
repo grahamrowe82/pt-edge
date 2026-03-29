@@ -2,23 +2,31 @@
 
 PT-Edge tracks 220,000+ AI repos across GitHub, PyPI, npm, Docker Hub, and HuggingFace, scores them daily on quality, and publishes the results as a directory site and via MCP tools and REST API.
 
-**Directory site:** [mcp.phasetransitions.ai](https://mcp.phasetransitions.ai) — 59,000+ pages across 9 domains, updated daily.
+**Directory site:** [mcp.phasetransitions.ai](https://mcp.phasetransitions.ai) — 165,000+ pages across 17 domains with 2,400 categories, updated daily.
 
 **Built by [Phase Transitions](https://phasetransitionsai.substack.com/)**
 
 ## Directory Domains
 
-| Domain | Pages | Path |
-|--------|-------|------|
-| MCP Servers | 11,400 | `/` |
-| AI Agents | 16,300 | `/agents/` |
-| RAG Tools | 7,800 | `/rag/` |
-| AI Coding Tools | 3,400 | `/ai-coding/` |
-| Voice AI | 6,500 | `/voice-ai/` |
-| Diffusion Models | 3,900 | `/diffusion/` |
-| Vector Databases | 2,700 | `/vector-db/` |
-| Embedding Tools | 3,700 | `/embeddings/` |
-| Prompt Engineering | 3,600 | `/prompt-engineering/` |
+| Domain | Pages | Categories | Path |
+|--------|-------|-----------|------|
+| ML Frameworks | 49,120 | 715 | `/ml-frameworks/` |
+| LLM Tools | 26,982 | 346 | `/llm-tools/` |
+| AI Agents | 18,934 | 198 | `/agents/` |
+| MCP Servers | 12,551 | 178 | `/` |
+| NLP | 12,023 | 236 | `/nlp/` |
+| RAG Tools | 8,511 | 107 | `/rag/` |
+| Voice AI | 6,703 | 125 | `/voice-ai/` |
+| Transformers | 5,654 | 96 | `/transformers/` |
+| Generative AI | 5,377 | 89 | `/generative-ai/` |
+| Embeddings | 3,915 | 68 | `/embeddings/` |
+| Prompt Engineering | 3,899 | 64 | `/prompt-engineering/` |
+| Diffusion Models | 3,952 | 57 | `/diffusion/` |
+| AI Coding Tools | 3,733 | 52 | `/ai-coding/` |
+| Vector Databases | 2,847 | 48 | `/vector-db/` |
+| Computer Vision | 382 | 9 | `/computer-vision/` |
+| Data Engineering | 388 | 2 | `/data-engineering/` |
+| MLOps | 94 | 2 | `/mlops/` |
 
 Every project page includes a composite quality score (0-100) computed from four dimensions — maintenance, adoption, maturity, community — plus AI-generated technical summaries, live metrics paragraphs, risk flags, and structured data for search engines.
 
@@ -28,6 +36,7 @@ Every project page includes a composite quality score (0-100) computed from four
 - **Quality scoring** via materialized views: composite 0-100 score from maintenance (commits, push recency), adoption (stars, downloads, reverse deps), maturity (license, packaging, age), and community (forks, fork/star ratio)
 - **AI summaries** from READMEs via Claude Haiku — 2-3 sentences of technical depth beyond the GitHub description
 - **Daily metric snapshots** for all 220K repos — stars, forks, downloads, commits tracked over time
+- **Embedding-based category discovery** — 1536d embeddings + UMAP + HDBSCAN clustering + LLM labelling discovers 2,400 search-intent-aligned categories automatically
 - **Static site generation** via Jinja2 templates + Tailwind CSS, served from FastAPI alongside the MCP server and REST API
 - **47 MCP tools** for programmatic access via Claude Desktop, Claude.ai, and any MCP client
 - **REST API** with keyed access for B2B integrations
@@ -69,6 +78,8 @@ python scripts/generate_site.py --domain mcp --output-dir site  # Generate direc
 
 - [`docs/strategy.md`](docs/strategy.md) — strategic positioning and reasoning
 - [`docs/roadmap.md`](docs/roadmap.md) — phased build plan
+- [`docs/site-audit.md`](docs/site-audit.md) — live site issues and quality fixes
+- [`docs/audit.md`](docs/audit.md) — MCP tool output audit
 
 ## License
 

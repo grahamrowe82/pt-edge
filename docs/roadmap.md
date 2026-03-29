@@ -2,81 +2,88 @@
 
 ## What's done
 
-- [x] Static directory site serving 59K+ pages across 9 domains
+- [x] 165,000+ page directory across 17 domains (MCP, agents, RAG, AI coding, voice AI, diffusion, vector DB, embeddings, prompt engineering, ML frameworks, LLM tools, NLP, transformers, generative AI, computer vision, data engineering, MLOps)
 - [x] Quality scoring (0-100) with 4 sub-dimensions, daily refresh
-- [x] Subcategory classification for all 9 domains (regex + LLM)
+- [x] 2,400 embedding-discovered categories via UMAP + HDBSCAN + Haiku labelling
+- [x] Decision paragraphs on every category page (template-generated from live data)
 - [x] AI summaries from READMEs (Haiku-generated, 2K/day backfill)
-- [x] Template-generated metrics paragraphs (live data on every page)
+- [x] Template-generated metrics paragraphs on all detail pages
 - [x] Daily metric snapshots for all 220K repos (stars, forks, downloads, commits)
+- [x] 1536d embeddings for 220K+ repos (analytics/clustering)
 - [x] JSON-LD structured data, sitemaps, cross-domain navigation
-- [x] Served from FastAPI alongside the MCP server and REST API
-- [x] Daily deploy hook triggers rebuild after ingest
+- [x] Served from FastAPI alongside MCP server and REST API
+- [x] Strategy and roadmap docs baked into repo
+- [x] Category discovery results saved to JSON for instant re-application
 
-## Phase 1: Use-case pages with decision layer
+## Immediate: Site quality fixes (from audit)
 
-The highest-leverage gap. Pages currently organised by supply ("here are all MCP servers") but not by demand ("here are the ones for Postgres"). Use-case pages match the exact queries users ask agents.
+Trust-destroying issues that undermine everything else. See `docs/audit.md` for the full list.
 
-**What to build:**
-- Mine descriptions/READMEs/topics for service/technology names (Postgres, Slack, GitHub, etc.)
-- Generate use-case pages: "MCP Servers for PostgreSQL" — 47 options ranked by quality
-- Each page opens with a decision paragraph: how many options, quality distribution, key tradeoffs, conditional recommendations ("best for read-only" vs "best for read-write")
-- Decision paragraph is template-generated from structured data + LLM for tradeoff articulation
-- Start with MCP vertical (most active), top 50-100 use-case clusters
+**Critical:**
+- [ ] Fix broken footer link (503 on phasetransitions.ai) — negative signal on 165K pages
+- [ ] Sync categories page with discovered categories (old hand-crafted taxonomy still showing)
+- [ ] Fix miscategorised top results (CasADi in AI Coding, StockSim in Prompt Engineering)
+- [ ] Clean up "NOASSERTION" license display
+- [ ] Fix empty trending pages (snapshots exist but not surfacing)
+- [ ] Fix 404 on /categories/uncategorized/
 
-**Why it matters:**
-- Directly matches the search queries agents run
-- The decision paragraph is what agents cite — it's the precomputed reasoning
-- Creates massive new indexable surface with high-intent long-tail keywords
-
-## Phase 2: Replicate use-cases across verticals
-
-Same use-case page template applied to agents, RAG, vector databases, and remaining domains. The template is identical; only the data source changes.
-
-- "RAG tools for PDF processing"
-- "Agent frameworks for browser automation"
-- "Embedding models for code search"
-
-Multiplies the indexable surface and establishes cross-vertical topical authority.
+**Important:**
+- [ ] About page (E-E-A-T signal for Google)
+- [ ] Methodology page (score transparency)
+- [ ] Cross-vertical links for projects in multiple directories
+- [ ] Noindex thin pages until AI summaries backfill reaches them
+- [ ] Move risk flags higher on detail pages
+- [ ] Favicon and basic brand identity
 
 ## Phase 3: Comparison pages + language pages
 
-**Comparison pages:** Head-to-head for top viable options in each use-case cluster. "FastMCP vs MCP SDK" — side-by-side scores, capability differences, "when to use each." These catch extremely high-intent "X vs Y" queries.
+**Comparison pages:** Head-to-head for top viable options in each category. "FastMCP vs MCP SDK" — side-by-side scores, capability differences, "when to use each." Catches extremely high-intent "X vs Y" queries.
 
-**Language pages:** Browse-by-language views. "All Rust MCP servers." "All Python agent frameworks." Language is a primary developer filtering criterion — making it a first-class dimension adds a major browsable axis.
+**Language pages:** "All Rust MCP servers." "All Python agent frameworks." Language is a primary developer filtering criterion.
 
 Both create dense internal linking and catch long-tail search queries.
 
 ## Phase 4: Temporal layer
 
-Once enough daily snapshots accumulate (30+ days):
+Once 30+ days of snapshots accumulate (~late April 2026):
 
 - Sparklines on detail pages (30-day star/download trends)
 - "Gained X stars this week" on detail pages
-- Star velocity-based trending (more intuitive than quality score deltas alone)
-- Momentum materialized view for ai_repos (stars_7d_delta, stars_30d_delta, dl_30d_delta)
+- Star velocity-based trending (replace empty trending pages)
+- Momentum materialized view for ai_repos
 - Growth classification: accelerating, steady, declining
-
-This is the freshness moat — visible, daily proof that the data is current.
 
 ## Phase 5: Cross-vertical stack pages
 
 Precomputed workflow recommendations for common capability patterns:
 
-- "Build a document Q&A pipeline" → needs embeddings + vector DB + RAG framework
-- "Add voice search to your application" → needs STT + embeddings + vector DB
-- "Create a code review agent" → needs coding agent + code analysis tools
+- "Build a document Q&A pipeline" → embeddings + vector DB + RAG framework
+- "Add voice search to your application" → STT + embeddings + vector DB
+- "Create a code review agent" → coding agent + code analysis tools
 
-Each stack page draws scored recommendations from whichever verticals are relevant. This is the highest-value, most defensible page type — requires quality-scored data across all 9 domains.
+Highest-value, most defensible page type — requires quality-scored data across all 17 domains.
 
 ## Phase 6: Connect-X-to-Y matrix
 
-Pages for client × service pairings: "Connecting Claude Desktop to Postgres via MCP."
+Pages for client x service pairings: "Connecting Claude Desktop to Postgres via MCP."
 
-Start with 5 clients (Claude Desktop, Cursor, Claude Code, VS Code, Windsurf) × 30 services = 150 pages. Each page lists which tools support the pairing, ranked by quality, with transport compatibility notes.
+5 clients x 30 services = 150 pages. Each lists tools supporting the pairing, ranked by quality.
+
+## Phase 7: Quantitative analytics layer (the terminal)
+
+Once 90+ days of daily snapshots accumulate:
+
+- Moving averages and crossover signals (golden cross / death cross on star velocity)
+- Factor analysis: quality, momentum, size, value (hype ratio), volatility
+- Synthetic signals: accumulation patterns, distribution patterns, dependency risk
+- Ecosystem-level analytics: capital flows, sector rotation, concentration risk
+- Enterprise API: $12K-36K/year for access to the signal layer
 
 ## Future considerations
 
-- **Remaining domains**: ml-frameworks (45K repos), llm-tools (24K), nlp (13K), transformers (5K), generative-ai (4.5K) — need subcategory taxonomies before they're useful as directories
-- **Embedding-based "similar projects"**: pre-computed nearest neighbours for better related-project suggestions across categories and domains
-- **"Claim your project"**: let maintainers verify ownership and add metadata — badges for READMEs ("PT-Edge Verified"), installation instructions, changelogs
-- **Enterprise data feeds**: the $12K-36K/year B2B contracts — the directory proves data quality, the feed is the product
+- Embedding-based "similar projects" (pre-computed nearest neighbours)
+- "Claim your project" for maintainers (badges for READMEs, metadata editing)
+- Feedback button on every page (wrong category, dead link, security concern)
+- RSS feeds per category/vertical
+- Changelog / "what's new" page generated from data
+- Google Programmable Search Engine for on-site search
