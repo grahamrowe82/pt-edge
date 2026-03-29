@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}{{ category_label }} {{ domain_label_plural }} &mdash; {{ servers | length }} {{ noun_plural | capitalize }} Ranked | PT-Edge{% endblock %}
+{% set label_has_domain = domain_label_plural.lower() in category_label.lower() or noun_plural in category_label.lower() %}
+{% block title %}{% if label_has_domain %}{{ category_label }}{% else %}{{ category_label }} {{ domain_label_plural }}{% endif %} &mdash; {{ servers | length }} Ranked | PT-Edge{% endblock %}
 
 {% block meta %}
-<meta name="description" content="{{ category_desc }}. Browse {{ servers | length }} {{ category_label | lower }} {{ domain_label_plural | lower }} ranked by quality score.">
+<meta name="description" content="{% if category_desc %}{{ category_desc }}{% else %}Browse {{ servers | length }} {{ category_label | lower }} ranked by quality score.{% endif %}">
 {% endblock %}
 
 {% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/categories/{{ subcategory }}/">{% endblock %}
@@ -13,7 +14,7 @@
 {
   "@context": "https://schema.org",
   "@type": "CollectionPage",
-  "name": "{{ category_label }} {{ domain_label_plural }}",
+  "name": "{% if label_has_domain %}{{ category_label }}{% else %}{{ category_label }} {{ domain_label_plural }}{% endif %}",
   "description": "{{ category_desc }}",
   "url": "{{ base_url }}{{ base_path }}/categories/{{ subcategory }}/",
   "numberOfItems": {{ servers | length }}
@@ -32,7 +33,7 @@
     <span class="text-gray-700">{{ category_label }}</span>
   </nav>
 
-  <h1 class="text-2xl font-bold text-gray-900 mb-1">{{ category_label }} {{ domain_label_plural }}</h1>
+  <h1 class="text-2xl font-bold text-gray-900 mb-1">{% if label_has_domain %}{{ category_label }}{% else %}{{ category_label }} {{ domain_label_plural }}{% endif %}</h1>
   {% if category_desc %}<p class="text-gray-500 mb-4">{{ category_desc }}</p>{% endif %}
 
   {% set decision = decision_paragraph(category_label, servers, noun_plural) %}

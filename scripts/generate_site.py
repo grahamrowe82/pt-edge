@@ -40,6 +40,7 @@ DOMAIN_CONFIG = {
         "noun": "server",
         "noun_plural": "servers",
         "description": "Quality-scored directory of MCP servers, updated daily.",
+        "explainer": "The Model Context Protocol (MCP) lets AI assistants connect to external tools and services. This directory tracks every MCP server on GitHub, scored daily.",
     },
     "agents": {
         "view": "mv_agents_quality",
@@ -50,6 +51,7 @@ DOMAIN_CONFIG = {
         "noun": "agent",
         "noun_plural": "agents",
         "description": "Quality-scored directory of AI agent frameworks and tools, updated daily.",
+        "explainer": "AI agents are autonomous systems that plan, reason, and execute multi-step tasks using LLMs. This directory tracks agent frameworks, SDKs, and tools.",
     },
     "rag": {
         "view": "mv_rag_quality",
@@ -60,6 +62,7 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of retrieval-augmented generation tools, updated daily.",
+        "explainer": "Retrieval-augmented generation (RAG) combines LLMs with external knowledge sources for more accurate, grounded responses.",
     },
     "ai-coding": {
         "view": "mv_ai_coding_quality",
@@ -70,6 +73,7 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of AI-powered coding tools, updated daily.",
+        "explainer": "AI coding tools assist with code generation, review, completion, and codebase navigation using large language models.",
     },
     "voice-ai": {
         "view": "mv_voice_ai_quality",
@@ -80,6 +84,7 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of voice AI tools — TTS, STT, voice agents, and audio processing.",
+        "explainer": "Voice AI covers text-to-speech synthesis, speech recognition, voice cloning, voice agents, and audio processing.",
     },
     "diffusion": {
         "view": "mv_diffusion_quality",
@@ -90,6 +95,7 @@ DOMAIN_CONFIG = {
         "noun": "model",
         "noun_plural": "models",
         "description": "Quality-scored directory of diffusion models and image generation tools.",
+        "explainer": "Diffusion models generate images, video, and 3D content from text prompts. Includes Stable Diffusion, ComfyUI workflows, and fine-tuning tools.",
     },
     "vector-db": {
         "view": "mv_vector_db_quality",
@@ -100,6 +106,7 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of vector databases and similarity search tools.",
+        "explainer": "Vector databases store and query high-dimensional embeddings for semantic search, RAG pipelines, and recommendation systems.",
     },
     "embeddings": {
         "view": "mv_embeddings_quality",
@@ -110,6 +117,7 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of embedding models, servers, and utilities.",
+        "explainer": "Embedding models convert text, images, and code into dense vector representations for search, clustering, and similarity.",
     },
     "prompt-engineering": {
         "view": "mv_prompt_eng_quality",
@@ -120,6 +128,7 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of prompt engineering tools, frameworks, and libraries.",
+        "explainer": "Prompt engineering tools help design, optimise, and manage prompts for large language models — including frameworks, guardrails, and output parsers.",
     },
     "ml-frameworks": {
         "view": "mv_ml_frameworks_quality",
@@ -130,6 +139,7 @@ DOMAIN_CONFIG = {
         "noun": "framework",
         "noun_plural": "frameworks",
         "description": "Quality-scored directory of machine learning frameworks, training libraries, and ML infrastructure.",
+        "explainer": "ML frameworks provide the foundational libraries for training, evaluating, and deploying machine learning models.",
     },
     "llm-tools": {
         "view": "mv_llm_tools_quality",
@@ -140,6 +150,7 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of large language model tools, wrappers, and utilities.",
+        "explainer": "LLM tools include API wrappers, fine-tuning utilities, inference servers, and evaluation frameworks for large language models.",
     },
     "nlp": {
         "view": "mv_nlp_quality",
@@ -150,6 +161,7 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of natural language processing tools and libraries.",
+        "explainer": "NLP tools process and analyse human language — text classification, named entity recognition, translation, summarisation, and more.",
     },
     "transformers": {
         "view": "mv_transformers_quality",
@@ -160,6 +172,7 @@ DOMAIN_CONFIG = {
         "noun": "model",
         "noun_plural": "models",
         "description": "Quality-scored directory of transformer models, fine-tuning tools, and inference engines.",
+        "explainer": "Transformer models and tools for fine-tuning, quantisation, inference optimisation, and deployment of attention-based architectures.",
     },
     "generative-ai": {
         "view": "mv_generative_ai_quality",
@@ -170,6 +183,7 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of generative AI tools, chatbots, and content generation.",
+        "explainer": "Generative AI tools create text, images, audio, and other content using foundation models — chatbots, content generators, and creative tools.",
     },
     "computer-vision": {
         "view": "mv_computer_vision_quality",
@@ -180,6 +194,7 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of computer vision tools, models, and libraries.",
+        "explainer": "Computer vision tools for image classification, object detection, segmentation, OCR, and visual understanding.",
     },
     "data-engineering": {
         "view": "mv_data_engineering_quality",
@@ -190,6 +205,7 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of data engineering tools, pipelines, and ETL frameworks.",
+        "explainer": "Data engineering tools for building data pipelines, ETL workflows, data quality, and data infrastructure.",
     },
     "mlops": {
         "view": "mv_mlops_quality",
@@ -200,6 +216,7 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of MLOps tools for model deployment, monitoring, and lifecycle management.",
+        "explainer": "MLOps tools for model deployment, monitoring, experiment tracking, and ML lifecycle management.",
     },
 }
 
@@ -303,7 +320,11 @@ def decision_paragraph(category_label, servers, noun_plural):
     verified = [s for s in servers if s.get("quality_tier") == "verified"]
     established = [s for s in servers if s.get("quality_tier") == "established"]
     top = servers[0]
-    parts = [f"There are {count} {category_label.lower()} {noun_plural} tracked."]
+    # Avoid "MongoDB MCP Servers servers" — don't append noun if already in label
+    if noun_plural in category_label.lower():
+        parts = [f"There are {count} {category_label.lower()} tracked."]
+    else:
+        parts = [f"There are {count} {category_label.lower()} {noun_plural} tracked."]
     if verified:
         parts.append(f"{len(verified)} score above 70 (verified tier).")
     elif established:
@@ -323,17 +344,31 @@ def decision_paragraph(category_label, servers, noun_plural):
 # Data queries
 # ---------------------------------------------------------------------------
 
-def fetch_category_descriptions(domain):
-    """Load scope definitions from category_centroids for category page descriptions."""
+def fetch_category_meta(domain):
+    """Load display labels and scope definitions from category_centroids."""
     try:
         with readonly_engine.connect() as conn:
             rows = conn.execute(text("""
-                SELECT label, description FROM category_centroids
+                SELECT label, display_label, description FROM category_centroids
                 WHERE domain = :domain
             """), {"domain": domain}).fetchall()
-        return {r._mapping["label"]: r._mapping["description"] or "" for r in rows}
+        return {
+            r._mapping["label"]: {
+                "display_label": r._mapping["display_label"] or r._mapping["label"].replace("-", " ").title(),
+                "desc": r._mapping["description"] or "",
+            }
+            for r in rows
+        }
     except Exception:
         return {}
+
+def fetch_global_total():
+    """Total ai_repos count across all domains."""
+    try:
+        with readonly_engine.connect() as conn:
+            return conn.execute(text("SELECT COUNT(*) FROM ai_repos")).scalar()
+    except Exception:
+        return 220000
 
 def fetch_servers(view_name):
     """All qualifying repos from the given quality view."""
@@ -402,9 +437,9 @@ def fetch_trending(view_name, snapshot_table, domain_filter=None):
 # Site generation
 # ---------------------------------------------------------------------------
 
-def build_category_data(servers, category_descs=None):
+def build_category_data(servers, category_meta=None):
     """Group servers by subcategory and compute aggregates."""
-    descs = category_descs or {}
+    meta = category_meta or {}
     by_cat = {}
     for s in servers:
         cat = s.get("subcategory") or "uncategorized"
@@ -412,10 +447,11 @@ def build_category_data(servers, category_descs=None):
 
     categories = []
     for key, group in sorted(by_cat.items(), key=lambda x: -len(x[1])):
+        cm = meta.get(key, {})
         categories.append({
             "subcategory": key,
-            "label": key.replace("-", " ").title(),
-            "desc": descs.get(key, ""),
+            "label": cm.get("display_label", key.replace("-", " ").title()),
+            "desc": cm.get("desc", ""),
             "count": len(group),
             "servers": group,
         })
@@ -504,6 +540,9 @@ def main():
     env.globals["base_path"] = base_path.rstrip("/")
     env.globals["directories"] = DIRECTORIES
 
+    # Global total for footer context
+    global_total = fetch_global_total()
+
     # Domain-specific context passed to all templates
     domain_ctx = {
         "domain": domain,
@@ -512,6 +551,8 @@ def main():
         "noun": cfg["noun"],
         "noun_plural": cfg["noun_plural"],
         "domain_description": cfg["description"],
+        "domain_explainer": cfg.get("explainer", ""),
+        "global_total": f"{global_total:,}",
     }
 
     # Phase 1: Query data
@@ -532,8 +573,8 @@ def main():
     print(f"  {len(trending)} trending {cfg['noun_plural']} ({trending_days}d window)")
 
     # Build derived data
-    category_descs = fetch_category_descriptions(domain)
-    categories = build_category_data(servers, category_descs)
+    category_meta = fetch_category_meta(domain)
+    categories = build_category_data(servers, category_meta)
     related_lookup = build_related_lookup(categories)
 
     tier_counts = {}
@@ -620,6 +661,16 @@ def main():
     write_file(
         os.path.join(out_dir, "trending", "index.html"),
         env.get_template("trending.html").render(trending=trending, trending_days=trending_days, **ctx),
+    )
+
+    print("  Generating about + methodology pages...")
+    write_file(
+        os.path.join(out_dir, "about", "index.html"),
+        env.get_template("about.html").render(**ctx),
+    )
+    write_file(
+        os.path.join(out_dir, "methodology", "index.html"),
+        env.get_template("methodology.html").render(**ctx),
     )
 
     # Phase 3: SEO assets

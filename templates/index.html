@@ -38,6 +38,9 @@
       Quality-scored directory of <strong>{{ "{:,}".format(total_count | int) }}</strong> {{ domain_label_plural | lower }}, updated daily.
       Every {{ noun }} scored on maintenance, adoption, maturity, and community signals.
     </p>
+    {% if domain_explainer %}
+    <p class="mt-3 text-sm text-gray-500 max-w-xl mx-auto">{{ domain_explainer }}</p>
+    {% endif %}
     <div class="mt-6">
       <a href="{{ base_path }}/servers/" class="inline-block bg-blue-600 text-white font-medium px-6 py-2.5 rounded-lg hover:bg-blue-700 transition-colors">Browse all {{ noun_plural }}</a>
     </div>

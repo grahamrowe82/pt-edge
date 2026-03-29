@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}About | PT-Edge{% endblock %}
+
+{% block meta %}
+<meta name="description" content="PT-Edge tracks 220,000+ AI repos across GitHub, PyPI, npm, Docker Hub, and HuggingFace, scoring them daily on quality. Built by Phase Transitions.">
+{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/about/">{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 py-12">
+
+  <h1 class="text-3xl font-bold text-gray-900 mb-6">About PT-Edge</h1>
+
+  <div class="prose prose-gray max-w-none text-gray-700 leading-relaxed space-y-4">
+    <p>
+      PT-Edge tracks <strong>220,000+ AI repositories</strong> across GitHub, PyPI, npm, Docker Hub, and HuggingFace.
+      Every day, it scores each project on four dimensions — maintenance, adoption, maturity, and community — producing
+      a composite quality score from 0 to 100.
+    </p>
+
+    <p>
+      The results are published as this directory: <strong>165,000+ pages across 17 AI domains</strong>, from MCP servers
+      and agent frameworks to voice AI, diffusion models, and vector databases. Every page is regenerated daily from current data.
+    </p>
+
+    <p>
+      The goal is to be the canonical reference for AI infrastructure decisions. When an AI agent or a developer needs to
+      choose between tools, this directory provides scored, structured, daily-updated recommendations — so the work of
+      evaluating quality doesn't have to be done from scratch every time.
+    </p>
+
+    <h2 class="text-xl font-bold text-gray-900 mt-8">Data sources</h2>
+    <ul class="list-disc pl-5 space-y-1">
+      <li>GitHub API — stars, forks, commits, contributors, license, topics, push dates</li>
+      <li>PyPI and npm — monthly download counts, package metadata</li>
+      <li>Docker Hub and HuggingFace — model and dataset tracking</li>
+      <li>Hacker News and community forums — discussion signals</li>
+    </ul>
+
+    <h2 class="text-xl font-bold text-gray-900 mt-8">How categories are discovered</h2>
+    <p>
+      Categories are not hand-curated. Each project's description, README summary, and topics are embedded as a 1536-dimensional vector.
+      These embeddings are clustered using UMAP dimensionality reduction and HDBSCAN density-based clustering. An LLM labels each
+      cluster based on its most representative projects. The result: 2,400 search-intent-aligned categories discovered from the data itself.
+    </p>
+
+    <h2 class="text-xl font-bold text-gray-900 mt-8">Built by</h2>
+    <p>
+      PT-Edge is built by <a href="https://phasetransitionsai.substack.com" class="text-blue-600 hover:underline">Graham Rowe</a>
+      at Phase Transitions — a weekly newsletter on building with AI, from architecture decisions to production patterns.
+    </p>
+
+    <h2 class="text-xl font-bold text-gray-900 mt-8">Contact</h2>
+    <p>
+      <a href="mailto:graham@phasetransitions.ai" class="text-blue-600 hover:underline">graham@phasetransitions.ai</a>
+    </p>
+  </div>
+
+</div>
+{% endblock %}
