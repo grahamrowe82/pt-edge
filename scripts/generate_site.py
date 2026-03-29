@@ -22,7 +22,7 @@ from sqlalchemy import text
 
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from app.db import readonly_engine
+from app.db import engine, readonly_engine
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -609,6 +609,8 @@ def main():
     parser.add_argument("--output-dir", default="./site", help="Output directory")
     parser.add_argument("--base-url", default="https://mcp.phasetransitions.ai",
                         help="Base URL for canonical links")
+    parser.add_argument("--skip-comparisons", action="store_true",
+                        help="Skip comparison page generation (faster startup)")
     args = parser.parse_args()
 
     domain = args.domain
@@ -767,9 +769,13 @@ def main():
     )
 
     # Comparison pages
-    print("  Building comparison pairs...")
-    comparison_pairs = build_comparison_pairs(categories, domain)
-    print(f"  {len(comparison_pairs)} comparison pairs found")
+    comparison_pairs = []
+    if args.skip_comparisons:
+        print("  Skipping comparison pages (--skip-comparisons)")
+    else:
+        print("  Building comparison pairs...")
+        comparison_pairs = build_comparison_pairs(categories, domain)
+        print(f"  {len(comparison_pairs)} comparison pairs found")
 
     if comparison_pairs:
         # Write placeholder rows for backfill (no LLM, just repo_a_id + repo_b_id)
