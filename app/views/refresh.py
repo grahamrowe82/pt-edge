@@ -31,6 +31,14 @@ VIEWS_IN_ORDER = [
     "mv_vector_db_quality",    # standalone: quality scores for vector-db-domain repos
     "mv_embeddings_quality",   # standalone: quality scores for embeddings-domain repos
     "mv_prompt_eng_quality",   # standalone: quality scores for prompt-engineering-domain repos
+    "mv_ml_frameworks_quality",  # standalone: quality scores for ml-frameworks-domain repos
+    "mv_llm_tools_quality",      # standalone: quality scores for llm-tools-domain repos
+    "mv_nlp_quality",            # standalone: quality scores for nlp-domain repos
+    "mv_transformers_quality",   # standalone: quality scores for transformers-domain repos
+    "mv_generative_ai_quality",  # standalone: quality scores for generative-ai-domain repos
+    "mv_computer_vision_quality",# standalone: quality scores for computer-vision-domain repos
+    "mv_data_engineering_quality",# standalone: quality scores for data-engineering-domain repos
+    "mv_mlops_quality",          # standalone: quality scores for mlops-domain repos
 ]
 
 
@@ -107,6 +115,10 @@ def refresh_all_views():
         ("voice-ai", "mv_voice_ai_quality"), ("diffusion", "mv_diffusion_quality"),
         ("vector-db", "mv_vector_db_quality"), ("embeddings", "mv_embeddings_quality"),
         ("prompt-engineering", "mv_prompt_eng_quality"),
+        ("ml-frameworks", "mv_ml_frameworks_quality"), ("llm-tools", "mv_llm_tools_quality"),
+        ("nlp", "mv_nlp_quality"), ("transformers", "mv_transformers_quality"),
+        ("generative-ai", "mv_generative_ai_quality"), ("computer-vision", "mv_computer_vision_quality"),
+        ("data-engineering", "mv_data_engineering_quality"), ("mlops", "mv_mlops_quality"),
     ]:
         try:
             with engine.connect() as conn:
