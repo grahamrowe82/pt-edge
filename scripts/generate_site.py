@@ -40,18 +40,6 @@ DOMAIN_CONFIG = {
         "noun": "server",
         "noun_plural": "servers",
         "description": "Quality-scored directory of MCP servers, updated daily.",
-        "categories": {
-            "framework":     {"label": "Frameworks",      "desc": "MCP server frameworks and SDKs for building servers"},
-            "gateway":       {"label": "Gateways",        "desc": "API gateways, proxies, hubs, and aggregators for MCP"},
-            "transport":     {"label": "Transport",        "desc": "Transport layer implementations — stdio, SSE, WebSocket bridges"},
-            "security":      {"label": "Security",         "desc": "Authentication, authorization, and security tools for MCP"},
-            "ide":           {"label": "IDE Integration",  "desc": "Editor and IDE plugins for MCP — VS Code, Neovim, JetBrains, Cursor"},
-            "observability": {"label": "Observability",    "desc": "Monitoring, debugging, tracing, and telemetry for MCP servers"},
-            "testing":       {"label": "Testing",          "desc": "Test frameworks, mocking tools, and benchmarks for MCP"},
-            "discovery":     {"label": "Discovery",        "desc": "Server registries, catalogs, and directory tools"},
-            "billing":       {"label": "Billing",          "desc": "Payment, metering, and monetization for MCP servers"},
-            "agent-memory":  {"label": "Agent Memory",     "desc": "Long-term memory and knowledge graph tools via MCP"},
-        },
     },
     "agents": {
         "view": "mv_agents_quality",
@@ -62,13 +50,6 @@ DOMAIN_CONFIG = {
         "noun": "agent",
         "noun_plural": "agents",
         "description": "Quality-scored directory of AI agent frameworks and tools, updated daily.",
-        "categories": {
-            "browser-agent":   {"label": "Browser Agents",   "desc": "Web browsing and interaction agents"},
-            "coding-agent":    {"label": "Coding Agents",    "desc": "Autonomous software engineering agents"},
-            "research-agent":  {"label": "Research Agents",  "desc": "Deep research and web research agents"},
-            "multi-agent":     {"label": "Multi-Agent",      "desc": "Multi-agent orchestration and swarm frameworks"},
-            "agent-framework": {"label": "Agent Frameworks", "desc": "SDKs and platforms for building AI agents"},
-        },
     },
     "rag": {
         "view": "mv_rag_quality",
@@ -79,13 +60,6 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of retrieval-augmented generation tools, updated daily.",
-        "categories": {
-            "chunking":   {"label": "Chunking",   "desc": "Text splitting, segmentation, and partitioning tools"},
-            "retrieval":  {"label": "Retrieval",   "desc": "Search, reranking, and hybrid retrieval"},
-            "ingestion":  {"label": "Ingestion",   "desc": "Document loaders, parsers, and extractors"},
-            "evaluation": {"label": "Evaluation",  "desc": "RAG evaluation, benchmarking, and quality metrics"},
-            "pipeline":   {"label": "Pipelines",   "desc": "End-to-end RAG pipeline frameworks"},
-        },
     },
     "ai-coding": {
         "view": "mv_ai_coding_quality",
@@ -96,12 +70,6 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of AI-powered coding tools, updated daily.",
-        "categories": {
-            "code-editor":     {"label": "Code Editors",     "desc": "IDE plugins and AI-powered editors"},
-            "code-review":     {"label": "Code Review",      "desc": "Automated code review and static analysis"},
-            "code-generation": {"label": "Code Generation",  "desc": "Code completion and generation tools"},
-            "context-tools":   {"label": "Context Tools",    "desc": "Codebase indexing, search, and mapping"},
-        },
     },
     "voice-ai": {
         "view": "mv_voice_ai_quality",
@@ -112,13 +80,6 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of voice AI tools — TTS, STT, voice agents, and audio processing.",
-        "categories": {
-            "tts":              {"label": "Text-to-Speech",    "desc": "Speech synthesis, voice cloning, and TTS engines"},
-            "stt":              {"label": "Speech-to-Text",    "desc": "Speech recognition, transcription, and ASR tools"},
-            "voice-agent":      {"label": "Voice Agents",      "desc": "Conversational voice assistants and voice bots"},
-            "real-time-audio":  {"label": "Real-Time Audio",   "desc": "Streaming audio, WebRTC, and live audio processing"},
-            "audio-processing": {"label": "Audio Processing",  "desc": "Audio effects, noise reduction, and music tools"},
-        },
     },
     "diffusion": {
         "view": "mv_diffusion_quality",
@@ -129,13 +90,6 @@ DOMAIN_CONFIG = {
         "noun": "model",
         "noun_plural": "models",
         "description": "Quality-scored directory of diffusion models and image generation tools.",
-        "categories": {
-            "image-generation": {"label": "Image Generation", "desc": "Text-to-image models — Stable Diffusion, SDXL, Flux"},
-            "video-generation": {"label": "Video Generation", "desc": "Text-to-video and animation models"},
-            "ui-workflow":      {"label": "UI & Workflows",   "desc": "ComfyUI, WebUI, and visual workflow tools"},
-            "fine-tuning":      {"label": "Fine-Tuning",      "desc": "LoRA, DreamBooth, and model training tools"},
-            "controlnet":       {"label": "ControlNet & Editing", "desc": "Image editing, inpainting, upscaling, and control"},
-        },
     },
     "vector-db": {
         "view": "mv_vector_db_quality",
@@ -146,13 +100,6 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of vector databases and similarity search tools.",
-        "categories": {
-            "database":      {"label": "Databases",      "desc": "Vector database engines — Chroma, Qdrant, Weaviate, Milvus"},
-            "client-sdk":    {"label": "Client SDKs",    "desc": "Client libraries and SDKs for vector databases"},
-            "indexing":       {"label": "Indexing",       "desc": "ANN indexing — HNSW, FAISS, ScaNN"},
-            "hybrid-search": {"label": "Hybrid Search",  "desc": "Combined vector + full-text search"},
-            "integration":   {"label": "Integrations",   "desc": "LangChain, LlamaIndex, and framework connectors"},
-        },
     },
     "embeddings": {
         "view": "mv_embeddings_quality",
@@ -163,13 +110,6 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of embedding models, servers, and utilities.",
-        "categories": {
-            "model":       {"label": "Models",       "desc": "Embedding models — sentence-transformers, E5, BGE, Nomic"},
-            "server":      {"label": "Servers",      "desc": "Embedding inference servers and API endpoints"},
-            "fine-tuning": {"label": "Fine-Tuning",  "desc": "Contrastive learning, Matryoshka, and training tools"},
-            "evaluation":  {"label": "Evaluation",   "desc": "MTEB, BEIR, and embedding benchmarks"},
-            "utility":     {"label": "Utilities",    "desc": "Caching, batching, compression, and quantization"},
-        },
     },
     "prompt-engineering": {
         "view": "mv_prompt_eng_quality",
@@ -180,13 +120,6 @@ DOMAIN_CONFIG = {
         "noun": "tool",
         "noun_plural": "tools",
         "description": "Quality-scored directory of prompt engineering tools, frameworks, and libraries.",
-        "categories": {
-            "prompt-framework": {"label": "Frameworks",      "desc": "DSPy, LMQL, and prompt programming frameworks"},
-            "prompt-library":   {"label": "Prompt Libraries", "desc": "Curated prompt collections and templates"},
-            "guardrails":       {"label": "Guardrails",      "desc": "Output safety, moderation, and content filtering"},
-            "output-parsing":   {"label": "Output Parsing",  "desc": "Structured output, JSON mode, and schema extraction"},
-            "optimization":     {"label": "Optimization",    "desc": "Token optimization, caching, and cost reduction"},
-        },
     },
 }
 
@@ -274,16 +207,52 @@ def metrics_paragraph(server):
         return ""
     return ". ".join(parts) + "."
 
+def decision_paragraph(category_label, servers, noun_plural):
+    """Build a decision paragraph for a category page from live data."""
+    count = len(servers)
+    if count == 0:
+        return ""
+    verified = [s for s in servers if s.get("quality_tier") == "verified"]
+    established = [s for s in servers if s.get("quality_tier") == "established"]
+    top = servers[0]
+    parts = [f"There are {count} {category_label.lower()} {noun_plural} tracked."]
+    if verified:
+        parts.append(f"{len(verified)} score above 70 (verified tier).")
+    elif established:
+        parts.append(f"{len(established)} score above 50 (established tier).")
+    parts.append(
+        f"The highest-rated is {top['full_name']} at {int(top['quality_score'])}/100"
+        f" with {top['stars'] or 0:,} stars"
+        + (f" and {top['downloads_monthly'] or 0:,} monthly downloads" if top.get('downloads_monthly') else "")
+        + "."
+    )
+    active = [s for s in servers[:10] if (s.get("commits_30d") or 0) > 0]
+    if active:
+        parts.append(f"{len(active)} of the top 10 are actively maintained.")
+    return " ".join(parts)
+
 # ---------------------------------------------------------------------------
 # Data queries
 # ---------------------------------------------------------------------------
+
+def fetch_category_descriptions(domain):
+    """Load scope definitions from category_centroids for category page descriptions."""
+    try:
+        with readonly_engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT label, description FROM category_centroids
+                WHERE domain = :domain
+            """), {"domain": domain}).fetchall()
+        return {r._mapping["label"]: r._mapping["description"] or "" for r in rows}
+    except Exception:
+        return {}
 
 def fetch_servers(view_name):
     """All qualifying repos from the given quality view."""
     with readonly_engine.connect() as conn:
         rows = conn.execute(text(f"""
             SELECT full_name, name, description, ai_summary, stars, forks,
-                   language, license, archived, subcategory,
+                   language, license, archived, category, subcategory,
                    last_pushed_at, pypi_package, npm_package,
                    downloads_monthly, dependency_count, commits_30d,
                    reverse_dep_count,
@@ -330,8 +299,9 @@ def fetch_trending(view_name, snapshot_table, domain_filter=None, days=7):
 # Site generation
 # ---------------------------------------------------------------------------
 
-def build_category_data(servers, category_meta):
+def build_category_data(servers, category_descs=None):
     """Group servers by subcategory and compute aggregates."""
+    descs = category_descs or {}
     by_cat = {}
     for s in servers:
         cat = s.get("subcategory") or "uncategorized"
@@ -339,11 +309,10 @@ def build_category_data(servers, category_meta):
 
     categories = []
     for key, group in sorted(by_cat.items(), key=lambda x: -len(x[1])):
-        meta = category_meta.get(key, {"label": key.replace("-", " ").title(), "desc": f"{key} tools"})
         categories.append({
             "subcategory": key,
-            "label": meta["label"],
-            "desc": meta["desc"],
+            "label": key.replace("-", " ").title(),
+            "desc": descs.get(key, ""),
             "count": len(group),
             "servers": group,
         })
@@ -427,6 +396,7 @@ def main():
     env.globals["tier_bar_color"] = tier_bar_color
     env.globals["score_bar_color"] = score_bar_color
     env.globals["metrics_paragraph"] = metrics_paragraph
+    env.globals["decision_paragraph"] = decision_paragraph
     env.globals["base_url"] = base_url
     env.globals["base_path"] = base_path.rstrip("/")
     env.globals["directories"] = DIRECTORIES
@@ -458,7 +428,8 @@ def main():
     print(f"  {len(trending)} trending {cfg['noun_plural']}")
 
     # Build derived data
-    categories = build_category_data(servers, cfg["categories"])
+    category_descs = fetch_category_descriptions(domain)
+    categories = build_category_data(servers, category_descs)
     related_lookup = build_related_lookup(categories)
 
     tier_counts = {}
