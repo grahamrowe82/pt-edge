@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+
+{% set name_a = repo_a.name or repo_a.full_name.split('/')[1] %}
+{% set name_b = repo_b.name or repo_b.full_name.split('/')[1] %}
+
+{% block title %}{{ name_a }} vs {{ name_b }} &mdash; Side-by-Side Comparison | PT-Edge{% endblock %}
+
+{% block meta %}
+<meta name="description" content="Compare {{ repo_a.full_name }} (score {{ repo_a.quality_score | int }}) vs {{ repo_b.full_name }} (score {{ repo_b.quality_score | int }}). Side-by-side quality scores, maintenance, adoption, and community metrics.">
+<meta property="og:title" content="{{ name_a }} vs {{ name_b }} | PT-Edge">
+<meta property="og:description" content="Quality score comparison: {{ repo_a.quality_score | int }} vs {{ repo_b.quality_score | int }}. Which one should you use?">
+{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/compare/{{ slug }}/"> {% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+
+  <nav class="text-sm text-gray-500 mb-6">
+    <a href="{{ base_path }}/" class="hover:text-gray-700">Home</a>
+    <span class="mx-1">/</span>
+    <a href="{{ base_path }}/categories/{{ comparison_category }}/" class="hover:text-gray-700">{{ category_label }}</a>
+    <span class="mx-1">/</span>
+    <span class="text-gray-700">{{ name_a }} vs {{ name_b }}</span>
+  </nav>
+
+  <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{{ name_a }} vs {{ name_b }}</h1>
+
+  {% if sentence %}
+  <div class="mb-6 text-gray-700 leading-relaxed">
+    <p>{{ sentence }}</p>
+  </div>
+  {% endif %}
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+
+    <!-- Repo A -->
+    <div class="rounded-lg border border-gray-200 p-5">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <a href="{{ base_path }}/servers/{{ repo_a.full_name }}/" class="text-lg font-bold text-blue-600 hover:underline">{{ repo_a.full_name }}</a>
+          <p class="text-sm text-gray-500 mt-1">{{ repo_a.description | truncate(120) if repo_a.description else '' }}</p>
+        </div>
+        <div class="text-right flex-shrink-0 ml-3">
+          <div class="text-3xl font-bold text-gray-900">{{ repo_a.quality_score | int }}</div>
+          <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium {{ tier_classes(repo_a.quality_tier) }}">{{ repo_a.quality_tier | capitalize }}</span>
+        </div>
+      </div>
+
+      {% if repo_a.ai_summary %}
+      <p class="text-sm text-gray-600 mb-3">{{ repo_a.ai_summary }}</p>
+      {% endif %}
+
+      <div class="space-y-2">
+        {% for label, key in [('Maintenance', 'maintenance_score'), ('Adoption', 'adoption_score'), ('Maturity', 'maturity_score'), ('Community', 'community_score')] %}
+        <div>
+          <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+            <span>{{ label }}</span>
+            <span class="font-medium text-gray-700">{{ repo_a[key] | int }}/25</span>
+          </div>
+          <div class="h-1.5 bg-gray-200 rounded-full">
+            <div class="h-1.5 rounded-full {{ score_bar_color(repo_a[key], 25) }}" style="width: {{ (repo_a[key] / 25 * 100) | int }}%"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 mt-4 text-xs text-gray-500">
+        <div>Stars: <span class="text-gray-700 font-medium">{{ "{:,}".format(repo_a.stars | int) if repo_a.stars else '—' }}</span></div>
+        <div>Forks: <span class="text-gray-700 font-medium">{{ "{:,}".format(repo_a.forks | int) if repo_a.forks else '—' }}</span></div>
+        <div>Downloads: <span class="text-gray-700 font-medium">{{ "{:,}".format(repo_a.downloads_monthly | int) if repo_a.downloads_monthly else '—' }}</span></div>
+        <div>Commits (30d): <span class="text-gray-700 font-medium">{{ repo_a.commits_30d | int if repo_a.commits_30d else '0' }}</span></div>
+        <div>Language: <span class="text-gray-700 font-medium">{{ repo_a.language or '—' }}</span></div>
+        <div>License: <span class="text-gray-700 font-medium">{{ repo_a.license or '—' }}</span></div>
+      </div>
+
+      {% if repo_a.risk_flags and repo_a.risk_flags | length > 0 %}
+      <div class="mt-3 flex flex-wrap gap-1">
+        {% for flag in repo_a.risk_flags %}
+        <span class="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-800">{{ flag | replace('_', ' ') | title }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+    <!-- Repo B -->
+    <div class="rounded-lg border border-gray-200 p-5">
+      <div class="flex items-start justify-between mb-3">
+        <div>
+          <a href="{{ base_path }}/servers/{{ repo_b.full_name }}/" class="text-lg font-bold text-blue-600 hover:underline">{{ repo_b.full_name }}</a>
+          <p class="text-sm text-gray-500 mt-1">{{ repo_b.description | truncate(120) if repo_b.description else '' }}</p>
+        </div>
+        <div class="text-right flex-shrink-0 ml-3">
+          <div class="text-3xl font-bold text-gray-900">{{ repo_b.quality_score | int }}</div>
+          <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium {{ tier_classes(repo_b.quality_tier) }}">{{ repo_b.quality_tier | capitalize }}</span>
+        </div>
+      </div>
+
+      {% if repo_b.ai_summary %}
+      <p class="text-sm text-gray-600 mb-3">{{ repo_b.ai_summary }}</p>
+      {% endif %}
+
+      <div class="space-y-2">
+        {% for label, key in [('Maintenance', 'maintenance_score'), ('Adoption', 'adoption_score'), ('Maturity', 'maturity_score'), ('Community', 'community_score')] %}
+        <div>
+          <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+            <span>{{ label }}</span>
+            <span class="font-medium text-gray-700">{{ repo_b[key] | int }}/25</span>
+          </div>
+          <div class="h-1.5 bg-gray-200 rounded-full">
+            <div class="h-1.5 rounded-full {{ score_bar_color(repo_b[key], 25) }}" style="width: {{ (repo_b[key] / 25 * 100) | int }}%"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="grid grid-cols-2 gap-2 mt-4 text-xs text-gray-500">
+        <div>Stars: <span class="text-gray-700 font-medium">{{ "{:,}".format(repo_b.stars | int) if repo_b.stars else '—' }}</span></div>
+        <div>Forks: <span class="text-gray-700 font-medium">{{ "{:,}".format(repo_b.forks | int) if repo_b.forks else '—' }}</span></div>
+        <div>Downloads: <span class="text-gray-700 font-medium">{{ "{:,}".format(repo_b.downloads_monthly | int) if repo_b.downloads_monthly else '—' }}</span></div>
+        <div>Commits (30d): <span class="text-gray-700 font-medium">{{ repo_b.commits_30d | int if repo_b.commits_30d else '0' }}</span></div>
+        <div>Language: <span class="text-gray-700 font-medium">{{ repo_b.language or '—' }}</span></div>
+        <div>License: <span class="text-gray-700 font-medium">{{ repo_b.license or '—' }}</span></div>
+      </div>
+
+      {% if repo_b.risk_flags and repo_b.risk_flags | length > 0 %}
+      <div class="mt-3 flex flex-wrap gap-1">
+        {% for flag in repo_b.risk_flags %}
+        <span class="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-800">{{ flag | replace('_', ' ') | title }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <div class="text-center text-sm text-gray-500">
+    <p>Scores updated daily from GitHub, PyPI, and npm data. <a href="{{ base_path }}/methodology/" class="text-blue-600 hover:underline">How scores work</a></p>
+  </div>
+
+</div>
+{% endblock %}

@@ -16,6 +16,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from xml.sax.saxutils import escape as xml_escape
 
+import numpy as np
 from jinja2 import Environment, FileSystemLoader
 from sqlalchemy import text
 
@@ -466,12 +467,98 @@ def build_related_lookup(categories):
     return lookup
 
 
+def dynamic_threshold(score_a, score_b):
+    """Higher-scored repos get a wider comparison window."""
+    ms = max(score_a, score_b)
+    if ms >= 70: return 0.65
+    elif ms >= 50: return 0.72
+    elif ms >= 30: return 0.78
+    else: return 0.85
+
+
+def fetch_embeddings_for_repos(full_names):
+    """Fetch 1536d embeddings for a list of repos. Small per-category query."""
+    if not full_names:
+        return {}
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT full_name, embedding_1536::text as emb
+            FROM ai_repos
+            WHERE full_name = ANY(:names) AND embedding_1536 IS NOT NULL
+        """), {"names": list(full_names)}).fetchall()
+    result = {}
+    for r in rows:
+        m = r._mapping
+        vec = np.fromstring(m["emb"].strip("[]"), sep=",", dtype=np.float32)
+        norm = np.linalg.norm(vec)
+        result[m["full_name"]] = vec / norm if norm > 0 else vec
+    return result
+
+
+def build_comparison_pairs(categories, domain):
+    """Find comparison-worthy pairs via embedding similarity within each category."""
+    all_pairs = []
+    for cat in categories:
+        servers = cat["servers"]
+        if len(servers) < 2:
+            continue
+        # Limit to top 20 per category to keep queries small
+        top = servers[:20]
+        names = [s["full_name"] for s in top]
+        emb_map = fetch_embeddings_for_repos(names)
+        if len(emb_map) < 2:
+            continue
+
+        # Build vectors in order
+        indexed = [(s, emb_map[s["full_name"]]) for s in top if s["full_name"] in emb_map]
+        for i, (a, va) in enumerate(indexed):
+            for j, (b, vb) in enumerate(indexed):
+                if j <= i:
+                    continue
+                sim = float(va @ vb)
+                thresh = dynamic_threshold(a["quality_score"], b["quality_score"])
+                if sim >= thresh:
+                    # Ensure A has higher score (or alphabetical if equal)
+                    if a["quality_score"] < b["quality_score"]:
+                        a, b = b, a
+                    slug = f"{a['full_name'].replace('/', '-')}-vs-{b['full_name'].replace('/', '-')}"
+                    all_pairs.append({
+                        "repo_a": a, "repo_b": b,
+                        "similarity": sim,
+                        "category": cat["subcategory"],
+                        "category_label": cat["label"],
+                        "slug": slug,
+                    })
+    return all_pairs
+
+
+def fetch_comparison_sentences():
+    """Load pre-computed decision sentences."""
+    try:
+        with readonly_engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT a.full_name as a_name, b.full_name as b_name, cs.sentence
+                FROM comparison_sentences cs
+                JOIN ai_repos a ON a.id = cs.repo_a_id
+                JOIN ai_repos b ON b.id = cs.repo_b_id
+                WHERE cs.sentence IS NOT NULL
+            """)).fetchall()
+        result = {}
+        for r in rows:
+            m = r._mapping
+            result[(m["a_name"], m["b_name"])] = m["sentence"]
+            result[(m["b_name"], m["a_name"])] = m["sentence"]
+        return result
+    except Exception:
+        return {}
+
+
 def write_file(path, content):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     Path(path).write_text(content)
 
 
-def generate_sitemap(base_url, base_path, servers, categories, out_dir):
+def generate_sitemap(base_url, base_path, servers, categories, out_dir, comparisons=None):
     prefix = f"{base_url}{base_path}"
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
@@ -498,6 +585,12 @@ def generate_sitemap(base_url, base_path, servers, categories, out_dir):
         lines.append(
             f'  <url><loc>{prefix}servers/{xml_escape(s["full_name"])}/</loc>'
             f'{lastmod}<changefreq>weekly</changefreq><priority>0.6</priority></url>'
+        )
+
+    for pair in (comparisons or []):
+        lines.append(
+            f'  <url><loc>{prefix}compare/{xml_escape(pair["slug"])}/</loc>'
+            f'<changefreq>weekly</changefreq><priority>0.7</priority></url>'
         )
 
     lines.append('</urlset>')
@@ -673,13 +766,41 @@ def main():
         env.get_template("methodology.html").render(**ctx),
     )
 
+    # Comparison pages
+    print("  Building comparison pairs...")
+    comparison_pairs = build_comparison_pairs(categories, domain)
+    print(f"  {len(comparison_pairs)} comparison pairs found")
+
+    if comparison_pairs:
+        print("  Fetching decision sentences...")
+        sentences = fetch_comparison_sentences()
+        print(f"  {len(sentences)} pre-computed sentences available")
+
+        print("  Generating comparison pages...")
+        comp_tpl = env.get_template("comparison.html")
+        for i, pair in enumerate(comparison_pairs):
+            sentence = sentences.get((pair["repo_a"]["full_name"], pair["repo_b"]["full_name"]), "")
+            write_file(
+                os.path.join(out_dir, "compare", pair["slug"], "index.html"),
+                comp_tpl.render(
+                    repo_a=pair["repo_a"], repo_b=pair["repo_b"],
+                    slug=pair["slug"], sentence=sentence,
+                    comparison_category=pair["category"],
+                    category_label=pair["category_label"],
+                    **ctx,
+                ),
+            )
+            if (i + 1) % 1000 == 0:
+                print(f"  {i + 1}/{len(comparison_pairs)} comparison pages...")
+        print(f"  {len(comparison_pairs)} comparison pages")
+
     # Phase 3: SEO assets
     print("  Generating sitemap.xml + robots.txt...")
-    generate_sitemap(base_url, base_path, servers, categories, out_dir)
+    generate_sitemap(base_url, base_path, servers, categories, out_dir, comparison_pairs)
     generate_robots(base_url, base_path, out_dir)
 
     elapsed = time.time() - t0
-    total_files = total_count + total_pages + len(categories) + 5
+    total_files = total_count + total_pages + len(categories) + len(comparison_pairs) + 5
     print(f"\nDone! {cfg['label']}: {total_files} files in {elapsed:.1f}s → {out_dir}/")
 
 
