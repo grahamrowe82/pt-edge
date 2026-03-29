@@ -352,17 +352,31 @@ def fetch_servers(view_name):
               AND description != ''
             ORDER BY quality_score DESC NULLS LAST
         """), {"min_score": MIN_QUALITY_SCORE}).fetchall()
-    return [dict(r._mapping) for r in rows]
+    results = []
+    for r in rows:
+        d = dict(r._mapping)
+        if d.get("license") in ("NOASSERTION", ""):
+            d["license"] = None
+        results.append(d)
+    return results
 
 
-def fetch_trending(view_name, snapshot_table, domain_filter=None, days=7):
-    """Repos with biggest score improvement in last N days."""
+def fetch_trending(view_name, snapshot_table, domain_filter=None):
+    """Repos with biggest score improvement since earliest available snapshot."""
     domain_clause = "AND s.domain = :domain_filter" if domain_filter else ""
-    params = {"days": days, "min_score": MIN_QUALITY_SCORE}
+    params = {"min_score": MIN_QUALITY_SCORE}
     if domain_filter:
         params["domain_filter"] = domain_filter
 
     with readonly_engine.connect() as conn:
+        # Find earliest snapshot date
+        date_sql = f"SELECT MIN(snapshot_date) FROM {snapshot_table}"
+        if domain_filter:
+            date_sql += " WHERE domain = :domain_filter"
+        earliest = conn.execute(text(date_sql), params).scalar()
+        if not earliest or earliest >= date.today():
+            return [], 0
+
         rows = conn.execute(text(f"""
             SELECT m.full_name, m.name, m.description, m.quality_score,
                    m.quality_score - s.quality_score AS score_delta,
@@ -371,7 +385,7 @@ def fetch_trending(view_name, snapshot_table, domain_filter=None, days=7):
             JOIN {snapshot_table} s ON s.repo_id = (
                 SELECT id FROM ai_repos WHERE full_name = m.full_name LIMIT 1
             )
-            WHERE s.snapshot_date = CURRENT_DATE - :days
+            WHERE s.snapshot_date = :earliest_date
               AND m.quality_score >= :min_score
               AND m.description IS NOT NULL
               AND m.description != ''
@@ -379,8 +393,10 @@ def fetch_trending(view_name, snapshot_table, domain_filter=None, days=7):
               {domain_clause}
             ORDER BY m.quality_score - s.quality_score DESC
             LIMIT 100
-        """), params).fetchall()
-    return [dict(r._mapping) for r in rows]
+        """), {**params, "earliest_date": earliest}).fetchall()
+
+        trending_days = (date.today() - earliest).days
+    return [dict(r._mapping) for r in rows], trending_days
 
 
 # ---------------------------------------------------------------------------
@@ -506,14 +522,15 @@ def main():
     print(f"  {total_count} qualifying {cfg['noun_plural']}")
 
     print("  Fetching trending...")
+    trending_days = 0
     try:
-        trending = fetch_trending(
+        trending, trending_days = fetch_trending(
             cfg["view"], cfg["snapshot_table"], cfg["snapshot_domain_filter"]
         )
     except Exception as e:
-        print(f"  Trending query failed (expected if < 7 days of snapshots): {e}")
+        print(f"  Trending query failed: {e}")
         trending = []
-    print(f"  {len(trending)} trending {cfg['noun_plural']}")
+    print(f"  {len(trending)} trending {cfg['noun_plural']} ({trending_days}d window)")
 
     # Build derived data
     category_descs = fetch_category_descriptions(domain)
@@ -603,7 +620,7 @@ def main():
     print("  Generating trending page...")
     write_file(
         os.path.join(out_dir, "trending", "index.html"),
-        env.get_template("trending.html").render(trending=trending, **ctx),
+        env.get_template("trending.html").render(trending=trending, trending_days=trending_days, **ctx),
     )
 
     # Phase 3: SEO assets

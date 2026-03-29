@@ -18,7 +18,7 @@
   </nav>
 
   <h1 class="text-2xl font-bold text-gray-900 mb-1">Trending {{ domain_label_plural }}</h1>
-  <p class="text-gray-500 text-sm mb-6">{{ noun_plural | capitalize }} with the biggest quality score improvements over the last 7 days.</p>
+  <p class="text-gray-500 text-sm mb-6">{{ noun_plural | capitalize }} with the biggest quality score improvements{% if trending_days %} over the last {{ trending_days }} day{{ 's' if trending_days != 1 else '' }}{% endif %}.</p>
 
   {% if trending %}
   <div class="overflow-x-auto">
