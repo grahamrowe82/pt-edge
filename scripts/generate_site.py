@@ -8,6 +8,7 @@ to static HTML files. Supports: mcp, agents, rag, ai-coding.
 """
 
 import argparse
+import json
 import math
 import os
 import sys
@@ -532,6 +533,21 @@ def build_comparison_pairs(categories, domain):
     return all_pairs
 
 
+def load_comparison_pairs(domain):
+    """Load pre-computed comparison pairs from structural_cache."""
+    try:
+        with readonly_engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT value FROM structural_cache WHERE key = :key"
+            ), {"key": f"comparison_pairs:{domain}"}).fetchone()
+        if row:
+            val = row._mapping["value"]
+            return json.loads(val) if isinstance(val, str) else val
+    except Exception:
+        pass
+    return []
+
+
 def fetch_comparison_sentences():
     """Load pre-computed decision sentences."""
     try:
@@ -768,64 +784,45 @@ def main():
         env.get_template("methodology.html").render(**ctx),
     )
 
-    # Comparison pages
+    # Comparison pages (read from structural_cache, no embedding queries)
+    print("  Loading comparison pairs from cache...")
+    cached_pairs = load_comparison_pairs(domain)
     comparison_pairs = []
-    if args.skip_comparisons:
-        print("  Skipping comparison pages (--skip-comparisons)")
-    else:
-        print("  Building comparison pairs...")
-        comparison_pairs = build_comparison_pairs(categories, domain)
-        print(f"  {len(comparison_pairs)} comparison pairs found")
-
-    if comparison_pairs:
-        # Write placeholder rows for backfill (no LLM, just repo_a_id + repo_b_id)
-        print("  Writing comparison placeholders for backfill...")
-        try:
-            names = set()
-            for p in comparison_pairs:
-                names.add(p["repo_a"]["full_name"])
-                names.add(p["repo_b"]["full_name"])
-            with readonly_engine.connect() as conn:
-                rows = conn.execute(text("SELECT id, full_name FROM ai_repos WHERE full_name = ANY(:names)"),
-                                    {"names": list(names)}).fetchall()
-            id_map = {r._mapping["full_name"]: r._mapping["id"] for r in rows}
-
-            with engine.connect() as conn:
-                for p in comparison_pairs:
-                    a_id = id_map.get(p["repo_a"]["full_name"])
-                    b_id = id_map.get(p["repo_b"]["full_name"])
-                    if a_id and b_id:
-                        conn.execute(text("""
-                            INSERT INTO comparison_sentences (repo_a_id, repo_b_id, domain, subcategory)
-                            VALUES (:a, :b, :domain, :cat)
-                            ON CONFLICT (repo_a_id, repo_b_id) DO NOTHING
-                        """), {"a": a_id, "b": b_id, "domain": domain, "cat": p["category"]})
-                conn.commit()
-            print(f"  {len(comparison_pairs)} placeholders written")
-        except Exception as e:
-            print(f"  Placeholder write failed (non-fatal): {e}")
-
-        print("  Fetching decision sentences...")
+    if cached_pairs:
+        # Look up full server data for each pair from the already-loaded servers list
+        server_map = {s["full_name"]: s for s in servers}
         sentences = fetch_comparison_sentences()
-        print(f"  {len(sentences)} pre-computed sentences available")
+        print(f"  {len(cached_pairs)} cached pairs, {len(sentences)} decision sentences")
 
-        print("  Generating comparison pages...")
         comp_tpl = env.get_template("comparison.html")
-        for i, pair in enumerate(comparison_pairs):
-            sentence = sentences.get((pair["repo_a"]["full_name"], pair["repo_b"]["full_name"]), "")
+        for cp in cached_pairs:
+            a = server_map.get(cp["repo_a"])
+            b = server_map.get(cp["repo_b"])
+            if not a or not b:
+                continue
+            # Build the category label from category_meta
+            cat_meta = category_meta.get(cp.get("category", ""), {})
+            cat_label = cat_meta.get("display_label", cp.get("category", "").replace("-", " ").title())
+            slug = cp["slug"]
+            sentence = sentences.get((cp["repo_a"], cp["repo_b"]), "")
+
             write_file(
-                os.path.join(out_dir, "compare", pair["slug"], "index.html"),
+                os.path.join(out_dir, "compare", slug, "index.html"),
                 comp_tpl.render(
-                    repo_a=pair["repo_a"], repo_b=pair["repo_b"],
-                    slug=pair["slug"], sentence=sentence,
-                    comparison_category=pair["category"],
-                    category_label=pair["category_label"],
+                    repo_a=a, repo_b=b, slug=slug, sentence=sentence,
+                    comparison_category=cp.get("category", ""),
+                    category_label=cat_label,
                     **ctx,
                 ),
             )
-            if (i + 1) % 1000 == 0:
-                print(f"  {i + 1}/{len(comparison_pairs)} comparison pages...")
+            comparison_pairs.append(cp)
+
+            if len(comparison_pairs) % 1000 == 0:
+                print(f"  {len(comparison_pairs)} comparison pages...")
+
         print(f"  {len(comparison_pairs)} comparison pages")
+    else:
+        print("  No cached pairs (run weekly_structural.py to populate)")
 
     # Phase 3: SEO assets
     print("  Generating sitemap.xml + robots.txt...")
