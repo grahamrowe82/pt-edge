@@ -2,7 +2,22 @@
 
 ## Database safety
 
-PT-Edge runs against a production PostgreSQL instance on Render. There is no staging database. Every query hits real data. These guidelines exist because we've learned them the hard way.
+PT-Edge runs against a production PostgreSQL instance on Render (1GB RAM, 0.5 CPU). There is no staging database. Every query hits real data. These guidelines exist because we've learned them the hard way.
+
+### Estimate query size before running
+
+Before running any query, estimate the data volume:
+- `ai_repos` has 220K+ rows. Each 1536d embedding is ~6KB as text. Fetching all embeddings = **1.3GB** — larger than the DB's entire RAM.
+- Materialized view refreshes scan the full `ai_repos` table with joins. Each refresh = **2-5 minutes** of sustained CPU.
+- Bulk UPDATEs on 100K+ rows trigger autovacuum, which consumes CPU/memory for **15-30 minutes** after.
+
+**Rules of thumb for a 1GB instance:**
+- Query result < 50MB: safe to run anytime
+- Query result 50-200MB: run alone, no concurrent operations
+- Query result > 200MB: don't do it. Batch by domain, by score range, or by LIMIT/OFFSET instead
+- If you need all embeddings, process per-domain (5K-70K per query, not 220K at once)
+
+**Before writing a new script, ask:** "How many rows will this touch, how big is each row, and does that fit in 1GB?" If the answer is "maybe not," batch it.
 
 ### Never run queries in the background
 
@@ -139,6 +154,8 @@ Render MCP tools are also available in Claude sessions for querying services, de
 
 **Connection limits.** The managed PostgreSQL has ~97 max connections. The web service (2 uvicorn workers), the cron job, and any local development sessions all share this pool. Orphaned connections from killed processes count against the limit until they time out (which can take minutes).
 
-**DB plan: standard-0 (1GB RAM, 0.5 CPU, 15GB storage).** Upgraded from basic-256mb on 2026-03-28. The 256mb plan couldn't handle bulk vector writes. Current usage: ~3GB of 15GB storage. Autovacuum runs automatically after bulk writes and can consume significant CPU/memory for 15-30 minutes.
+**DB plan: basic-1gb (1GB RAM, 0.5 CPU, 15GB storage).** Upgraded from basic-256mb on 2026-03-28. The 256mb plan couldn't handle bulk vector writes. Current usage: ~3GB of 15GB storage. Autovacuum runs automatically after bulk writes and can consume significant CPU/memory for 15-30 minutes.
+
+**Memory at ceiling is normal.** PostgreSQL deliberately uses all available memory for shared buffers and page cache. The Render dashboard showing 1,000/1,024 MB does NOT mean the DB is in trouble — it means it's caching data efficiently. Check CPU to determine actual load. CPU < 5% with memory at ceiling = healthy idle. CPU > 50% with memory at ceiling = actually under load.
 
 **Deploy hook.** The ingest cron triggers a web service redeploy after completion via `RENDER_DEPLOY_HOOK_URL` environment variable. This is how the site gets fresh data daily: ingest updates DB → refreshes views → triggers deploy → start.sh regenerates site.
