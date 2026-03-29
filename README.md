@@ -84,3 +84,8 @@ python scripts/generate_site.py --domain mcp --output-dir site  # Generate direc
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/grahamrowe82-pt-edge).
+
