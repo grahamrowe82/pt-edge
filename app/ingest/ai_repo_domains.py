@@ -134,4 +134,8 @@ DOMAIN_OVERRIDES: dict[tuple[str, str], str] = {
     # diffusion
     ("Stability-AI", "generative-models"): "diffusion",
     ("black-forest-labs", "flux"): "diffusion",
+    # scientific computing misclassified as ai-coding
+    ("casadi", "casadi"): "ml-frameworks",
+    ("brian-team", "brian2"): "ml-frameworks",
+    ("devitocodes", "devito"): "ml-frameworks",
 }
