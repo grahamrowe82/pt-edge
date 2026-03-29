@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% set name_a = repo_a.name or repo_a.full_name.split('/')[1] %}
+{% set name_b = repo_b.name or repo_b.full_name.split('/')[1] %}
+
+{% block title %}{{ name_a }} vs {{ name_b }} &mdash; Side-by-Side Comparison | PT-Edge{% endblock %}
+
+{% block meta %}
+<meta name="description" content="Compare {{ repo_a.full_name }} (score {{ repo_a.quality_score | int }}) vs {{ repo_b.full_name }} (score {{ repo_b.quality_score | int }}). Side-by-side quality scores, maintenance, adoption, and community metrics.">
+<meta property="og:title" content="{{ name_a }} vs {{ name_b }} | PT-Edge">
+<meta property="og:description" content="Quality score comparison: {{ repo_a.quality_score | int }} vs {{ repo_b.quality_score | int }}. Which one should you use?">
+{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/compare/{{ slug }}/"> {% endblock %}
+
+{% block content %}
+<div class="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+
+  <nav class="text-sm text-gray-500 mb-6">
+    <a href="{{ base_path }}/" class="hover:text-gray-700">Home</a>
+    <span class="mx-1">/</span>
+    <a href="{{ base_path }}/categories/{{ comparison_category }}/" class="hover:text-gray-700">{{ category_label }}</a>
+    <span class="mx-1">/</span>
+    <span class="text-gray-700">{{ name_a }} vs {{ name_b }}</span>
+  </nav>
+
+  <h1 class="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">{{ name_a }} vs {{ name_b }}</h1>
+
+  {% if sentence %}
+  <div class="mb-6 text-gray-700 leading-relaxed">
+    <p>{{ sentence }}</p>
+  </div>
+  {% endif %}
+
+  <!-- Scores headline -->
+  <div class="grid grid-cols-2 gap-6 mb-6">
+    <div class="text-center">
+      <a href="{{ base_path }}/servers/{{ repo_a.full_name }}/" class="text-lg font-bold text-blue-600 hover:underline">{{ name_a }}</a>
+      <div class="text-5xl font-bold text-gray-900 mt-2">{{ repo_a.quality_score | int }}</div>
+      <span class="inline-block mt-1 px-2.5 py-0.5 rounded-full text-xs font-medium {{ tier_classes(repo_a.quality_tier) }}">{{ repo_a.quality_tier | capitalize }}</span>
+    </div>
+    <div class="text-center">
+      <a href="{{ base_path }}/servers/{{ repo_b.full_name }}/" class="text-lg font-bold text-blue-600 hover:underline">{{ name_b }}</a>
+      <div class="text-5xl font-bold text-gray-900 mt-2">{{ repo_b.quality_score | int }}</div>
+      <span class="inline-block mt-1 px-2.5 py-0.5 rounded-full text-xs font-medium {{ tier_classes(repo_b.quality_tier) }}">{{ repo_b.quality_tier | capitalize }}</span>
+    </div>
+  </div>
+
+  <!-- Score bars side by side -->
+  <div class="grid grid-cols-2 gap-6 mb-6">
+    {% for side, repo in [('a', repo_a), ('b', repo_b)] %}
+    <div class="space-y-2">
+      {% for label, key in [('Maintenance', 'maintenance_score'), ('Adoption', 'adoption_score'), ('Maturity', 'maturity_score'), ('Community', 'community_score')] %}
+      <div>
+        <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+          <span>{{ label }}</span>
+          <span class="font-medium text-gray-700">{{ repo[key] | int }}/25</span>
+        </div>
+        <div class="h-1.5 bg-gray-200 rounded-full">
+          <div class="h-1.5 rounded-full {{ score_bar_color(repo[key], 25) }}" style="width: {{ (repo[key] / 25 * 100) | int }}%"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Metadata comparison -->
+  <div class="grid grid-cols-2 gap-6 mb-6">
+    {% for repo in [repo_a, repo_b] %}
+    <div class="grid grid-cols-2 gap-2 text-xs text-gray-500">
+      <div>Stars: <span class="text-gray-700 font-medium">{{ "{:,}".format(repo.stars | int) if repo.stars else '—' }}</span></div>
+      <div>Forks: <span class="text-gray-700 font-medium">{{ "{:,}".format(repo.forks | int) if repo.forks else '—' }}</span></div>
+      <div>Downloads: <span class="text-gray-700 font-medium">{{ "{:,}".format(repo.downloads_monthly | int) if repo.downloads_monthly else '—' }}</span></div>
+      <div>Commits (30d): <span class="text-gray-700 font-medium">{{ repo.commits_30d | int if repo.commits_30d else '0' }}</span></div>
+      <div>Language: <span class="text-gray-700 font-medium">{{ repo.language or '—' }}</span></div>
+      <div>License: <span class="text-gray-700 font-medium">{{ repo.license or '—' }}</span></div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Risk flags -->
+  <div class="grid grid-cols-2 gap-6 mb-8">
+    {% for repo in [repo_a, repo_b] %}
+    <div>
+      {% if repo.risk_flags and repo.risk_flags | length > 0 %}
+      <div class="flex flex-wrap gap-1">
+        {% for flag in repo.risk_flags %}
+        <span class="px-2 py-0.5 rounded-full text-xs bg-orange-100 text-orange-800">{{ flag | replace('_', ' ') | title }}</span>
+        {% endfor %}
+      </div>
+      {% else %}
+      <span class="text-xs text-green-600">No risk flags</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Descriptions and AI summaries -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+    {% for repo, name in [(repo_a, name_a), (repo_b, name_b)] %}
+    <div class="rounded-lg border border-gray-200 p-5">
+      <h2 class="font-bold text-gray-900 mb-2">About {{ name }}</h2>
+      <p class="text-sm text-gray-500 mb-2">{{ repo.full_name }}</p>
+      {% if repo.description %}
+      <p class="text-sm text-gray-700 mb-2">{{ repo.description }}</p>
+      {% endif %}
+      {% if repo.ai_summary %}
+      <p class="text-sm text-gray-600">{{ repo.ai_summary }}</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="text-center text-sm text-gray-500">
+    <p>Scores updated daily from GitHub, PyPI, and npm data. <a href="{{ base_path }}/methodology/" class="text-blue-600 hover:underline">How scores work</a></p>
+  </div>
+
+</div>
+{% endblock %}

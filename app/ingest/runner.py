@@ -34,6 +34,7 @@ from app.ingest.stack_layer import classify_stack_layers
 from app.ingest.hn_llm_match import match_hn_posts_llm
 from app.ingest.ai_repo_summaries import generate_ai_summaries
 from app.ingest.domain_reassign import reassign_domains
+from app.ingest.comparison_sentences import generate_comparison_sentences
 from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis, backfill_hf_datasets, backfill_hf_models
 from app.briefing_refresh import refresh_briefing_evidence
 from app.embeddings import is_enabled
@@ -183,6 +184,14 @@ async def run_all() -> dict:
     except Exception as e:
         logger.exception(f"ai_summaries failed: {e}")
         results["ai_summaries"] = {"error": str(e)}
+
+    # Generate comparison decision sentences (2,000 per run)
+    try:
+        results["comparison_sentences"] = await _run_with_retry("comparison_sentences", generate_comparison_sentences)
+        logger.info(f"comparison_sentences: {results['comparison_sentences']}")
+    except Exception as e:
+        logger.exception(f"comparison_sentences failed: {e}")
+        results["comparison_sentences"] = {"error": str(e)}
 
     # Reassign misclassified domains (10,000 repos per run via centroid similarity)
     try:
