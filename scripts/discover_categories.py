@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 ALL_DOMAINS = [
     "mcp", "agents", "rag", "ai-coding", "voice-ai",
     "diffusion", "vector-db", "embeddings", "prompt-engineering",
+    "ml-frameworks", "llm-tools", "nlp", "transformers",
+    "generative-ai", "computer-vision", "data-engineering", "mlops",
 ]
 
 MIN_CLUSTER_SIZE = 15
