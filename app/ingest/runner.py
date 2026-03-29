@@ -33,6 +33,7 @@ from app.ingest.ai_repo_subcategory import ingest_subcategories, classify_subcat
 from app.ingest.stack_layer import classify_stack_layers
 from app.ingest.hn_llm_match import match_hn_posts_llm
 from app.ingest.ai_repo_summaries import generate_ai_summaries
+from app.ingest.domain_reassign import reassign_domains
 from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis, backfill_hf_datasets, backfill_hf_models
 from app.briefing_refresh import refresh_briefing_evidence
 from app.embeddings import is_enabled
@@ -182,6 +183,14 @@ async def run_all() -> dict:
     except Exception as e:
         logger.exception(f"ai_summaries failed: {e}")
         results["ai_summaries"] = {"error": str(e)}
+
+    # Reassign misclassified domains (10,000 repos per run via centroid similarity)
+    try:
+        results["domain_reassign"] = await _run_with_retry("domain_reassign", reassign_domains)
+        logger.info(f"domain_reassign: {results['domain_reassign']}")
+    except Exception as e:
+        logger.exception(f"domain_reassign failed: {e}")
+        results["domain_reassign"] = {"error": str(e)}
 
     # Link projects ↔ ai_repos by matching github_owner/github_repo
     try:

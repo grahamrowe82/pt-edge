@@ -112,7 +112,7 @@ def load_centroids():
     return centroids
 
 
-def check_repos(limit=2000, min_improvement=MIN_IMPROVEMENT):
+def check_repos(limit=2000, offset=0, min_improvement=MIN_IMPROVEMENT):
     """Check a batch of repos for domain misassignment. Light DB load."""
     centroids = load_centroids()
     if not centroids:
@@ -123,9 +123,7 @@ def check_repos(limit=2000, min_improvement=MIN_IMPROVEMENT):
     centroid_matrix = np.array([centroids[d] for d in domain_labels])
     domain_index = {d: i for i, d in enumerate(domain_labels)}
 
-    # Fetch repos that haven't been checked recently, prioritised by quality score
-    # Use a simple approach: check repos ordered by stars DESC, skip those already correct
-    print(f"Checking up to {limit} repos for domain misassignment...")
+    print(f"Checking repos {offset+1}-{offset+limit} by stars...")
     t0 = time.time()
 
     with readonly_engine.connect() as conn:
@@ -134,8 +132,8 @@ def check_repos(limit=2000, min_improvement=MIN_IMPROVEMENT):
             FROM ai_repos
             WHERE embedding_1536 IS NOT NULL
             ORDER BY stars DESC NULLS LAST
-            LIMIT :limit
-        """), {"limit": limit}).fetchall()
+            LIMIT :limit OFFSET :offset
+        """), {"limit": limit, "offset": offset}).fetchall()
 
     reassignments = []
     for r in rows:
@@ -233,6 +231,8 @@ def main():
                         help="Check repos for misassignment and save results")
     parser.add_argument("--limit", type=int, default=2000,
                         help="Number of repos to check per run")
+    parser.add_argument("--offset", type=int, default=0,
+                        help="Skip first N repos (for batching)")
     parser.add_argument("--apply-from", type=str,
                         help="Apply reassignments from saved JSON file")
     parser.add_argument("--save-path", default=SAVE_PATH)
@@ -250,7 +250,7 @@ def main():
         return
 
     if args.check:
-        reassignments = check_repos(limit=args.limit, min_improvement=args.min_improvement)
+        reassignments = check_repos(limit=args.limit, offset=args.offset, min_improvement=args.min_improvement)
         print_summary(reassignments)
         if reassignments:
             save_results(reassignments, args.save_path)
