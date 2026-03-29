@@ -772,6 +772,33 @@ def main():
     print(f"  {len(comparison_pairs)} comparison pairs found")
 
     if comparison_pairs:
+        # Write placeholder rows for backfill (no LLM, just repo_a_id + repo_b_id)
+        print("  Writing comparison placeholders for backfill...")
+        try:
+            names = set()
+            for p in comparison_pairs:
+                names.add(p["repo_a"]["full_name"])
+                names.add(p["repo_b"]["full_name"])
+            with readonly_engine.connect() as conn:
+                rows = conn.execute(text("SELECT id, full_name FROM ai_repos WHERE full_name = ANY(:names)"),
+                                    {"names": list(names)}).fetchall()
+            id_map = {r._mapping["full_name"]: r._mapping["id"] for r in rows}
+
+            with engine.connect() as conn:
+                for p in comparison_pairs:
+                    a_id = id_map.get(p["repo_a"]["full_name"])
+                    b_id = id_map.get(p["repo_b"]["full_name"])
+                    if a_id and b_id:
+                        conn.execute(text("""
+                            INSERT INTO comparison_sentences (repo_a_id, repo_b_id, domain, subcategory)
+                            VALUES (:a, :b, :domain, :cat)
+                            ON CONFLICT (repo_a_id, repo_b_id) DO NOTHING
+                        """), {"a": a_id, "b": b_id, "domain": domain, "cat": p["category"]})
+                conn.commit()
+            print(f"  {len(comparison_pairs)} placeholders written")
+        except Exception as e:
+            print(f"  Placeholder write failed (non-fatal): {e}")
+
         print("  Fetching decision sentences...")
         sentences = fetch_comparison_sentences()
         print(f"  {len(sentences)} pre-computed sentences available")
