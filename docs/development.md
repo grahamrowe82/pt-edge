@@ -107,3 +107,38 @@ python scripts/generate_site.py --domain mcp --output-dir site
 ```
 
 For all 17 domains, the full generation takes ~5 minutes and queries the DB heavily. Don't run it while other DB-heavy operations are in progress.
+
+## Render platform
+
+### API access
+
+The Render API key is in `.env` as `RENDER_API_KEY`. Use it to monitor services, check deploys, and manage infrastructure without the dashboard:
+
+```bash
+# List services
+curl -s -H "Authorization: Bearer $RENDER_API_KEY" "https://api.render.com/v1/services?limit=10"
+
+# List recent deploys for a service
+curl -s -H "Authorization: Bearer $RENDER_API_KEY" "https://api.render.com/v1/services/<service-id>/deploys?limit=5"
+
+# Get service details
+curl -s -H "Authorization: Bearer $RENDER_API_KEY" "https://api.render.com/v1/services/<service-id>"
+```
+
+Render MCP tools are also available in Claude sessions for querying services, deploys, logs, and metrics.
+
+### Render quirks and gotchas
+
+**Auto-deploy on push to main.** Every push to main triggers a deploy. If the DB is under load, the deploy will hang on site generation queries and eventually time out. Cancel deploys from the dashboard when the DB is unhealthy. Consider disabling auto-deploy during heavy DB operations.
+
+**Port detection timeout.** Render's health check scanner expects a port to be open within ~5 minutes of deploy start. If `start.sh` runs DB queries before starting uvicorn and those queries take too long, the deploy is cancelled with "No open ports detected." The fix is not to make uvicorn start first — it's to ensure queries are fast.
+
+**Cron jobs share the Docker image.** The ingest cron uses the same Docker image as the web service. A deploy that breaks the web service also breaks the cron. Don't push breaking changes to main without testing.
+
+**Ephemeral filesystem.** Render web services have ephemeral disk — files written at runtime (like the generated `site/` directory) are lost on every deploy. The site must be regenerated on every startup via `start.sh`.
+
+**Connection limits.** The managed PostgreSQL has ~97 max connections. The web service (2 uvicorn workers), the cron job, and any local development sessions all share this pool. Orphaned connections from killed processes count against the limit until they time out (which can take minutes).
+
+**DB plan: standard-0 (1GB RAM, 0.5 CPU, 15GB storage).** Upgraded from basic-256mb on 2026-03-28. The 256mb plan couldn't handle bulk vector writes. Current usage: ~3GB of 15GB storage. Autovacuum runs automatically after bulk writes and can consume significant CPU/memory for 15-30 minutes.
+
+**Deploy hook.** The ingest cron triggers a web service redeploy after completion via `RENDER_DEPLOY_HOOK_URL` environment variable. This is how the site gets fresh data daily: ingest updates DB → refreshes views → triggers deploy → start.sh regenerates site.
