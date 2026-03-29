@@ -382,15 +382,14 @@ def fetch_trending(view_name, snapshot_table, domain_filter=None):
                    m.quality_score - s.quality_score AS score_delta,
                    m.stars, m.subcategory, m.quality_tier
             FROM {view_name} m
-            JOIN {snapshot_table} s ON s.repo_id = (
-                SELECT id FROM ai_repos WHERE full_name = m.full_name LIMIT 1
-            )
-            WHERE s.snapshot_date = :earliest_date
-              AND m.quality_score >= :min_score
+            JOIN ai_repos ar ON ar.full_name = m.full_name
+            JOIN {snapshot_table} s ON s.repo_id = ar.id
+              AND s.snapshot_date = :earliest_date
+              {domain_clause}
+            WHERE m.quality_score >= :min_score
               AND m.description IS NOT NULL
               AND m.description != ''
               AND m.quality_score - s.quality_score > 0
-              {domain_clause}
             ORDER BY m.quality_score - s.quality_score DESC
             LIMIT 100
         """), {**params, "earliest_date": earliest}).fetchall()
