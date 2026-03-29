@@ -6,6 +6,7 @@
   <title>{% block title %}{{ domain_label }} Directory | PT-Edge{% endblock %}</title>
   {% block meta %}{% endblock %}
   {% block canonical %}{% endblock %}
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232563eb'/><text x='16' y='22' font-family='system-ui' font-size='18' font-weight='bold' fill='white' text-anchor='middle'>PT</text></svg>">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,7 +27,16 @@
         <a href="{{ base_path }}/servers/" class="hover:text-gray-900">{{ noun_plural | capitalize }}</a>
         <a href="{{ base_path }}/categories/" class="hover:text-gray-900">Categories</a>
         <a href="{{ base_path }}/trending/" class="hover:text-gray-900">Trending</a>
+        <a href="{{ base_path }}/about/" class="hover:text-gray-900">About</a>
         <a href="/api/docs" class="hover:text-gray-900">API</a>
+      </div>
+    </div>
+    <div class="border-t border-gray-100 bg-gray-50">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-1.5 flex flex-wrap items-center gap-3 text-xs text-gray-500 overflow-x-auto">
+        <span class="text-gray-400 whitespace-nowrap">All directories:</span>
+        {% for d in directories %}
+        <a href="{{ d.path }}" class="whitespace-nowrap hover:text-gray-700{% if d.domain == domain %} text-blue-600 font-medium{% endif %}">{{ d.label }}</a>
+        {% endfor %}
       </div>
     </div>
   </nav>
@@ -37,15 +47,9 @@
 
   <footer class="border-t border-gray-200 mt-16">
     <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-      <div class="flex flex-wrap items-center justify-center gap-4 text-xs text-gray-400 mb-4">
-        <span>Directories:</span>
-        {% for d in directories %}
-        <a href="{{ d.path }}" class="hover:text-gray-600{% if d.domain == domain %} text-gray-600 font-medium{% endif %}">{{ d.label }}</a>
-        {% endfor %}
-      </div>
       <div class="text-center text-sm text-gray-500">
-        <p>Powered by <a href="https://phasetransitionsai.substack.com" class="text-blue-600 hover:underline">PT-Edge</a> &middot; Updated daily &middot; {{ total_count | default('11,000+') }} {{ noun_plural }} tracked</p>
-        <p class="mt-1">Quality scores computed from GitHub activity, package adoption, maintenance signals, and community metrics.</p>
+        <p>Powered by <a href="https://phasetransitionsai.substack.com" class="text-blue-600 hover:underline">Phase Transitions</a> &middot; Updated daily &middot; {{ total_count | default('11,000+') }} of {{ global_total | default('220,000+') }} AI tools tracked across 17 domains</p>
+        <p class="mt-1">Quality scores computed from GitHub activity, package adoption, maintenance signals, and community metrics. <a href="{{ base_path }}/methodology/" class="text-blue-600 hover:underline">Methodology</a></p>
       </div>
     </div>
   </footer>

@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Methodology — Quality Scoring | PT-Edge{% endblock %}
+
+{% block meta %}
+<meta name="description" content="How PT-Edge computes quality scores for AI tools. Four dimensions: maintenance, adoption, maturity, and community. Updated daily from GitHub, PyPI, and npm data.">
+{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/methodology/">{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl mx-auto px-4 sm:px-6 py-12">
+
+  <h1 class="text-3xl font-bold text-gray-900 mb-6">Quality Scoring Methodology</h1>
+
+  <div class="prose prose-gray max-w-none text-gray-700 leading-relaxed space-y-4">
+    <p>
+      Every project in the PT-Edge directory receives a composite quality score from <strong>0 to 100</strong>,
+      computed from four equally-weighted dimensions. Scores are recalculated daily from live data.
+    </p>
+
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-6 my-8 not-prose">
+      <div class="rounded-lg border border-gray-200 p-5">
+        <h3 class="font-bold text-gray-900 mb-2">Maintenance (0-25)</h3>
+        <p class="text-sm text-gray-600">Is someone actively working on this?</p>
+        <ul class="mt-2 text-sm text-gray-500 space-y-1">
+          <li>Commit activity in the last 30 days (0-12 points)</li>
+          <li>Push recency — last push within 30d, 90d, 180d, or 365d (0-13 points)</li>
+          <li>Archived repositories score 0</li>
+        </ul>
+      </div>
+      <div class="rounded-lg border border-gray-200 p-5">
+        <h3 class="font-bold text-gray-900 mb-2">Adoption (0-25)</h3>
+        <p class="text-sm text-gray-600">Are people actually using this?</p>
+        <ul class="mt-2 text-sm text-gray-500 space-y-1">
+          <li>GitHub stars, logarithmic scale (0-10 points)</li>
+          <li>Monthly downloads from PyPI/npm, log scale (0-10 points)</li>
+          <li>Reverse dependents — other packages that depend on this (0-5 points)</li>
+        </ul>
+      </div>
+      <div class="rounded-lg border border-gray-200 p-5">
+        <h3 class="font-bold text-gray-900 mb-2">Maturity (0-25)</h3>
+        <p class="text-sm text-gray-600">Is this production-ready?</p>
+        <ul class="mt-2 text-sm text-gray-500 space-y-1">
+          <li>License present (8 points)</li>
+          <li>Published on PyPI or npm (9 points)</li>
+          <li>Repository age — older repos score higher (0-8 points)</li>
+        </ul>
+      </div>
+      <div class="rounded-lg border border-gray-200 p-5">
+        <h3 class="font-bold text-gray-900 mb-2">Community (0-25)</h3>
+        <p class="text-sm text-gray-600">Is there a community around this?</p>
+        <ul class="mt-2 text-sm text-gray-500 space-y-1">
+          <li>Fork count, logarithmic scale (0-15 points)</li>
+          <li>Fork-to-star ratio — higher ratio means more active community (0-10 points)</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 class="text-xl font-bold text-gray-900 mt-8">Quality tiers</h2>
+    <div class="not-prose my-4">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-200 text-left">
+            <th class="py-2 pr-4 font-medium text-gray-500">Tier</th>
+            <th class="py-2 pr-4 font-medium text-gray-500">Score range</th>
+            <th class="py-2 font-medium text-gray-500">What it means</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-gray-100">
+            <td class="py-2 pr-4"><span class="px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">Verified</span></td>
+            <td class="py-2 pr-4">70-100</td>
+            <td class="py-2 text-gray-600">Strong across all four dimensions. Actively maintained, widely adopted, production-ready.</td>
+          </tr>
+          <tr class="border-b border-gray-100">
+            <td class="py-2 pr-4"><span class="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">Established</span></td>
+            <td class="py-2 pr-4">50-69</td>
+            <td class="py-2 text-gray-600">Solid in most dimensions. Reliable choice with some gaps (e.g., fewer downloads or fewer recent commits).</td>
+          </tr>
+          <tr class="border-b border-gray-100">
+            <td class="py-2 pr-4"><span class="px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">Emerging</span></td>
+            <td class="py-2 pr-4">30-49</td>
+            <td class="py-2 text-gray-600">Showing promise but not yet proven. May be new, lightly adopted, or missing packaging/licensing.</td>
+          </tr>
+          <tr class="border-b border-gray-100">
+            <td class="py-2 pr-4"><span class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Experimental</span></td>
+            <td class="py-2 pr-4">10-29</td>
+            <td class="py-2 text-gray-600">Early stage. Limited adoption and community signals. May be a personal project or proof of concept.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 class="text-xl font-bold text-gray-900 mt-8">Risk flags</h2>
+    <p>Projects may carry risk flags that highlight specific concerns:</p>
+    <ul class="list-disc pl-5 space-y-1">
+      <li><strong>Archived</strong> — repository marked as archived by the owner</li>
+      <li><strong>No License</strong> — no license file detected (legal risk for production use)</li>
+      <li><strong>Stale 6m</strong> — no push in the last 180 days</li>
+      <li><strong>No Package</strong> — not published on PyPI or npm</li>
+      <li><strong>No Dependents</strong> — no other packages depend on this</li>
+    </ul>
+
+    <h2 class="text-xl font-bold text-gray-900 mt-8">Update frequency</h2>
+    <p>
+      Scores are recalculated daily. The pipeline pulls fresh data from GitHub, PyPI, npm, and other sources
+      every morning (6am UTC), refreshes all materialized views, and regenerates the entire directory site.
+      What you see on any page reflects the state of the ecosystem as of today.
+    </p>
+
+    <h2 class="text-xl font-bold text-gray-900 mt-8">Limitations</h2>
+    <ul class="list-disc pl-5 space-y-1">
+      <li>Stars and forks are popularity signals, not quality signals — a viral tweet can spike both without reflecting real utility</li>
+      <li>Download counts miss Docker-only or binary distribution channels</li>
+      <li>Single-contributor projects with low stars may be genuinely excellent but score low on adoption and community</li>
+      <li>The scoring formula weights all four dimensions equally — your priorities may differ</li>
+    </ul>
+  </div>
+
+</div>
+{% endblock %}

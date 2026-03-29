@@ -18,6 +18,7 @@ HTML_PAGE = """\
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PT-Edge API Docs</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232563eb'/><text x='16' y='22' font-family='system-ui' font-size='18' font-weight='bold' fill='white' text-anchor='middle'>PT</text></svg>">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -29,12 +30,27 @@ HTML_PAGE = """\
 </head>
 <body class="bg-white text-gray-900">
 
+<!-- Site nav (shared with directory) -->
+<nav class="border-b border-gray-200 bg-white sticky top-0 z-50">
+  <div class="max-w-4xl mx-auto px-6 py-3 flex items-center justify-between">
+    <a href="/" class="text-lg font-bold text-gray-900 hover:text-blue-600 transition-colors">
+      PT-Edge <span class="font-normal text-gray-500">API</span>
+    </a>
+    <div class="flex items-center gap-6 text-sm font-medium text-gray-600">
+      <a href="/" class="hover:text-gray-900">MCP Directory</a>
+      <a href="/agents/" class="hover:text-gray-900">Agents</a>
+      <a href="/rag/" class="hover:text-gray-900">RAG</a>
+      <a href="/about/" class="hover:text-gray-900">About</a>
+    </div>
+  </div>
+</nav>
+
 <!-- Header -->
-<header class="border-b border-gray-200 bg-white">
+<header class="bg-white">
   <div class="max-w-4xl mx-auto px-6 py-8">
-    <h1 class="text-3xl font-bold tracking-tight">PT-Edge</h1>
+    <h1 class="text-3xl font-bold tracking-tight">PT-Edge API</h1>
     <p class="mt-2 text-lg text-gray-600">AI Project Intelligence API</p>
-    <p class="mt-1 text-sm text-gray-500">Track 166,000+ AI repos across GitHub, PyPI, npm, Docker Hub, HuggingFace &amp; Hacker News.</p>
+    <p class="mt-1 text-sm text-gray-500">Track 220,000+ AI repos across GitHub, PyPI, npm, Docker Hub, HuggingFace &amp; Hacker News.</p>
   </div>
 </header>
 
@@ -441,8 +457,9 @@ HTML_PAGE = """\
 
 <!-- Footer -->
 <footer class="border-t border-gray-200 mt-16">
-  <div class="max-w-4xl mx-auto px-6 py-8 text-sm text-gray-500">
-    <p><a href="https://phasetransitions.ai" class="text-blue-600 underline">Phase Transitions</a> &middot; <a href="mailto:graham@phasetransitions.ai" class="text-blue-600 underline">graham@phasetransitions.ai</a></p>
+  <div class="max-w-4xl mx-auto px-6 py-8 text-center text-sm text-gray-500">
+    <p>Powered by <a href="https://phasetransitionsai.substack.com" class="text-blue-600 underline">Phase Transitions</a> &middot; 220,000+ AI tools tracked across 17 domains &middot; <a href="mailto:graham@phasetransitions.ai" class="text-blue-600 underline">graham@phasetransitions.ai</a></p>
+    <p class="mt-1"><a href="/" class="text-blue-600 underline">Browse the directory</a> &middot; <a href="/methodology/" class="text-blue-600 underline">Methodology</a> &middot; <a href="/about/" class="text-blue-600 underline">About</a></p>
   </div>
 </footer>
 
