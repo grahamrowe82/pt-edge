@@ -2,30 +2,30 @@
 
 Issues discovered by crawling the live site at mcp.phasetransitions.ai. Ordered by severity.
 
-## Critical (trust-destroying, fix immediately)
+## Critical (trust-destroying) — ALL FIXED
 
-- [ ] **Broken footer link on every page.** "Powered by PT-Edge" links to `phasetransitions.ai`, which returns 503. Dead link on all 165K pages. Google follows footer links — hitting 503 is a negative crawl signal.
-- [ ] **Categories page out of sync.** MCP `/categories/` still shows old hand-crafted taxonomy (11 categories). Individual server pages reference the new embedding-discovered categories (168 categories). The listing page and detail pages disagree.
-- [ ] **"Uncategorized" category link is 404.** Categories page links to `/categories/uncategorized/` but the URL returns 404.
-- [ ] **Top results miscategorised in some verticals.** AI Coding top 3 are CasADi (symbolic optimisation), brian2 (spiking neural networks), devito (finite difference compiler) — scientific computing, not AI coding. LanceDB appears under "vector-db-benchmarking" — it's a database, not a benchmark. When homepage heroes are visibly wrong, trust collapses.
-- [ ] **License field shows raw "NOASSERTION".** Visible on n8n (top MCP server, score 88). GitHub API artifact passed through unprocessed.
-- [ ] **Trending pages empty across all verticals.** "Trending data is available after one week of quality score tracking." Daily snapshots have been running — likely a query or rendering issue.
+- [x] **Broken footer link.** Fixed — points to Substack now.
+- [x] **Categories page out of sync.** Fixed — 2,400 embedding-discovered categories live.
+- [x] **"Uncategorized" category link 404.** Fixed — categories page uses discovered categories.
+- [x] **Top results miscategorised.** Fixed — 1,717 repos reassigned via centroid similarity. Daily ingest processes 10K/day to clear remaining backlog.
+- [x] **NOASSERTION license.** Fixed — normalised to null (shows dash).
+- [x] **Trending pages empty.** Fixed — uses earliest available snapshot dynamically.
 
-## Important (quality and trust signals)
+## Important — MOSTLY FIXED
 
-- [ ] **No about page.** Google's E-E-A-T signals reward identifiable expertise. A site with no author looks like a content farm.
-- [ ] **No methodology page.** How scores are calculated, data sources, update frequency. Trust signal for humans and Google.
-- [ ] **No cross-vertical links.** n8n is top MCP server — likely relevant in Agents too. Free internal linking.
-- [ ] **Risk flags buried at bottom of detail pages.** Move up — more important than the score for agents deciding whether to recommend.
-- [ ] **No "higher-rated alternatives" framing.** Related projects shows siblings. Reframe: "If you're considering X (score 20), look at Y (score 77)."
-- [ ] **Many detail pages are thin content.** Pages without AI summaries have just score + metadata. Noindex until summaries backfill, or prioritise high-traffic pages.
-- [ ] **Substack and directory not cross-linked.** They should cross-pollinate.
+- [x] **About page.** Created at /about/ with author, data sources, methodology, contact.
+- [x] **Methodology page.** Created at /methodology/ with full scoring explanation, tier table, limitations.
+- [ ] **Cross-vertical links.** Not yet done — projects in multiple verticals should cross-link.
+- [x] **Risk flags position.** Moved above score breakdown.
+- [x] **Higher-rated alternatives.** Low-scoring repos show "Higher-rated alternatives" heading.
+- [ ] **Thin content noindexing.** Not yet done — waiting for AI summary backfill to progress.
+- [x] **Substack cross-linking.** Footer links to Substack, about page links to Substack.
 
-## Infrastructure
+## Infrastructure — MOSTLY FIXED
 
-- [ ] **Favicon and basic brand identity.**
+- [x] **Favicon.** Inline SVG, blue PT mark.
 - [ ] **Canonical URLs for multi-vertical projects.**
-- [ ] **Robots.txt audit.** Explicitly allow Googlebot, GPTBot, ClaudeBot.
+- [x] **Robots.txt.** Allows all bots, includes sitemap.
 - [ ] **Open Graph tags verification.**
 - [ ] **404 page that suggests alternatives.**
 

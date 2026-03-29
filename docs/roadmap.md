@@ -14,26 +14,19 @@
 - [x] Served from FastAPI alongside MCP server and REST API
 - [x] Strategy and roadmap docs baked into repo
 - [x] Category discovery results saved to JSON for instant re-application
+- [x] Site polish: about page, methodology page, favicon, cross-domain nav in header, proper category labels via Haiku, API docs integrated
+- [x] Site audit critical fixes: broken footer, NOASSERTION license, empty trending, categories sync, risk flags repositioned
+- [x] Domain reassignment via centroid similarity: 1,717 applied, 10K/day in daily ingest
 
-## Immediate: Site quality fixes (from audit)
+## Remaining site quality items
 
-Trust-destroying issues that undermine everything else. See `docs/audit.md` for the full list.
-
-**Critical:**
-- [ ] Fix broken footer link (503 on phasetransitions.ai) — negative signal on 165K pages
-- [ ] Sync categories page with discovered categories (old hand-crafted taxonomy still showing)
-- [ ] Fix miscategorised top results (CasADi in AI Coding, StockSim in Prompt Engineering)
-- [ ] Clean up "NOASSERTION" license display
-- [ ] Fix empty trending pages (snapshots exist but not surfacing)
-- [ ] Fix 404 on /categories/uncategorized/
-
-**Important:**
-- [ ] About page (E-E-A-T signal for Google)
-- [ ] Methodology page (score transparency)
-- [ ] Cross-vertical links for projects in multiple directories
 - [ ] Noindex thin pages until AI summaries backfill reaches them
-- [ ] Move risk flags higher on detail pages
-- [ ] Favicon and basic brand identity
+- [ ] Cross-vertical links for projects in multiple directories
+- [ ] Open Graph tag verification (Twitter/LinkedIn card rendering)
+- [ ] RSS feeds per domain
+- [ ] Google Programmable Search Engine
+- [ ] Changelog / "what's new" page generated from data
+- [ ] Feedback button on every page
 
 ## Phase 3: Comparison pages + language pages
 
