@@ -119,6 +119,17 @@ async def run_all() -> dict:
             logger.exception(f"{name} failed: {e}")
             results[name] = {"error": str(e)}
 
+    # Google Search Console (lazy import — google libs not in CI)
+    try:
+        from app.ingest.gsc import ingest_gsc
+        results["gsc"] = await _run_with_retry("gsc", ingest_gsc)
+        logger.info(f"gsc: {results['gsc']}")
+    except ImportError:
+        results["gsc"] = "skipped (google libs not installed)"
+    except Exception as e:
+        logger.exception(f"gsc failed: {e}")
+        results["gsc"] = {"error": str(e)}
+
     # Re-match unlinked HN posts against current project list
     try:
         hn_linked = await _run_with_retry("hn_backfill", backfill_hn_links)

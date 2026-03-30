@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     ANTHROPIC_RPM: int = 40  # Anthropic rate limit (Tier 1 = 50 RPM, use 40 for safety)
     OPENAI_RPM: int = 400  # OpenAI rate limit (500 RPM, use 400 for safety)
     SNAPSHOT_RETENTION_DAYS: int = 365  # how long to keep daily snapshots (not wired to pruning yet)
+    GSC_CLIENT_ID: str = ""
+    GSC_CLIENT_SECRET: str = ""
+    GSC_REFRESH_TOKEN: str = ""
+    GSC_PROPERTY: str = "sc-domain:mcp.phasetransitions.ai"  # GSC property URI
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 
