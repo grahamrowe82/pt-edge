@@ -1,11 +1,11 @@
 {
     "slug": "openclaw-ecosystem",
-    "title": "The OpenClaw Ecosystem: 1,299 Repos and Counting",
-    "subtitle": "A guide to everything people are building with OpenClaw — clients, skills, agents, voice assistants, and more.",
+    "title": "How OpenClaw Went from Launch to 1,299 Repos in 8 Weeks",
+    "subtitle": "The anatomy of an AI ecosystem forming in real time — what gets built first, what comes next, and where the real adoption signals are.",
     "author": "Graham Rowe",
     "primary_domain": "agents",
     "domains": ["agents", "llm-tools", "rag", "mcp", "voice-ai"],
-    "meta_description": "Comprehensive guide to the OpenClaw open-source ecosystem: 1,299 repos across 13 categories including clients, skills, agent templates, voice assistants, and infrastructure. Updated daily.",
+    "meta_description": "How an AI open-source ecosystem forms in real time: OpenClaw went from viral launch to 1,299 repos in 8 weeks. Timeline, adoption data, and the pattern behind ecosystem formation.",
     "template_file": "openclaw-ecosystem.html",
     "featured_repos": [
         "iOfficeAI/AionUi",
