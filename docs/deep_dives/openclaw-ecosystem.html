@@ -1,0 +1,184 @@
+<p>OpenClaw launched in late January 2026. Eight weeks later, PT-Edge tracks 1,299 repositories across 13 categories built around it. That's not a project growing &mdash; it's an ecosystem forming in real time.</p>
+
+<p>We pulled the GitHub creation dates for the top 25 projects and mapped the timeline. A clear pattern emerged: not random growth, but a structured sequence of layers being built in a specific order. The same pattern is likely playing out in other AI ecosystems, just slower.</p>
+
+<h2>The pre-existing layer: projects that pivoted to OpenClaw</h2>
+
+<p>Three of the most popular projects in the OpenClaw ecosystem weren't built for OpenClaw at all. They existed before it launched and adapted to integrate it.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Created</th><th>Stars</th><th>Commits (30d)</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set pivots = ['heshengtao/super-agent-party', 'iOfficeAI/AionUi', 'czlonkowski/n8n-skills'] %}
+    {% set dates = {'heshengtao/super-agent-party': 'Mar 2025', 'iOfficeAI/AionUi': 'Aug 2025', 'czlonkowski/n8n-skills': 'Oct 2025'} %}
+    {% for name in pivots %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ dates[name] }}</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.commits_30d | default(0) }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/heshengtao/super-agent-party/">Super Agent Party</a> started as an all-in-one AI companion in March 2025 &mdash; nearly a year before OpenClaw. <a href="{{ domain_path('agents') }}/servers/iOfficeAI/AionUi/">AionUi</a> was a desktop cowork app for coding agents since August 2025. <a href="{{ domain_path('agents') }}/servers/czlonkowski/n8n-skills/">n8n-skills</a> was an n8n workflow toolkit from October 2025. All three added OpenClaw support and became major ecosystem players after the launch.</p>
+
+<p>This matters because it's a signal of ecosystem pull. When existing projects independently decide to integrate a new platform, it means the platform is generating real demand &mdash; not just excitement. AionUi now has {{ repos.get('iOfficeAI/AionUi', {}).stars | intcomma }} stars and {{ repos.get('iOfficeAI/AionUi', {}).commits_30d | default(0) }} commits in the last 30 days, making it the most active project in the entire OpenClaw ecosystem.</p>
+
+<h2>Week 1-2: Localisation and deployment (late January)</h2>
+
+<p>Within days of OpenClaw going viral, three things happened simultaneously: someone translated it to Chinese, someone built a deployment wrapper, and someone gave it a voice.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Created</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set wave1 = ['essamamdani/openclaw-coolify', '1186258278/OpenClawChineseTranslation', 'yuga-hashimoto/openclaw-assistant'] %}
+    {% set dates1 = {'essamamdani/openclaw-coolify': 'Jan 27', '1186258278/OpenClawChineseTranslation': 'Jan 30', 'yuga-hashimoto/openclaw-assistant': 'Jan 31'} %}
+    {% for name in wave1 %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ dates1[name] }}</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>This first wave reveals what people need immediately when a new AI tool goes viral: <strong>make it work where I already am</strong>. Chinese localisation ({{ repos.get('1186258278/OpenClawChineseTranslation', {}).stars | intcomma }} stars, syncs hourly with the main repo), one-click deployment (<a href="{{ domain_path('agents') }}/servers/essamamdani/openclaw-coolify/">openclaw-coolify</a>, 80% fork rate &mdash; people fork it as a deployment template), and voice activation (<a href="{{ domain_path('voice-ai') }}/servers/yuga-hashimoto/openclaw-assistant/">openclaw-assistant</a> for Android).</p>
+
+<h2>Week 3-6: Platform buildout (February)</h2>
+
+<p>February was when the ecosystem went from "people trying OpenClaw" to "people building on OpenClaw." Fifteen of the top 25 projects were created in this window.</p>
+
+<p><strong>Clients for every surface:</strong></p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Created</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set wave2_clients = ['AidanPark/openclaw-android', 'nexu-io/nexu', 'qingchencloud/clawpanel', 'AlexAnys/openclaw-feishu'] %}
+    {% set dates2 = {'AidanPark/openclaw-android': 'Feb 11', 'nexu-io/nexu': 'Feb 25', 'qingchencloud/clawpanel': 'Feb 26', 'AlexAnys/openclaw-feishu': 'Feb (est.)'} %}
+    {% for name in wave2_clients %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ dates2.get(name, 'Feb') }}</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>Android (<a href="{{ domain_path('agents') }}/servers/AidanPark/openclaw-android/">openclaw-android</a>), desktop with multi-platform messaging (<a href="{{ domain_path('agents') }}/servers/nexu-io/nexu/">Nexu</a>), visual dashboard (<a href="{{ domain_path('agents') }}/servers/qingchencloud/clawpanel/">ClawPanel</a>), Feishu integration (<a href="{{ domain_path('agents') }}/servers/AlexAnys/openclaw-feishu/">openclaw-feishu</a>). The pattern: meet people where they already work. Especially notable is the Chinese workplace integration &mdash; Feishu and WeChat connectors appeared fast because the Chinese community was already building.</p>
+
+<p><strong>Infrastructure and skills:</strong></p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Created</th><th>Stars</th><th>Downloads/mo</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set wave2_infra = ['BlockRunAI/ClawRouter', 'chrysb/alphaclaw', 'mergisi/awesome-openclaw-agents', 'ClawBio/ClawBio'] %}
+    {% set dates2i = {'BlockRunAI/ClawRouter': 'Feb 3', 'chrysb/alphaclaw': 'Feb 25', 'mergisi/awesome-openclaw-agents': 'Feb 5', 'ClawBio/ClawBio': 'Feb 25'} %}
+    {% for name in wave2_infra %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ dates2i[name] }}</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma }}</td>
+      <td>{{ r.description | truncate(70) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/BlockRunAI/ClawRouter/">ClawRouter</a> ({{ repos.get('BlockRunAI/ClawRouter', {}).stars | intcomma }} stars, created February 3) is an LLM router supporting 41+ models with sub-millisecond routing &mdash; the kind of middleware that turns a single-model agent into a multi-model platform. <a href="{{ domain_path('agents') }}/servers/chrysb/alphaclaw/">AlphaClaw</a> ({{ repos.get('chrysb/alphaclaw', {}).downloads_monthly | intcomma }} downloads/month) solved the deployment pain point and is the only infrastructure project with meaningful package adoption.</p>
+
+<p>The first domain-specific agents also appeared in this wave. <a href="{{ domain_path('agents') }}/servers/ClawBio/ClawBio/">ClawBio</a> &mdash; bioinformatics-native AI agent skills. <a href="{{ domain_path('agents') }}/servers/Rohit24567/HyperLiquid-Claw/">HyperLiquid-Claw</a> &mdash; crypto trading via OpenClaw. These are early but they signal that the platform is expanding beyond general-purpose chat.</p>
+
+<h2>Week 6-8: Ecosystem maturation (March)</h2>
+
+<p>March brought the layer that makes an ecosystem sustainable: education, documentation, and orchestration.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Created</th><th>Stars</th><th>Commits (30d)</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set wave3 = ['googleworkspace/cli', 'LeoYeAI/openclaw-master-skills', 'datawhalechina/hello-claw', 'aiming-lab/MetaClaw', 'win4r/ClawTeam-OpenClaw'] %}
+    {% set dates3 = {'googleworkspace/cli': 'Mar 2', 'LeoYeAI/openclaw-master-skills': 'Mar 2', 'datawhalechina/hello-claw': 'Mar 4', 'aiming-lab/MetaClaw': 'Mar 9', 'win4r/ClawTeam-OpenClaw': 'Mar 18'} %}
+    {% for name in wave3 %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ dates3[name] }}</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.commits_30d | default(0) }}</td>
+      <td>{{ r.description | truncate(70) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path(repos.get('datawhalechina/hello-claw', {}).domain | default('llm-tools')) }}/servers/datawhalechina/hello-claw/">hello-claw</a> from Datawhale China is the first systematic tutorial &mdash; "adopt from scratch and build your first claw." <a href="{{ domain_path('agents') }}/servers/LeoYeAI/openclaw-master-skills/">openclaw-master-skills</a> curates 339+ skills, updated weekly. There's even a <a href="{{ domain_path('agents') }}/servers/0xtresser/OpenClaw-Book/">full book about OpenClaw</a>, written using OpenClaw itself.</p>
+
+<p>Multi-agent orchestration appeared: <a href="{{ domain_path('agents') }}/servers/win4r/ClawTeam-OpenClaw/">ClawTeam-OpenClaw</a> for swarm coordination, <a href="{{ domain_path('agents') }}/servers/AlexAnys/opencrew/">OpenCrew</a> for Slack-based agent teams. And <a href="{{ domain_path('agents') }}/servers/aiming-lab/MetaClaw/">MetaClaw</a> ({{ repos.get('aiming-lab/MetaClaw', {}).stars | intcomma }} stars, {{ repos.get('aiming-lab/MetaClaw', {}).commits_30d | default(0) }} commits in 30 days) introduced a self-evolving agent that learns from conversation.</p>
+
+<h2>The Chinese community built the adoption layer</h2>
+
+<p>One of the most striking patterns in the timeline is that Chinese-language projects didn't just participate &mdash; they built the onboarding infrastructure that the core project didn't provide.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/1186258278/OpenClawChineseTranslation/">OpenClawChineseTranslation</a> ({{ repos.get('1186258278/OpenClawChineseTranslation', {}).stars | intcomma }} stars) appeared on January 30, three days after launch. <a href="{{ domain_path('agents') }}/servers/AlexAnys/awesome-openclaw-usecases-zh/">awesome-openclaw-usecases-zh</a> ({{ repos.get('AlexAnys/awesome-openclaw-usecases-zh', {}).stars | intcomma }} stars) documents 40 real-world use cases adapted for the Chinese ecosystem. <a href="{{ domain_path(repos.get('datawhalechina/hello-claw', {}).domain | default('llm-tools')) }}/servers/datawhalechina/hello-claw/">hello-claw</a>, <a href="{{ domain_path('agents') }}/servers/yeuxuan/openclaw-docs/">openclaw-docs</a>, <a href="{{ domain_path('agents') }}/servers/AlexAnys/openclaw-feishu/">openclaw-feishu</a>, <a href="{{ domain_path('agents') }}/servers/countbot-ai/CountBot/">CountBot</a>, <a href="{{ domain_path('agents') }}/servers/corespeed-io/wechatbot/">wechatbot</a> &mdash; tutorials, documentation, platform integrations, all in Chinese.</p>
+
+<p>This isn't translation. It's original work: use case guides, platform-specific integrations (Feishu, WeChat, 微博), and educational content tailored for a different developer culture. When an ecosystem independently grows communities in multiple languages building original tooling, it's a strong signal that something durable is being built.</p>
+
+<h2>What the adoption data actually shows</h2>
+
+<p>Stars tell one story. Downloads and fork rates tell another.</p>
+
+<p>The ecosystem has {{ repos.values() | sum(attribute='stars') | intcomma }} stars across the featured projects, but only 15 repos have any package downloads at all. Most of these projects aren't libraries you <code>pip install</code> &mdash; they're applications you clone and run, or configs you fork and customise. That's a different adoption model than something like PyTorch or LangChain.</p>
+
+<p>The fork rates confirm this. <a href="{{ domain_path('agents') }}/servers/czlonkowski/n8n-skills/">n8n-skills</a> has a {{ (repos.get('czlonkowski/n8n-skills', {}).forks | default(0) / (repos.get('czlonkowski/n8n-skills', {}).stars | default(1) + 1) * 100) | round(0) | int }}% fork rate &mdash; people fork it to customise their own skill sets. <a href="{{ domain_path('agents') }}/servers/LeoYeAI/openclaw-master-skills/">openclaw-master-skills</a> has a {{ (repos.get('LeoYeAI/openclaw-master-skills', {}).forks | default(0) / (repos.get('LeoYeAI/openclaw-master-skills', {}).stars | default(1) + 1) * 100) | round(0) | int }}% fork rate. The deployment template <code>openclaw-coolify</code> has an 80% fork rate &mdash; almost everyone who finds it forks it to run their own instance.</p>
+
+<p>The one project with clear package adoption is <a href="{{ domain_path('agents') }}/servers/chrysb/alphaclaw/">AlphaClaw</a>: {{ repos.get('chrysb/alphaclaw', {}).downloads_monthly | intcomma }} npm downloads per month. It solved the "how do I actually keep this running" problem and people install it.</p>
+
+<h2>The pattern</h2>
+
+<p>If you step back from the specifics, the OpenClaw ecosystem followed a sequence:</p>
+
+<ol>
+  <li><strong>Existing projects pivot in</strong> &mdash; established tools add support for the new platform, bringing their users with them</li>
+  <li><strong>Localisation and deployment</strong> &mdash; make it work where people already are (language, platform, infrastructure)</li>
+  <li><strong>Platform buildout</strong> &mdash; clients, skills, middleware, domain-specific agents</li>
+  <li><strong>Education and orchestration</strong> &mdash; tutorials, documentation, multi-agent coordination, the pieces that make it accessible to non-early-adopters</li>
+</ol>
+
+<p>This happened in 8 weeks. Not every AI ecosystem will move this fast &mdash; MCP took longer, the agents space is still diffuse &mdash; but the sequence of layers is likely similar. The first things built are always about access (run it here, read it in my language). The last things built are always about mastery (orchestrate multiple agents, write a book).</p>
+
+<p>We'll be watching for this pattern in other ecosystems as they form.</p>
+
+<hr>
+
+<p><em>PT-Edge tracks {{ global_total | default('226,000+') }} AI repositories across 18 domains, including 1,299 in the OpenClaw ecosystem. Every project linked above has a full detail page with daily-updated metrics. Browse the full ecosystem: <a href="/agents/categories/openclaw-client-applications/">client applications</a>, <a href="/agents/categories/openclaw-skill-marketplace/">skill marketplace</a>, <a href="/agents/categories/openclaw-agent-templates/">agent templates</a>, <a href="/agents/categories/openclaw-agent-infrastructure/">infrastructure</a>.</em></p>
