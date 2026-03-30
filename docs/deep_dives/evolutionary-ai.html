@@ -24,7 +24,7 @@
       <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
       <td>{{ r.stars | intcomma }}</td>
       <td>{{ r.downloads_monthly | intcomma }}</td>
-      <td>&mdash;</td>
+      <td>{{ r.quality_score | default('—') }}{% if r.quality_tier is defined and r.quality_tier %} ({{ r.quality_tier | capitalize }}){% endif %}</td>
       <td>{{ r.last_pushed_at | timeago }}</td>
     </tr>
     {% endif %}

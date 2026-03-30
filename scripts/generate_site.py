@@ -714,6 +714,9 @@ def main():
 
     print("  Fetching opportunity scores...")
     opportunities = fetch_opportunities(domain)
+    for opp in opportunities:
+        cm = category_meta.get(opp["subcategory"], {})
+        opp["label"] = cm.get("display_label", opp["subcategory"].replace("-", " ").title())
     opp_lookup = {o["subcategory"]: o for o in opportunities}
     print(f"  {len(opportunities)} categories scored")
 
