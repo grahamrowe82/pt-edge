@@ -5,6 +5,7 @@ from app.models.content import Release, HNPost, V2EXPost, NewsletterMention, AIR
 from app.models.community import Correction, ArticlePitch
 from app.models.meta import ToolUsage, SyncLog, Methodology, Briefing, ProjectBrief, DomainBrief, LandscapeBrief
 from app.models.api import APIKey, APIUsage
+from app.models.gsc import GSCSearchData
 
 __all__ = [
     "Base",
@@ -40,4 +41,5 @@ __all__ = [
     "LandscapeBrief",
     "APIKey",
     "APIUsage",
+    "GSCSearchData",
 ]
