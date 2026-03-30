@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
 {% set label_has_domain = domain_label_plural.lower() in category_label.lower() or noun_plural in category_label.lower() %}
-{% block title %}{% if label_has_domain %}{{ category_label }}{% else %}{{ category_label }} {{ domain_label_plural }}{% endif %} &mdash; {{ servers | length }} Ranked | PT-Edge{% endblock %}
+{% block title %}{{ servers | length }} {% if label_has_domain %}{{ category_label }}{% else %}{{ category_label }} {{ domain_label_plural }}{% endif %} Ranked by Quality (2026) | PT-Edge{% endblock %}
 
 {% block meta %}
-<meta name="description" content="{% if category_desc %}{{ category_desc }}{% else %}Browse {{ servers | length }} {{ category_label | lower }} ranked by quality score.{% endif %}">
+<meta name="description" content="{% if category_desc %}{{ category_desc }} {% endif %}{{ servers | length }} {{ category_label | lower }} scored on maintenance, adoption, maturity, and community. Quality rankings updated daily.">
 {% endblock %}
 
 {% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/categories/{{ subcategory }}/">{% endblock %}

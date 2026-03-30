@@ -267,6 +267,16 @@ DIRECTORIES = [
 # Template helpers
 # ---------------------------------------------------------------------------
 
+def human_stars(n):
+    """Format star count for titles: 1200 -> '1.2K', 84000 -> '84K'."""
+    n = int(n or 0)
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M".replace(".0M", "M")
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K".replace(".0K", "K")
+    return str(n)
+
+
 def tier_classes(tier):
     return TIER_CLASSES.get(tier, TIER_CLASSES["experimental"])
 
@@ -642,6 +652,7 @@ def main():
     # Set up Jinja2
     template_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
     env = Environment(loader=FileSystemLoader(template_dir), autoescape=False)
+    env.filters["human_stars"] = human_stars
     env.globals["tier_classes"] = tier_classes
     env.globals["tier_bar_color"] = tier_bar_color
     env.globals["score_bar_color"] = score_bar_color

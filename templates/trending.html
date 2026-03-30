@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}Trending {{ domain_label_plural }} &mdash; Weekly Quality Score Movers | PT-Edge{% endblock %}
+{% block title %}Trending {{ domain_label_plural }} This Week &mdash; Biggest Quality Score Movers | PT-Edge{% endblock %}
 
 {% block meta %}
-<meta name="description" content="{{ domain_label_plural }} with the biggest quality score improvements this week. Updated daily.">
+<meta name="description" content="Which {{ domain_label_plural | lower }} improved most this week? Quality score changes tracked daily across maintenance, adoption, maturity, and community metrics.">
 {% endblock %}
 
 {% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/trending/">{% endblock %}

@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}{{ domain_label }} Directory &mdash; {{ total_count | int }} {{ noun_plural | capitalize }} Ranked by Quality | PT-Edge{% endblock %}
+{% block title %}{{ total_count | int }} {{ domain_label_plural }} Ranked by Quality Score (2026) | PT-Edge{% endblock %}
 
 {% block meta %}
-<meta name="description" content="Browse {{ total_count | int }}+ {{ domain_label_plural | lower }} ranked by quality score. Maintenance, adoption, maturity, and community metrics updated daily.">
-<meta property="og:title" content="{{ domain_label }} Directory | PT-Edge">
+<meta name="description" content="{{ total_count | int }}+ {{ domain_label_plural | lower }} scored on maintenance, adoption, maturity, and community. Quality rankings updated daily from live GitHub, PyPI, and npm data.">
+<meta property="og:title" content="{{ total_count | int }} {{ domain_label_plural }} Ranked by Quality | PT-Edge">
 <meta property="og:description" content="{{ domain_description }}">
 <meta property="og:type" content="website">
 <meta property="og:url" content="{{ base_url }}{{ base_path }}/">
