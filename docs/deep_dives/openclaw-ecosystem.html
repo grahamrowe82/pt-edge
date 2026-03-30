@@ -1,0 +1,158 @@
+<p>OpenClaw went from zero to one of the fastest-growing open-source projects in AI in a matter of weeks. What started as a personal AI assistant has spawned an entire ecosystem: clients for every platform, skill libraries, agent templates, voice assistants, deployment tools, and communities building in dozens of languages.</p>
+
+<p>PT-Edge tracks 1,299 OpenClaw-related repositories across 13 categories. Here's a guide to what people are building.</p>
+
+<h2>Clients and interfaces</h2>
+
+<p>The largest cluster of activity is around getting OpenClaw running on different platforms and giving it better interfaces.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Commits (30d)</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['iOfficeAI/AionUi', 'nexu-io/nexu', '1186258278/OpenClawChineseTranslation', 'qingchencloud/clawpanel', 'AidanPark/openclaw-android', 'qingchencloud/clawapp', 'kevinluosl/deepbot'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.commits_30d | default(0) }}</td>
+      <td>{{ r.description | truncate(90) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/iOfficeAI/AionUi/">AionUi</a> ({{ repos.get('iOfficeAI/AionUi', {}).stars | intcomma }} stars, {{ repos.get('iOfficeAI/AionUi', {}).commits_30d | default(0) }} commits in 30 days) is the most popular client &mdash; a desktop cowork app that connects OpenClaw with Claude Code, Codex, OpenCode, and other coding agents. The development velocity is remarkable.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/nexu-io/nexu/">Nexu</a> bridges OpenClaw to WeChat, Feishu, Slack, and Discord from a single desktop app. <a href="{{ domain_path('agents') }}/servers/AidanPark/openclaw-android/">openclaw-android</a> runs it on Android with a single command &mdash; no proot or Linux layer needed. <a href="{{ domain_path('agents') }}/servers/qingchencloud/clawpanel/">ClawPanel</a> adds a visual management dashboard with built-in AI assistant, tool calling, and image recognition.</p>
+
+<h2>Skills and plugins</h2>
+
+<p>The skill ecosystem is where OpenClaw gets its power &mdash; modular capabilities that extend what the agent can do.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['czlonkowski/n8n-skills', 'LeoYeAI/openclaw-master-skills', 'BlockRunAI/ClawRouter', 'mergisi/awesome-openclaw-agents'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(100) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/czlonkowski/n8n-skills/">n8n-skills</a> ({{ repos.get('czlonkowski/n8n-skills', {}).stars | intcomma }} stars) connects OpenClaw to n8n workflow automation &mdash; one of the most popular skill sets. <a href="{{ domain_path('agents') }}/servers/LeoYeAI/openclaw-master-skills/">openclaw-master-skills</a> curates 339+ skills from ClawHub, GitHub, and the community, updated weekly. <a href="{{ domain_path('agents') }}/servers/BlockRunAI/ClawRouter/">ClawRouter</a> ({{ repos.get('BlockRunAI/ClawRouter', {}).stars | intcomma }} stars) is an agent-native LLM router supporting 41+ models with sub-millisecond routing.</p>
+
+<h2>Agent templates and orchestration</h2>
+
+<p>People are using OpenClaw as a foundation for specialised agents and multi-agent systems.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Commits (30d)</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['googleworkspace/cli', 'wanikua/boluobobo-ai-court-tutorial', 'aiming-lab/MetaClaw', 'win4r/ClawTeam-OpenClaw', 'AlexAnys/opencrew'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.commits_30d | default(0) }}</td>
+      <td>{{ r.description | truncate(90) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/googleworkspace/cli/">Google Workspace CLI</a> ({{ repos.get('googleworkspace/cli', {}).stars | intcomma }} stars) is an interesting case &mdash; a command-line tool for Drive, Gmail, Calendar, Sheets, and more, dynamically built from Google's Discovery Service, with OpenClaw agent skills baked in. <a href="{{ domain_path('agents') }}/servers/aiming-lab/MetaClaw/">MetaClaw</a> takes a different approach: "just talk to your agent &mdash; it learns and evolves." <a href="{{ domain_path('agents') }}/servers/AlexAnys/opencrew/">OpenCrew</a> builds multi-agent coordination on top of OpenClaw and Slack.</p>
+
+<h2>Infrastructure and deployment</h2>
+
+<p>Getting OpenClaw running reliably is its own category of projects.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Downloads/mo</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['chrysb/alphaclaw', 'heshengtao/super-agent-party', 'quoroom-ai/room', 'Rohit24567/HyperLiquid-Claw'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma }}</td>
+      <td>{{ r.description | truncate(90) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/chrysb/alphaclaw/">AlphaClaw</a> ({{ repos.get('chrysb/alphaclaw', {}).stars | intcomma }} stars, {{ repos.get('chrysb/alphaclaw', {}).downloads_monthly | intcomma }} downloads/month) is the most popular deployment tool &mdash; "deploy in minutes, stay running for months, no CLI required." <a href="{{ domain_path('agents') }}/servers/heshengtao/super-agent-party/">Super Agent Party</a> combines OpenClaw with a self-hosted AI companion. <a href="{{ domain_path('agents') }}/servers/quoroom-ai/room/">Room</a> from Quoroom is a self-governing AI collective with queen, worker, and quorum voting patterns.</p>
+
+<h2>Specialised agents</h2>
+
+<p>Some of the most creative work is happening at the edges &mdash; people adapting OpenClaw for specific domains.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/ClawBio/ClawBio/">ClawBio</a> ({{ repos.get('ClawBio/ClawBio', {}).stars | intcomma }} stars) is the first bioinformatics-native AI agent skill library, built for reproducible research. <a href="{{ domain_path('agents') }}/servers/Rohit24567/HyperLiquid-Claw/">HyperLiquid-Claw</a> ({{ repos.get('Rohit24567/HyperLiquid-Claw', {}).stars | intcomma }} stars) gives OpenClaw full access to HyperLiquid DEX for crypto trading. These are early but they show the platform expanding beyond general-purpose chat.</p>
+
+<h2>Voice and embodiment</h2>
+
+<p>A smaller but delightful cluster: giving OpenClaw a voice and a visual presence.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/yuga-hashimoto/openclaw-assistant/">openclaw-assistant</a> ({{ repos.get('yuga-hashimoto/openclaw-assistant', {}).stars | intcomma }} stars) is a voice assistant app for Android with wake word activation and system assistant integration. <a href="{{ domain_path('agents') }}/servers/kk43994/kkclaw/">kkclaw</a> ({{ repos.get('kk43994/kkclaw', {}).stars | intcomma }} stars) is a desktop lobster pet with OpenClaw AI, Edge TTS voice, and emotion animations. Yes, someone built an animated desktop lobster that talks to you via OpenClaw. The open-source ecosystem is wonderful.</p>
+
+<h2>The Chinese community</h2>
+
+<p>One of the most striking things about the OpenClaw ecosystem is the scale of Chinese-language contribution. At least half of the top projects have Chinese descriptions, documentation, or are specifically built for Chinese platforms:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['1186258278/OpenClawChineseTranslation', 'AlexAnys/awesome-openclaw-usecases-zh', 'datawhalechina/hello-claw', 'yeuxuan/openclaw-docs', 'AlexAnys/openclaw-feishu', 'countbot-ai/CountBot', 'corespeed-io/wechatbot'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(100) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/AlexAnys/awesome-openclaw-usecases-zh/">awesome-openclaw-usecases-zh</a> ({{ repos.get('AlexAnys/awesome-openclaw-usecases-zh', {}).stars | intcomma }} stars) documents 40 real-world use cases adapted for the Chinese ecosystem. <a href="{{ domain_path('agents') }}/servers/datawhalechina/hello-claw/">hello-claw</a> from Datawhale China is the first systematic Chinese open-source OpenClaw tutorial. <a href="{{ domain_path('agents') }}/servers/AlexAnys/openclaw-feishu/">openclaw-feishu</a> integrates with Feishu (the Chinese Slack equivalent). There's even a <a href="{{ domain_path('agents') }}/servers/0xtresser/OpenClaw-Book/">full book about OpenClaw</a> written by OpenClaw itself.</p>
+
+<p>This cross-cultural adoption is a strong signal. When an open-source project independently grows communities in multiple languages and platforms, it's building something durable.</p>
+
+<h2>Learning and resources</h2>
+
+<p>For people just getting started, the community has produced excellent onboarding resources:</p>
+
+<ul>
+  <li><a href="{{ domain_path('agents') }}/servers/0xtresser/OpenClaw-Book/">OpenClaw Book</a> &mdash; the first comprehensive introduction, written using OpenClaw + Opus</li>
+  <li><a href="{{ domain_path('agents') }}/servers/datawhalechina/hello-claw/">hello-claw</a> &mdash; systematic tutorial from Datawhale China</li>
+  <li><a href="{{ domain_path('agents') }}/servers/AlexAnys/awesome-openclaw-usecases-zh/">awesome-openclaw-usecases-zh</a> &mdash; 40 real-world use cases with step-by-step guides</li>
+  <li><a href="{{ domain_path('agents') }}/servers/mergisi/awesome-openclaw-agents/">awesome-openclaw-agents</a> &mdash; curated agent templates ready to deploy</li>
+  <li><a href="{{ domain_path('agents') }}/servers/yeuxuan/openclaw-docs/">openclaw-docs</a> &mdash; Chinese documentation site with source code analysis</li>
+</ul>
+
+<hr>
+
+<p><em>PT-Edge tracks {{ global_total | default('226,000+') }} AI repositories across 18 domains, including 1,299 in the OpenClaw ecosystem. Every project linked above has a full detail page with daily-updated quality scores, metrics, and related projects. Browse the full <a href="/agents/categories/openclaw-client-applications/">client applications</a>, <a href="/agents/categories/openclaw-skill-marketplace/">skill marketplace</a>, <a href="/agents/categories/openclaw-agent-templates/">agent templates</a>, and <a href="/agents/categories/openclaw-agent-infrastructure/">infrastructure</a> categories.</em></p>

@@ -398,29 +398,6 @@ def fetch_servers(view_name):
     return results
 
 
-def fetch_opportunities(domain):
-    """Top opportunity categories for a domain from mv_category_opportunity."""
-    try:
-        with readonly_engine.connect() as conn:
-            rows = conn.execute(text("""
-                SELECT domain, subcategory, repo_count, total_stars, total_downloads,
-                       demand_score, quality_gap_score, avg_quality_score,
-                       concentration_score, hhi,
-                       graveyard_score, graveyard_count,
-                       momentum_score, stars_7d_delta, stars_30d_delta,
-                       stadium_score, stadium_ratio,
-                       confidence_level, has_7d_baseline, has_30d_baseline,
-                       opportunity_score, opportunity_tier
-                FROM mv_category_opportunity
-                WHERE domain = :domain
-                ORDER BY opportunity_score DESC
-            """), {"domain": domain}).fetchall()
-        return [dict(r._mapping) for r in rows]
-    except Exception as e:
-        print(f"  Opportunity query failed: {e}")
-        return []
-
-
 def fetch_trending(view_name, snapshot_table, domain_filter=None):
     """Repos with biggest score improvement since earliest available snapshot."""
     domain_clause = "AND s.domain = :domain_filter" if domain_filter else ""
@@ -606,7 +583,6 @@ def generate_sitemap(base_url, base_path, servers, categories, out_dir, comparis
         f'  <url><loc>{prefix}servers/</loc><changefreq>daily</changefreq><priority>0.9</priority></url>',
         f'  <url><loc>{prefix}categories/</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>',
         f'  <url><loc>{prefix}trending/</loc><changefreq>daily</changefreq><priority>0.7</priority></url>',
-        f'  <url><loc>{prefix}opportunities/</loc><changefreq>daily</changefreq><priority>0.8</priority></url>',
     ]
 
     for cat in categories:
@@ -712,14 +688,6 @@ def main():
     categories = build_category_data(servers, category_meta)
     related_lookup = build_related_lookup(categories)
 
-    print("  Fetching opportunity scores...")
-    opportunities = fetch_opportunities(domain)
-    for opp in opportunities:
-        cm = category_meta.get(opp["subcategory"], {})
-        opp["label"] = cm.get("display_label", opp["subcategory"].replace("-", " ").title())
-    opp_lookup = {o["subcategory"]: o for o in opportunities}
-    print(f"  {len(opportunities)} categories scored")
-
     tier_counts = {}
     for s in servers:
         t = s["quality_tier"]
@@ -780,7 +748,6 @@ def main():
             tiers=tiers,
             categories=[{"subcategory": c["subcategory"], "label": c["label"], "count": c["count"]} for c in categories],
             top_comparisons=top_comparisons,
-            top_opportunities=opportunities[:5],
             **ctx,
         ),
     )
@@ -837,7 +804,6 @@ def main():
             cat_tpl.render(subcategory=cat["subcategory"], category_label=cat["label"],
                            category_desc=cat["desc"], servers=cat["servers"],
                            category_comparisons=cat_comparisons.get(cat["subcategory"], [])[:10],
-                           opportunity=opp_lookup.get(cat["subcategory"]),
                            **ctx),
         )
     print(f"  {len(categories)} category pages")
@@ -847,14 +813,6 @@ def main():
         os.path.join(out_dir, "trending", "index.html"),
         env.get_template("trending.html").render(trending=trending, trending_days=trending_days, **ctx),
     )
-
-    if opportunities:
-        print("  Generating opportunities page...")
-        write_file(
-            os.path.join(out_dir, "opportunities", "index.html"),
-            env.get_template("opportunities.html").render(
-                opportunities=opportunities, **ctx),
-        )
 
     print("  Generating about + methodology pages...")
     write_file(

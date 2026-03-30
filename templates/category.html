@@ -43,34 +43,6 @@
   </div>
   {% endif %}
 
-  {% if opportunity and opportunity.opportunity_score is defined %}
-  <div class="rounded-lg border border-gray-200 p-4 mb-6 bg-gray-50">
-    <div class="flex items-center justify-between mb-2">
-      <div class="flex items-center gap-3">
-        <div>
-          <span class="text-xs text-gray-500 block">Opportunity Score</span>
-          <span class="text-xl font-bold text-gray-900">{{ opportunity.opportunity_score }}</span><span class="text-xs text-gray-400">/100</span>
-        </div>
-        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
-          {% if opportunity.opportunity_tier == 'prime' %}bg-green-100 text-green-800
-          {% elif opportunity.opportunity_tier == 'promising' %}bg-blue-100 text-blue-800
-          {% elif opportunity.opportunity_tier == 'growing' %}bg-yellow-100 text-yellow-800
-          {% elif opportunity.opportunity_tier == 'competitive' %}bg-gray-100 text-gray-700
-          {% else %}bg-red-100 text-red-700{% endif %}">{{ opportunity.opportunity_tier | capitalize }}</span>
-      </div>
-      <span class="text-xs text-gray-400">{{ opportunity.confidence_level }} confidence</span>
-    </div>
-    <div class="grid grid-cols-3 sm:grid-cols-6 gap-3 text-xs">
-      <div><span class="text-gray-500 block">Demand</span><span class="font-medium">{{ opportunity.demand_score }}</span></div>
-      <div><span class="text-gray-500 block">Quality gap</span><span class="font-medium">{{ opportunity.quality_gap_score }}</span></div>
-      <div><span class="text-gray-500 block">Concentration</span><span class="font-medium">{{ opportunity.concentration_score }}</span></div>
-      {% if opportunity.momentum_score is not none %}<div><span class="text-gray-500 block">Momentum</span><span class="font-medium">{{ opportunity.momentum_score }}</span></div>{% endif %}
-      {% if opportunity.stadium_score is not none %}<div><span class="text-gray-500 block">Stadium</span><span class="font-medium">{{ opportunity.stadium_score }}</span></div>{% endif %}
-      {% if opportunity.graveyard_count > 0 %}<div><span class="text-gray-500 block">Graveyard</span><span class="font-medium">{{ opportunity.graveyard_count }} repos</span></div>{% endif %}
-    </div>
-  </div>
-  {% endif %}
-
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
