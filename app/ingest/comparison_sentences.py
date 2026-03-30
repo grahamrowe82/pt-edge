@@ -21,13 +21,13 @@ logger = logging.getLogger(__name__)
 
 MAX_PER_RUN = 2000
 
-PROMPT = """Compare these two tools in the same category ({category}):
+PROMPT = """These two tools appear together in the "{category}" category:
 
-A: {name_a} — {desc_a} (Score: {score_a}/100, {stars_a:,} stars, {downloads_a:,} monthly downloads)
-B: {name_b} — {desc_b} (Score: {score_b}/100, {stars_b:,} stars, {downloads_b:,} monthly downloads)
+A: {name_a} — {desc_a} ({stars_a:,} stars, {downloads_a:,} monthly downloads)
+B: {name_b} — {desc_b} ({stars_b:,} stars, {downloads_b:,} monthly downloads)
 
-Write one sentence: when should someone choose A over B, and vice versa?
-Be specific and technical. Do not repeat the project names at the start."""
+Write one sentence explaining the relationship: are they competitors (choose one or the other), complements (use together), or ecosystem siblings (e.g. a tool and its client library)?
+Be specific and technical. Do not start with the project names."""
 
 
 def _find_candidates(limit):
