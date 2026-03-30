@@ -118,7 +118,7 @@ def fetch_deep_dives():
 
 
 def fetch_repo_metrics(full_names):
-    """Live metrics for featured repos from ai_repos."""
+    """Live metrics for featured repos from ai_repos + quality scores."""
     if not full_names:
         return {}
     with readonly_engine.connect() as conn:
@@ -129,7 +129,44 @@ def fetch_repo_metrics(full_names):
             FROM ai_repos
             WHERE full_name = ANY(:names)
         """), {"names": list(full_names)}).fetchall()
-    return {r._mapping["full_name"]: dict(r._mapping) for r in rows}
+    repos = {r._mapping["full_name"]: dict(r._mapping) for r in rows}
+
+    # Fetch quality scores from domain-specific views via UNION ALL
+    quality_views = [
+        ("mv_mcp_quality", "mcp"), ("mv_agents_quality", "agents"),
+        ("mv_rag_quality", "rag"), ("mv_ai_coding_quality", "ai-coding"),
+        ("mv_voice_ai_quality", "voice-ai"), ("mv_diffusion_quality", "diffusion"),
+        ("mv_vector_db_quality", "vector-db"), ("mv_embeddings_quality", "embeddings"),
+        ("mv_prompt_eng_quality", "prompt-engineering"),
+        ("mv_ml_frameworks_quality", "ml-frameworks"),
+        ("mv_llm_tools_quality", "llm-tools"), ("mv_nlp_quality", "nlp"),
+        ("mv_transformers_quality", "transformers"),
+        ("mv_generative_ai_quality", "generative-ai"),
+        ("mv_computer_vision_quality", "computer-vision"),
+        ("mv_data_engineering_quality", "data-engineering"),
+        ("mv_mlops_quality", "mlops"),
+    ]
+    union_parts = [
+        f"SELECT full_name, quality_score, quality_tier FROM {view}"
+        for view, _ in quality_views
+    ]
+    union_sql = " UNION ALL ".join(union_parts)
+    try:
+        with readonly_engine.connect() as conn:
+            rows = conn.execute(text(f"""
+                SELECT full_name, quality_score, quality_tier
+                FROM ({union_sql}) all_quality
+                WHERE full_name = ANY(:names)
+            """), {"names": list(full_names)}).fetchall()
+        for r in rows:
+            fn = r._mapping["full_name"]
+            if fn in repos:
+                repos[fn]["quality_score"] = r._mapping["quality_score"]
+                repos[fn]["quality_tier"] = r._mapping["quality_tier"]
+    except Exception as e:
+        print(f"    Warning: could not fetch quality scores: {e}")
+
+    return repos
 
 
 def fetch_category_opportunities(category_keys):

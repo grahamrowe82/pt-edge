@@ -38,7 +38,7 @@
     {% for opp in opportunities[:9] %}
     <a href="{{ base_path }}/categories/{{ opp.subcategory }}/" class="block rounded-lg border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-colors">
       <div class="flex items-center justify-between mb-2">
-        <h3 class="font-semibold text-gray-900 text-sm truncate">{{ opp.subcategory | replace('-', ' ') | title }}</h3>
+        <h3 class="font-semibold text-gray-900 text-sm truncate">{{ opp.label | default(opp.subcategory | replace('-', ' ') | title) }}</h3>
         <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
           {% if opp.opportunity_tier == 'prime' %}bg-green-100 text-green-800
           {% elif opp.opportunity_tier == 'promising' %}bg-blue-100 text-blue-800
@@ -120,7 +120,7 @@
         <tr class="border-b border-gray-100 hover:bg-gray-50">
           <td class="py-2 pr-3 text-gray-400">{{ loop.index }}</td>
           <td class="py-2 pr-3">
-            <a href="{{ base_path }}/categories/{{ opp.subcategory }}/" class="font-medium text-blue-600 hover:underline">{{ opp.subcategory | replace('-', ' ') | title }}</a>
+            <a href="{{ base_path }}/categories/{{ opp.subcategory }}/" class="font-medium text-blue-600 hover:underline">{{ opp.label | default(opp.subcategory | replace('-', ' ') | title) }}</a>
           </td>
           <td class="py-2 pr-3 font-semibold">{{ opp.opportunity_score }}</td>
           <td class="py-2 pr-3">
