@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Insights &mdash; AI Ecosystem Deep Dives | PT-Edge</title>
+  <meta name="description" content="Data-driven landscape analyses of the AI open-source ecosystem. Every metric updated daily from {{ global_total }} tracked repositories.">
+  <link rel="canonical" href="https://mcp.phasetransitions.ai/insights/">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232563eb'/><text x='16' y='22' font-family='system-ui' font-size='18' font-weight='bold' fill='white' text-anchor='middle'>PT</text></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>body { font-family: 'Inter', sans-serif; }</style>
+</head>
+<body class="bg-white text-gray-900 min-h-screen flex flex-col">
+
+  <nav class="border-b border-gray-200 bg-white sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+      <a href="/" class="text-lg font-bold text-gray-900 hover:text-blue-600 transition-colors">
+        PT-Edge <span class="font-normal text-gray-500">Insights</span>
+      </a>
+      <div class="flex items-center gap-6 text-sm font-medium text-gray-600">
+        <a href="/insights/" class="hover:text-gray-900 text-blue-600">Insights</a>
+        <a href="/about/" class="hover:text-gray-900">About</a>
+        <a href="/api/docs" class="hover:text-gray-900">API</a>
+      </div>
+    </div>
+    <div class="border-t border-gray-100 bg-gray-50">
+      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-1.5 flex flex-wrap items-center gap-3 text-xs text-gray-500 overflow-x-auto">
+        <span class="text-gray-400 whitespace-nowrap">All directories:</span>
+        {% for d in directories %}
+        <a href="{{ d.path }}" class="whitespace-nowrap hover:text-gray-700">{{ d.label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+  </nav>
+
+  <main class="flex-1">
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+
+      <nav class="text-sm text-gray-500 mb-6">
+        <a href="/" class="hover:text-gray-700">Home</a>
+        <span class="mx-1">/</span>
+        <span class="text-gray-700">Insights</span>
+      </nav>
+
+      <h1 class="text-2xl font-bold text-gray-900 mb-2">Insights</h1>
+      <p class="text-gray-500 mb-8">Data-driven landscape analyses of the AI open-source ecosystem. Every metric updated daily from {{ global_total }} tracked repositories.</p>
+
+      {% if deep_dives %}
+      <div class="space-y-6">
+        {% for dd in deep_dives %}
+        <a href="/insights/{{ dd.slug }}/" class="block rounded-lg border border-gray-200 p-6 hover:border-blue-300 hover:shadow-sm transition-all">
+          <h2 class="text-lg font-semibold text-gray-900 mb-1">{{ dd.title }}</h2>
+          {% if dd.subtitle %}
+          <p class="text-gray-500 text-sm mb-3">{{ dd.subtitle }}</p>
+          {% endif %}
+          <div class="flex items-center gap-3 text-xs text-gray-400">
+            <span>{{ dd.author }}</span>
+            <span>&middot;</span>
+            <span>{{ dd.published_at | dateformat if dd.published_at else 'Draft' }}</span>
+            {% if dd.domains %}
+            <span>&middot;</span>
+            {% for d in dd.domains %}
+            <span class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-medium">{{ d }}</span>
+            {% endfor %}
+            {% endif %}
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="rounded-lg border border-gray-200 p-8 text-center text-gray-500">
+        <p>Deep dives coming soon.</p>
+      </div>
+      {% endif %}
+
+    </div>
+  </main>
+
+  <footer class="border-t border-gray-200 mt-16">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      <div class="text-center text-sm text-gray-500">
+        <p>Powered by <a href="https://phasetransitionsai.substack.com" class="text-blue-600 hover:underline">Phase Transitions</a> &middot; Updated daily &middot; {{ global_total }} AI tools tracked across 17 domains</p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
