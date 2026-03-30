@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     GSC_CLIENT_SECRET: str = ""
     GSC_REFRESH_TOKEN: str = ""
     GSC_PROPERTY: str = "sc-domain:mcp.phasetransitions.ai"  # GSC property URI
+    UMAMI_DATABASE_URL: str = ""  # Umami analytics DB (external); empty = Umami signals skipped
+    UMAMI_WEBSITE_ID: str = ""  # Umami website ID to filter events
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 

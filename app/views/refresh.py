@@ -39,7 +39,7 @@ VIEWS_IN_ORDER = [
     "mv_computer_vision_quality",# standalone: quality scores for computer-vision-domain repos
     "mv_data_engineering_quality",# standalone: quality scores for data-engineering-domain repos
     "mv_mlops_quality",          # standalone: quality scores for mlops-domain repos
-    "mv_category_opportunity",   # depends on: all quality views + ai_repo_snapshots
+    "mv_allocation_scores",      # depends on: all quality views + ai_repo_snapshots + gsc + umami
 ]
 
 
@@ -168,37 +168,46 @@ def refresh_all_views():
     except Exception as e:
         logger.warning(f"Could not snapshot ai_repo metrics: {e}")
 
-    # Snapshot category opportunity scores
+    # Snapshot allocation scores
     try:
         with engine.connect() as conn:
             result = conn.execute(text("""
-                INSERT INTO opportunity_snapshots
-                    (domain, subcategory, snapshot_date, opportunity_score,
-                     opportunity_tier, demand_score, quality_gap_score,
-                     concentration_score, stadium_score, momentum_score,
-                     graveyard_score, confidence_level, repo_count, total_stars)
-                SELECT domain, subcategory, CURRENT_DATE, opportunity_score,
-                       opportunity_tier, demand_score, quality_gap_score,
-                       concentration_score, stadium_score, momentum_score,
-                       graveyard_score, confidence_level, repo_count, total_stars
-                FROM mv_category_opportunity
+                INSERT INTO allocation_score_snapshots
+                    (domain, subcategory, snapshot_date, ehs, es,
+                     gsc_impression_growth_7d, gsc_click_growth_7d,
+                     gsc_position_improvement,
+                     umami_pageviews_7d, umami_avg_sessions,
+                     github_star_velocity_7d, github_new_repos_7d,
+                     github_fork_acceleration_7d, gsc_coverage_ratio,
+                     repo_count, total_stars, confidence_level)
+                SELECT domain, subcategory, CURRENT_DATE, ehs, es,
+                       gsc_impression_growth_7d, gsc_click_growth_7d,
+                       gsc_position_improvement,
+                       umami_pageviews_7d, umami_avg_sessions,
+                       github_star_velocity_7d, github_new_repos_7d,
+                       github_fork_acceleration_7d, gsc_coverage_ratio,
+                       repo_count, total_stars, confidence_level
+                FROM mv_allocation_scores
                 ON CONFLICT (domain, subcategory, snapshot_date) DO UPDATE SET
-                    opportunity_score = EXCLUDED.opportunity_score,
-                    opportunity_tier = EXCLUDED.opportunity_tier,
-                    demand_score = EXCLUDED.demand_score,
-                    quality_gap_score = EXCLUDED.quality_gap_score,
-                    concentration_score = EXCLUDED.concentration_score,
-                    stadium_score = EXCLUDED.stadium_score,
-                    momentum_score = EXCLUDED.momentum_score,
-                    graveyard_score = EXCLUDED.graveyard_score,
-                    confidence_level = EXCLUDED.confidence_level,
+                    ehs = EXCLUDED.ehs,
+                    es = EXCLUDED.es,
+                    gsc_impression_growth_7d = EXCLUDED.gsc_impression_growth_7d,
+                    gsc_click_growth_7d = EXCLUDED.gsc_click_growth_7d,
+                    gsc_position_improvement = EXCLUDED.gsc_position_improvement,
+                    umami_pageviews_7d = EXCLUDED.umami_pageviews_7d,
+                    umami_avg_sessions = EXCLUDED.umami_avg_sessions,
+                    github_star_velocity_7d = EXCLUDED.github_star_velocity_7d,
+                    github_new_repos_7d = EXCLUDED.github_new_repos_7d,
+                    github_fork_acceleration_7d = EXCLUDED.github_fork_acceleration_7d,
+                    gsc_coverage_ratio = EXCLUDED.gsc_coverage_ratio,
                     repo_count = EXCLUDED.repo_count,
-                    total_stars = EXCLUDED.total_stars
+                    total_stars = EXCLUDED.total_stars,
+                    confidence_level = EXCLUDED.confidence_level
             """))
             conn.commit()
-            logger.info(f"Snapshotted {result.rowcount} category opportunity scores")
+            logger.info(f"Snapshotted {result.rowcount} allocation scores")
     except Exception as e:
-        logger.warning(f"Could not snapshot opportunity scores: {e}")
+        logger.warning(f"Could not snapshot allocation scores: {e}")
 
     # Log sync
     session = SessionLocal()
