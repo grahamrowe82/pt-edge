@@ -39,6 +39,7 @@ VIEWS_IN_ORDER = [
     "mv_computer_vision_quality",# standalone: quality scores for computer-vision-domain repos
     "mv_data_engineering_quality",# standalone: quality scores for data-engineering-domain repos
     "mv_mlops_quality",          # standalone: quality scores for mlops-domain repos
+    "mv_category_opportunity",   # depends on: all quality views + ai_repo_snapshots
 ]
 
 
@@ -166,6 +167,38 @@ def refresh_all_views():
             logger.info(f"Snapshotted {result.rowcount} ai_repo metrics in {elapsed:.1f}s")
     except Exception as e:
         logger.warning(f"Could not snapshot ai_repo metrics: {e}")
+
+    # Snapshot category opportunity scores
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("""
+                INSERT INTO opportunity_snapshots
+                    (domain, subcategory, snapshot_date, opportunity_score,
+                     opportunity_tier, demand_score, quality_gap_score,
+                     concentration_score, stadium_score, momentum_score,
+                     graveyard_score, confidence_level, repo_count, total_stars)
+                SELECT domain, subcategory, CURRENT_DATE, opportunity_score,
+                       opportunity_tier, demand_score, quality_gap_score,
+                       concentration_score, stadium_score, momentum_score,
+                       graveyard_score, confidence_level, repo_count, total_stars
+                FROM mv_category_opportunity
+                ON CONFLICT (domain, subcategory, snapshot_date) DO UPDATE SET
+                    opportunity_score = EXCLUDED.opportunity_score,
+                    opportunity_tier = EXCLUDED.opportunity_tier,
+                    demand_score = EXCLUDED.demand_score,
+                    quality_gap_score = EXCLUDED.quality_gap_score,
+                    concentration_score = EXCLUDED.concentration_score,
+                    stadium_score = EXCLUDED.stadium_score,
+                    momentum_score = EXCLUDED.momentum_score,
+                    graveyard_score = EXCLUDED.graveyard_score,
+                    confidence_level = EXCLUDED.confidence_level,
+                    repo_count = EXCLUDED.repo_count,
+                    total_stars = EXCLUDED.total_stars
+            """))
+            conn.commit()
+            logger.info(f"Snapshotted {result.rowcount} category opportunity scores")
+    except Exception as e:
+        logger.warning(f"Could not snapshot opportunity scores: {e}")
 
     # Log sync
     session = SessionLocal()
