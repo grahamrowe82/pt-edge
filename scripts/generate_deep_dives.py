@@ -118,7 +118,7 @@ def fetch_deep_dives():
 
 
 def fetch_repo_metrics(full_names):
-    """Live metrics for featured repos from ai_repos."""
+    """Live metrics for featured repos from ai_repos + quality scores."""
     if not full_names:
         return {}
     with readonly_engine.connect() as conn:
@@ -129,7 +129,38 @@ def fetch_repo_metrics(full_names):
             FROM ai_repos
             WHERE full_name = ANY(:names)
         """), {"names": list(full_names)}).fetchall()
-    return {r._mapping["full_name"]: dict(r._mapping) for r in rows}
+    repos = {r._mapping["full_name"]: dict(r._mapping) for r in rows}
+
+    # Fetch quality scores from domain-specific views via UNION ALL
+    quality_views = [
+        "mv_mcp_quality", "mv_agents_quality", "mv_rag_quality",
+        "mv_ai_coding_quality", "mv_voice_ai_quality", "mv_diffusion_quality",
+        "mv_vector_db_quality", "mv_embeddings_quality", "mv_prompt_eng_quality",
+        "mv_ml_frameworks_quality", "mv_llm_tools_quality", "mv_nlp_quality",
+        "mv_transformers_quality", "mv_generative_ai_quality",
+        "mv_computer_vision_quality", "mv_data_engineering_quality",
+        "mv_mlops_quality",
+    ]
+    union_sql = " UNION ALL ".join(
+        f"SELECT full_name, quality_score, quality_tier FROM {v}"
+        for v in quality_views
+    )
+    try:
+        with readonly_engine.connect() as conn:
+            rows = conn.execute(text(f"""
+                SELECT full_name, quality_score, quality_tier
+                FROM ({union_sql}) all_quality
+                WHERE full_name = ANY(:names)
+            """), {"names": list(full_names)}).fetchall()
+        for r in rows:
+            fn = r._mapping["full_name"]
+            if fn in repos:
+                repos[fn]["quality_score"] = r._mapping["quality_score"]
+                repos[fn]["quality_tier"] = r._mapping["quality_tier"]
+    except Exception as e:
+        print(f"    Warning: could not fetch quality scores: {e}")
+
+    return repos
 
 
 def fetch_category_opportunities(category_keys):
