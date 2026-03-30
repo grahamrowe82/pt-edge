@@ -13,7 +13,7 @@ databases:
 services:
   - type: web
     name: pt-edge
-    plan: starter
+    plan: standard
     runtime: docker
     region: oregon
     healthCheckPath: /healthz
