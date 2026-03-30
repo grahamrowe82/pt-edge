@@ -4,6 +4,12 @@ databases:
     databaseName: pt_edge
     user: pt_edge_user
 
+  - name: umami-db
+    plan: basic-256mb
+    databaseName: umami
+    user: umami_user
+    region: oregon
+
 services:
   - type: web
     name: pt-edge
@@ -24,6 +30,31 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+
+  - type: web
+    name: pt-edge-umami
+    plan: starter
+    runtime: image
+    image:
+      url: ghcr.io/umami-software/umami:postgresql-latest
+    region: oregon
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: umami-db
+          property: connectionString
+      - key: APP_SECRET
+        generateValue: true
+      - key: TRACKER_SCRIPT_NAME
+        value: pte.js
+      - key: COLLECT_API_ENDPOINT
+        value: /api/collect
+      - key: REMOVE_TRAILING_SLASH
+        value: "1"
+      - key: CLIENT_IP_HEADER
+        value: X-Forwarded-For
+      - key: DISABLE_TELEMETRY
+        value: "1"
 
   - type: cron
     name: pt-edge-ingest
