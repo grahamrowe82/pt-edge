@@ -121,7 +121,18 @@ def discover_comparison_pairs(domain):
             for j, (b, vb) in enumerate(indexed):
                 if j <= i:
                     continue
+
+                # Skip forks: same repo name with different owner
+                repo_a = a["full_name"].split("/")[1] if "/" in a["full_name"] else a["full_name"]
+                repo_b = b["full_name"].split("/")[1] if "/" in b["full_name"] else b["full_name"]
+                if repo_a == repo_b:
+                    continue
+
+                # Skip near-identical embeddings (similarity > 0.95 = likely fork/clone)
                 sim = float(va @ vb)
+                if sim > 0.95:
+                    continue
+
                 thresh = dynamic_threshold(a["quality_score"], b["quality_score"])
                 if sim >= thresh:
                     # Higher score first
