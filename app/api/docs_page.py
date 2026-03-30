@@ -27,6 +27,7 @@ HTML_PAGE = """\
   code, pre { font-family: 'JetBrains Mono', monospace; }
   pre { white-space: pre-wrap; word-break: break-word; }
 </style>
+<script defer src="https://a.phasetransitions.ai/pte.js" data-website-id="ccfc649f-a332-4b1b-8426-9144af570655"></script>
 </head>
 <body class="bg-white text-gray-900">
 
