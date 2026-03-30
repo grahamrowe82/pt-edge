@@ -1,0 +1,163 @@
+<p>Search for "AI evolution framework" and you will land on a consulting firm's services page, a handful of arxiv papers, and a scattering of individual project READMEs. There is no canonical reference for the space. This is that reference.</p>
+
+<p>PT-Edge tracks over {{ cats['ml-frameworks:evolutionary-algorithm-frameworks'].repo_count | default(88) + cats['ml-frameworks:neuroevolution-frameworks'].repo_count | default(80) + cats['prompt-engineering:evolutionary-prompt-optimization'].repo_count | default(98) + cats['agents:self-evolving-agents'].repo_count | default(44) }} repositories across the evolutionary AI landscape &mdash; spanning classical genetic algorithms, neuroevolution, LLM-driven algorithm discovery, self-evolving agents, and evolutionary prompt optimization. We score every one of them daily on maintenance, adoption, maturity, and community signals.</p>
+
+<p>The picture that emerges is four distinct waves of evolutionary AI, each with a different maturity profile, a different audience, and a different opportunity gap.</p>
+
+<hr>
+
+<h2>Wave 1: Classical Evolutionary Algorithms &mdash; Mature but Under-Maintained</h2>
+
+<p><strong>{{ cats['ml-frameworks:evolutionary-algorithm-frameworks'].repo_count }} repos | {{ cats['ml-frameworks:evolutionary-algorithm-frameworks'].total_stars | intcomma }} stars | Opportunity score: {{ cats['ml-frameworks:evolutionary-algorithm-frameworks'].opportunity_score }}/100 ({{ cats['ml-frameworks:evolutionary-algorithm-frameworks'].opportunity_tier | capitalize }}) | Quality gap: {{ cats['ml-frameworks:evolutionary-algorithm-frameworks'].quality_gap_score }}/100</strong></p>
+
+<p>This is the oldest and most theoretically grounded wave. Genetic algorithms, particle swarm optimization, differential evolution, evolutionary strategies. The mathematics is settled. The libraries exist. But maintenance has cratered.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Downloads/mo</th><th>Quality</th><th>Last push</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['trevorstephens/gplearn', 'google/pyglove', 'nnaisense/evotorch', 'guofei9987/scikit-opt', 'esa/pagmo2'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma }}</td>
+      <td>&mdash;</td>
+      <td>{{ r.last_pushed_at | timeago }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>The quality gap score of {{ cats['ml-frameworks:evolutionary-algorithm-frameworks'].quality_gap_score }} tells the story: there is massive demand relative to the quality of supply. The most popular library (scikit-opt, {{ repos.get('guofei9987/scikit-opt', {}).stars | intcomma }} stars) was last pushed {{ repos.get('guofei9987/scikit-opt', {}).last_pushed_at | timeago }}. Google's pyglove has {{ repos.get('google/pyglove', {}).downloads_monthly | intcomma }} monthly downloads but almost nobody knows about it ({{ repos.get('google/pyglove', {}).stars | intcomma }} stars).</p>
+
+<p><strong>The opportunity:</strong> A modern, well-maintained evolutionary algorithm library with good documentation would face almost no quality competition. The existing leaders are either stale or poorly documented despite real adoption.</p>
+
+<h2>Wave 2: Neuroevolution &mdash; The Research Wave That Peaked</h2>
+
+<p><strong>{{ cats['ml-frameworks:neuroevolution-frameworks'].repo_count }} repos | {{ cats['ml-frameworks:neuroevolution-frameworks'].total_stars | intcomma }} stars | Opportunity score: {{ cats['ml-frameworks:neuroevolution-frameworks'].opportunity_score }}/100 ({{ cats['ml-frameworks:neuroevolution-frameworks'].opportunity_tier | capitalize }}) | Quality gap: {{ cats['ml-frameworks:neuroevolution-frameworks'].quality_gap_score }}/100</strong></p>
+
+<p>Neuroevolution &mdash; evolving neural network architectures and weights through evolutionary algorithms rather than gradient descent &mdash; had its moment around 2017-2019 with Uber's deep-neuroevolution research and the NEAT algorithm.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Downloads/mo</th><th>Last push</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['wagenaartje/neataptic', 'uber-research/deep-neuroevolution', 'liquidcarrot/carrot'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma }}</td>
+      <td>{{ r.last_pushed_at | timeago }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>The pattern is stark: every significant neuroevolution project was last updated years ago. The most popular library (Uber's, {{ repos.get('uber-research/deep-neuroevolution', {}).stars | intcomma }} stars) is research code, not production tooling. The highest-quality one (neataptic) has not been touched since 2019 but still gets {{ repos.get('wagenaartje/neataptic', {}).downloads_monthly | intcomma }} downloads a month. People still need this &mdash; they just have no good options.</p>
+
+<p><strong>The opportunity:</strong> There is room for a well-maintained NEAT/neuroevolution library that works with current PyTorch. EvoTorch ({{ repos.get('nnaisense/evotorch', {}).stars | intcomma }} stars) is the closest modern option but has not achieved dominant adoption.</p>
+
+<h2>Wave 3: LLM + Evolution (The AlphaEvolve Wave) &mdash; Emerging Fast</h2>
+
+<p>Google DeepMind's AlphaEvolve announcement in May 2025 triggered a wave of open-source implementations that use LLMs as the mutation operator in evolutionary search. Instead of random mutations, the LLM proposes intelligent code modifications, and evolutionary selection keeps the best ones.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['CLAIRE-Labo/EvoTune', 'inter-co/science-codeevolve', 'FusionBrainLab/gigaevo-core', 'liugangcode/deepevolve'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>This wave is less than a year old. No repo has achieved dominance. The quality scores are low because these are early-stage projects &mdash; most lack packages, documentation, and community adoption. But the research momentum is real: the approach of using LLMs to replace random mutation in evolutionary search is a genuine paradigm shift.</p>
+
+<p><strong>The opportunity:</strong> This space needs a review layer more than it needs another implementation. There are dozens of AlphaEvolve clones and no way to tell which ones actually work, which are research-only, and which are vaporware. A quality-scored comparison is the missing piece.</p>
+
+<h2>Wave 4: Self-Evolving Agents &mdash; The 2026 Frontier</h2>
+
+<p>The newest wave asks a different question: can AI agents improve themselves through interaction, feedback, and iterative self-modification? This is the intersection of evolutionary computation and the agentic AI boom.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Downloads/mo</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['volcengine/OpenViking', 'aiwaves-cn/agents', 'EvoAgentX/EvoAgentX', 'hexdocom/lemonai', 'modelscope/AgentEvolver', 'AgileRL/AgileRL'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma }}</td>
+      <td>{{ r.description | truncate(70) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>What is notable here is who is building: ByteDance (OpenViking), Alibaba (AgentEvolver), and well-funded research teams. The corporate investment signal is strong. But the graveyard signal is also present &mdash; aiwaves-cn/agents ({{ repos.get('aiwaves-cn/agents', {}).stars | intcomma }} stars) was last pushed {{ repos.get('aiwaves-cn/agents', {}).last_pushed_at | timeago }} despite its vision of "data-centric, self-evolving autonomous language agents."</p>
+
+<p>The distinction from Wave 3 matters. Wave 3 uses evolution to discover algorithms (code as the genome). Wave 4 uses evolutionary concepts to improve agent behaviour (skills, memory, and strategy as the genome). Wave 4 is where the agent frameworks and the evolution frameworks converge.</p>
+
+<p><strong>The opportunity:</strong> OpenViking ({{ repos.get('volcengine/OpenViking', {}).downloads_monthly | intcomma }} downloads/month) is emerging as infrastructure for this space, but the agent evolution frameworks themselves are fragmented. EvoAgentX has the most coherent vision. AgentEvolver has the backing. Neither has won yet.</p>
+
+<h2>Cross-Wave: Evolutionary Prompt Optimization</h2>
+
+<p><strong>{{ cats['prompt-engineering:evolutionary-prompt-optimization'].repo_count }} repos | {{ cats['prompt-engineering:evolutionary-prompt-optimization'].total_stars | intcomma }} stars | Opportunity score: {{ cats['prompt-engineering:evolutionary-prompt-optimization'].opportunity_score }}/100 | Concentration: {{ cats['prompt-engineering:evolutionary-prompt-optimization'].concentration_score }}/100</strong></p>
+
+<p>One category sits between the waves: using evolutionary strategies to optimize prompts rather than code or agent behaviour.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['linshenkx/prompt-optimizer', 'Eladlev/AutoPrompt', 'microsoft/sammo'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(70) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>The concentration score of {{ cats['prompt-engineering:evolutionary-prompt-optimization'].concentration_score }} means one project dominates: prompt-optimizer has {{ repos.get('linshenkx/prompt-optimizer', {}).stars | intcomma }} stars, more than the next {{ cats['prompt-engineering:evolutionary-prompt-optimization'].repo_count - 1 }} repos combined. This is a monopoly market, not an opportunity unless you can out-execute on a specific niche.</p>
+
+<h2>Where to Build</h2>
+
+<p>Across the evolutionary AI landscape, the quality gap is the recurring signal. Demand exists &mdash; the stars, downloads, and fork counts prove it. But the supply is either academically excellent and practically unmaintained (Waves 1-2), too new to evaluate (Wave 3), or backed by big companies who may or may not open-source sustainably (Wave 4).</p>
+
+<p>The whitespace analysis points to three specific gaps:</p>
+
+<ol>
+  <li><strong>A modern evolutionary algorithm library that is actually maintained.</strong> Quality gap {{ cats['ml-frameworks:evolutionary-algorithm-frameworks'].quality_gap_score }}/100 in the <a href="/ml-frameworks/categories/evolutionary-algorithm-frameworks/">classical frameworks category</a>. gplearn and scikit-opt get real downloads but neither is actively developed. EvoTorch is the closest modern option but has not achieved dominance.</li>
+  <li><strong>A quality-scored comparison layer for the AlphaEvolve wave.</strong> Dozens of implementations exist with no way to evaluate which ones work. This is a review and benchmarking opportunity, not a build opportunity.</li>
+  <li><strong>Agent evolution infrastructure.</strong> The convergence of evolutionary computing and agentic AI is the most interesting space. OpenViking's {{ repos.get('volcengine/OpenViking', {}).downloads_monthly | intcomma }} monthly downloads show real pull. The question is whether agent self-improvement becomes a platform capability or a standalone layer.</li>
+</ol>
+
+<hr>
+
+<p><em>All quality scores and opportunity analysis powered by PT-Edge, which tracks {{ global_total | default('226,000+') }} AI repositories across 18 domains with daily-updated quality signals. Browse the full <a href="/ml-frameworks/categories/evolutionary-algorithm-frameworks/">evolutionary algorithm frameworks</a> and <a href="/ml-frameworks/categories/neuroevolution-frameworks/">neuroevolution frameworks</a> categories, or explore <a href="/agents/opportunities/">where to build</a> across the entire AI agents ecosystem.</em></p>

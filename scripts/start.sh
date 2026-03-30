@@ -20,4 +20,7 @@ python scripts/generate_site.py --domain computer-vision --output-dir site/compu
 python scripts/generate_site.py --domain data-engineering --output-dir site/data-engineering
 python scripts/generate_site.py --domain mlops --output-dir site/mlops
 
+echo "Generating deep dive pages..."
+python scripts/generate_deep_dives.py --output-dir site
+
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2

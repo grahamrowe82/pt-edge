@@ -1,0 +1,42 @@
+{
+    "slug": "evolutionary-ai",
+    "title": "Evolutionary AI in 2026: Four Waves, One Missing Map",
+    "subtitle": "A data-driven landscape analysis of 1,300+ evolutionary AI repositories across classical algorithms, neuroevolution, LLM-driven discovery, and self-evolving agents.",
+    "author": "Graham Rowe",
+    "primary_domain": "agents",
+    "domains": ["agents", "ml-frameworks", "prompt-engineering", "llm-tools", "transformers"],
+    "meta_description": "Data-driven analysis of the evolutionary AI landscape: 1,300+ repos across genetic algorithms, neuroevolution, AlphaEvolve clones, and self-evolving agents. Quality-scored and updated daily.",
+    "template_file": "evolutionary-ai.html",
+    "featured_repos": [
+        "trevorstephens/gplearn",
+        "google/pyglove",
+        "nnaisense/evotorch",
+        "guofei9987/scikit-opt",
+        "esa/pagmo2",
+        "MorvanZhou/Evolutionary-Algorithm",
+        "wagenaartje/neataptic",
+        "uber-research/deep-neuroevolution",
+        "liquidcarrot/carrot",
+        "CLAIRE-Labo/EvoTune",
+        "inter-co/science-codeevolve",
+        "FusionBrainLab/gigaevo-core",
+        "liugangcode/deepevolve",
+        "volcengine/OpenViking",
+        "aiwaves-cn/agents",
+        "EvoAgentX/EvoAgentX",
+        "EvoAgentX/Awesome-Self-Evolving-Agents",
+        "hexdocom/lemonai",
+        "modelscope/AgentEvolver",
+        "AgileRL/AgileRL",
+        "linshenkx/prompt-optimizer",
+        "Eladlev/AutoPrompt",
+        "microsoft/sammo"
+    ],
+    "featured_categories": [
+        "ml-frameworks:evolutionary-algorithm-frameworks",
+        "ml-frameworks:neuroevolution-frameworks",
+        "prompt-engineering:evolutionary-prompt-optimization",
+        "agents:self-evolving-agents"
+    ],
+    "status": "published"
+}
