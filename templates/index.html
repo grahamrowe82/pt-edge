@@ -108,7 +108,7 @@
       {% for opp in top_opportunities %}
       <a href="{{ base_path }}/categories/{{ opp.subcategory }}/" class="block rounded-lg border border-gray-200 p-3 hover:border-blue-300 hover:shadow-sm transition-all">
         <div class="flex items-center justify-between mb-1">
-          <p class="font-medium text-sm text-gray-900 truncate">{{ opp.subcategory | replace('-', ' ') | title }}</p>
+          <p class="font-medium text-sm text-gray-900 truncate">{{ opp.label | default(opp.subcategory | replace('-', ' ') | title) }}</p>
           <span class="ml-1 text-sm font-bold text-gray-900">{{ opp.opportunity_score }}</span>
         </div>
         <span class="inline-block px-1.5 py-0.5 rounded-full text-xs font-medium
