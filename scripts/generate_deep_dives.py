@@ -164,7 +164,11 @@ def fetch_repo_metrics(full_names):
 
 
 def fetch_category_opportunities(category_keys):
-    """Opportunity scores for 'domain:subcategory' pairs."""
+    """Allocation scores for 'domain:subcategory' pairs.
+
+    Returns dict keyed by 'domain:subcategory' with backward-compatible
+    fields (opportunity_score, opportunity_tier) plus new EHS/ES scores.
+    """
     if not category_keys:
         return {}
     results = {}
@@ -175,12 +179,17 @@ def fetch_category_opportunities(category_keys):
                 continue
             domain, sub = parts
             row = conn.execute(text("""
-                SELECT domain, subcategory, opportunity_score, opportunity_tier,
-                       demand_score, quality_gap_score, concentration_score,
-                       graveyard_score, momentum_score, stadium_score,
-                       repo_count, total_stars, avg_quality_score,
-                       confidence_level
-                FROM mv_category_opportunity
+                SELECT domain, subcategory, ehs, es,
+                       opportunity_score, opportunity_tier,
+                       repo_count, total_stars, confidence_level,
+                       gsc_impressions_7d, gsc_clicks_7d,
+                       github_star_velocity_7d, github_new_repos_7d,
+                       umami_pageviews_7d,
+                       0 AS demand_score, 0 AS quality_gap_score,
+                       0 AS concentration_score, 0 AS graveyard_score,
+                       0 AS momentum_score, 0 AS stadium_score,
+                       0 AS avg_quality_score
+                FROM mv_allocation_scores
                 WHERE domain = :domain AND subcategory = :sub
             """), {"domain": domain, "sub": sub}).fetchone()
             if row:

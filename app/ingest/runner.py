@@ -130,6 +130,15 @@ async def run_all() -> dict:
         logger.exception(f"gsc failed: {e}")
         results["gsc"] = {"error": str(e)}
 
+    # Umami analytics ETL (page stats for allocation engine)
+    try:
+        from app.ingest.umami import ingest_umami
+        results["umami"] = await _run_with_retry("umami", ingest_umami)
+        logger.info(f"umami: {results['umami']}")
+    except Exception as e:
+        logger.exception(f"umami failed: {e}")
+        results["umami"] = {"error": str(e)}
+
     # Re-match unlinked HN posts against current project list
     try:
         hn_linked = await _run_with_retry("hn_backfill", backfill_hn_links)
