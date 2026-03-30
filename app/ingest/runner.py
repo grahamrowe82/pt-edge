@@ -8,7 +8,6 @@ from app.ingest.candidates import ingest_candidate_velocity, refresh_candidate_w
 from app.ingest.dockerhub import ingest_dockerhub
 from app.ingest.vscode_marketplace import ingest_vscode
 from app.ingest.downloads import ingest_downloads
-from app.ingest.gsc import ingest_gsc
 from app.ingest.github import ingest_github
 from app.ingest.hn import ingest_hn, backfill_hn_links, backfill_hn_lab_links
 from app.ingest.newsletters import ingest_newsletters
@@ -94,7 +93,6 @@ async def run_all() -> dict:
         ("v2ex", ingest_v2ex),
         ("trending", ingest_trending),
         ("candidate_velocity", ingest_candidate_velocity),
-        ("gsc", ingest_gsc),
         # Phase 2: Slow discovery indexes (minutes to hours)
         ("hf_datasets", ingest_hf_datasets),
         ("hf_models", ingest_hf_models),
@@ -120,6 +118,17 @@ async def run_all() -> dict:
         except Exception as e:
             logger.exception(f"{name} failed: {e}")
             results[name] = {"error": str(e)}
+
+    # Google Search Console (lazy import — google libs not in CI)
+    try:
+        from app.ingest.gsc import ingest_gsc
+        results["gsc"] = await _run_with_retry("gsc", ingest_gsc)
+        logger.info(f"gsc: {results['gsc']}")
+    except ImportError:
+        results["gsc"] = "skipped (google libs not installed)"
+    except Exception as e:
+        logger.exception(f"gsc failed: {e}")
+        results["gsc"] = {"error": str(e)}
 
     # Re-match unlinked HN posts against current project list
     try:
