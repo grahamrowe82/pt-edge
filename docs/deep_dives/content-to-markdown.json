@@ -1,0 +1,35 @@
+{
+    "slug": "content-to-markdown",
+    "title": "The Content-to-Markdown Gold Rush",
+    "subtitle": "3.5 million downloads a month. 118,000 stars. The invisible plumbing layer powering every RAG pipeline and AI agent.",
+    "author": "Graham Rowe",
+    "primary_domain": "rag",
+    "domains": ["rag", "llm-tools", "data-engineering"],
+    "meta_description": "Data-driven analysis of the content-to-markdown landscape: 298 repos converting documents, web pages, and PDFs into LLM-ready markdown. Quality-scored and updated daily.",
+    "template_file": "content-to-markdown.html",
+    "featured_repos": [
+        "microsoft/markitdown",
+        "PaddlePaddle/PaddleOCR",
+        "ScrapeGraphAI/Scrapegraph-ai",
+        "kreuzberg-dev/kreuzberg",
+        "adbar/trafilatura",
+        "doocs/md",
+        "AIDotNet/OpenDeepWiki",
+        "any4ai/AnyCrawl",
+        "QiuYannnn/Local-File-Organizer",
+        "opendataloader-project/opendataloader-pdf",
+        "NanoNets/docext",
+        "yobix-ai/extractous",
+        "MarkPDFdown/markpdfdown",
+        "wisupai/e2m",
+        "explosion/spacy-layout",
+        "kreuzberg-dev/html-to-markdown",
+        "yfedoseev/pdf_oxide"
+    ],
+    "featured_categories": [
+        "llm-tools:content-to-markdown",
+        "rag:web-to-markdown-rag",
+        "rag:file-content-extraction"
+    ],
+    "status": "published"
+}

@@ -1,0 +1,115 @@
+<p>LoRA &mdash; Low-Rank Adaptation &mdash; changed everything about LLM fine-tuning. Instead of updating billions of parameters, you train small adapter matrices that capture task-specific behaviour. QLoRA added quantisation to make it run on consumer hardware. Suddenly, anyone with a GPU could fine-tune a language model.</p>
+
+<p>The ecosystem that grew around this is enormous: {{ cats.get('transformers:lora-qlora-fine-tuning', {}).repo_count | default(273) }} repositories with {{ cats.get('transformers:lora-qlora-fine-tuning', {}).total_stars | intcomma }} combined stars. And most of it is not good.</p>
+
+<p>Our quality scoring rates this category at an average of just {{ cats.get('transformers:lora-qlora-fine-tuning', {}).avg_quality_score | default(18) }}/100. The opportunity score is {{ cats.get('transformers:lora-qlora-fine-tuning', {}).opportunity_score }}/100 ({{ cats.get('transformers:lora-qlora-fine-tuning', {}).opportunity_tier | capitalize }}) with a quality gap of {{ cats.get('transformers:lora-qlora-fine-tuning', {}).quality_gap_score }}/100 &mdash; the highest quality gap of any Prime-tier category we track. Massive demand being met by overwhelmingly low-quality supply.</p>
+
+<h2>The top tier: three projects that actually work</h2>
+
+<p>Out of {{ cats.get('transformers:lora-qlora-fine-tuning', {}).repo_count | default(273) }} repos, three dominate by every measure:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Downloads/mo</th><th>Commits (30d)</th><th>Quality</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['hiyouga/LlamaFactory', 'unslothai/unsloth', 'huggingface/peft'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma }}</td>
+      <td>{{ r.commits_30d | default(0) }}</td>
+      <td>{{ r.quality_score | default('—') }}{% if r.quality_tier is defined and r.quality_tier %} ({{ r.quality_tier | capitalize }}){% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('transformers') }}/servers/huggingface/peft/">HuggingFace PEFT</a> is the foundational library. {{ repos.get('huggingface/peft', {}).downloads_monthly | intcomma }} downloads per month makes it one of the most-used packages in the entire LLM ecosystem. It's the reference implementation of LoRA, QLoRA, IA3, and other parameter-efficient methods. If you're fine-tuning anything, you're almost certainly importing PEFT somewhere in your stack.</p>
+
+<p><a href="{{ domain_path('transformers') }}/servers/hiyouga/LlamaFactory/">LlamaFactory</a> ({{ repos.get('hiyouga/LlamaFactory', {}).stars | intcomma }} stars) is the star leader &mdash; a unified interface for fine-tuning 100+ LLMs and VLMs. Published at ACL 2024. It wraps PEFT and adds a web UI, dataset management, and experiment tracking. The most complete "batteries included" option.</p>
+
+<p><a href="{{ domain_path('transformers') }}/servers/unslothai/unsloth/">unsloth</a> ({{ repos.get('unslothai/unsloth', {}).stars | intcomma }} stars, {{ repos.get('unslothai/unsloth', {}).downloads_monthly | intcomma }} downloads/month) is the velocity story. {{ repos.get('unslothai/unsloth', {}).commits_30d | default(0) }} commits in the last 30 days. Their pitch is simple: 2x faster training with 70% less VRAM. They've expanded from LoRA fine-tuning to support reinforcement learning and now cover models from OpenAI, DeepSeek, Qwen, Llama, and Gemma. The development pace is extraordinary.</p>
+
+<h2>The enterprise layer</h2>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Downloads/mo</th><th>Commits (30d)</th><th>Backed by</th></tr>
+  </thead>
+  <tbody>
+    {% for name, backer in [('modelscope/ms-swift', 'Alibaba'), ('oumi-ai/oumi', 'Oumi'), ('linkedin/Liger-Kernel', 'LinkedIn'), ('h2oai/h2o-llmstudio', 'H2O.ai')] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma }}</td>
+      <td>{{ r.commits_30d | default(0) }}</td>
+      <td>{{ backer }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('transformers') }}/servers/modelscope/ms-swift/">ms-swift</a> from Alibaba's ModelScope ({{ repos.get('modelscope/ms-swift', {}).stars | intcomma }} stars, {{ repos.get('modelscope/ms-swift', {}).downloads_monthly | intcomma }} downloads/month) is the most comprehensive enterprise option. It supports CPT, SFT, DPO, and GRPO across 600+ LLMs and 300+ multimodal models. Published at AAAI 2025. The {{ repos.get('modelscope/ms-swift', {}).commits_30d | default(0) }} commits in 30 days tell you it's under active corporate investment.</p>
+
+<p><a href="{{ domain_path('transformers') }}/servers/linkedin/Liger-Kernel/">Liger-Kernel</a> from LinkedIn ({{ repos.get('linkedin/Liger-Kernel', {}).stars | intcomma }} stars, {{ repos.get('linkedin/Liger-Kernel', {}).downloads_monthly | intcomma }} downloads/month) takes a different approach &mdash; efficient Triton kernels for LLM training rather than a fine-tuning framework per se. It makes everything else faster. The download numbers show serious production adoption.</p>
+
+<p><a href="{{ domain_path('transformers') }}/servers/h2oai/h2o-llmstudio/">H2O LLM Studio</a> ({{ repos.get('h2oai/h2o-llmstudio', {}).stars | intcomma }} stars) is the no-code option &mdash; a GUI for fine-tuning that targets data scientists who don't want to write training scripts.</p>
+
+<h2>The long tail problem</h2>
+
+<p>Below these top projects, the quality drops off a cliff. The category average of {{ cats.get('transformers:lora-qlora-fine-tuning', {}).avg_quality_score | default(18) }}/100 isn't dragged down by a few bad repos &mdash; the vast majority of the {{ cats.get('transformers:lora-qlora-fine-tuning', {}).repo_count | default(273) }} repos in this category are experimental or abandoned:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Last push</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['lxe/simple-llm-finetuner', 'ashishpatel26/LLM-Finetuning', 'jianzhnie/LLamaTuner', 'okuvshynov/slowllama'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.last_pushed_at | timeago }}</td>
+      <td>{{ r.description | truncate(70) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('transformers') }}/servers/lxe/simple-llm-finetuner/">simple-llm-finetuner</a> ({{ repos.get('lxe/simple-llm-finetuner', {}).stars | intcomma }} stars) &mdash; a Gradio UI for fine-tuning, untouched since {{ repos.get('lxe/simple-llm-finetuner', {}).last_pushed_at | timeago }}. <a href="{{ domain_path('transformers') }}/servers/ashishpatel26/LLM-Finetuning/">LLM-Finetuning</a> ({{ repos.get('ashishpatel26/LLM-Finetuning', {}).stars | intcomma }} stars) &mdash; a tutorial collection, last pushed {{ repos.get('ashishpatel26/LLM-Finetuning', {}).last_pushed_at | timeago }}. These are not tools you should use in production, but a registry or <a href="/insights/ai-discovery-landscape/">awesome list</a> will present them alongside unsloth without distinction.</p>
+
+<p>This is the quality gap in action. A developer searching for "LoRA fine-tuning" will encounter hundreds of repos, most of which are tutorials, experiments, or abandoned wrappers. Without quality signals, they have no way to quickly reach the 5-10 projects that actually work.</p>
+
+<h2>The specialisation frontier</h2>
+
+<p>Beyond the general-purpose frameworks, interesting specialisation is emerging:</p>
+
+<p><a href="{{ domain_path('transformers') }}/servers/predibase/lorax/">LoRAX</a> ({{ repos.get('predibase/lorax', {}).stars | intcomma }} stars) from Predibase solves the serving problem &mdash; a multi-LoRA inference server that scales to thousands of fine-tuned models. You train one base model, then serve thousands of task-specific LoRA adapters on top of it. This is the production deployment pattern that most fine-tuning tutorials don't address.</p>
+
+<p><a href="{{ domain_path('transformers') }}/servers/roboflow/maestro/">maestro</a> from Roboflow ({{ repos.get('roboflow/maestro', {}).stars | intcomma }} stars) focuses specifically on multimodal model fine-tuning &mdash; PaliGemma 2, Florence-2, Qwen2.5-VL. As fine-tuning extends beyond text to vision-language models, specialised tooling like this becomes critical.</p>
+
+<p><a href="{{ domain_path('transformers') }}/servers/dvgodoy/FineTuningLLMs/">FineTuningLLMs</a> ({{ repos.get('dvgodoy/FineTuningLLMs', {}).stars | intcomma }} stars) is the educational anchor &mdash; the companion repo for a published O'Reilly book on fine-tuning with PyTorch and HuggingFace. Different purpose than the tools above, but important for the ecosystem.</p>
+
+<h2>Where to build</h2>
+
+<p>The quality gap of {{ cats.get('transformers:lora-qlora-fine-tuning', {}).quality_gap_score }}/100 is the highest of any Prime-tier category in our entire dataset. That means:</p>
+
+<ul>
+  <li><strong>The general-purpose space is consolidating.</strong> LlamaFactory, unsloth, and PEFT are pulling away. Building another general LoRA framework is not the opportunity.</li>
+  <li><strong>Multi-LoRA serving is underbuilt.</strong> LoRAX is the only serious option and it was last pushed {{ repos.get('predibase/lorax', {}).last_pushed_at | timeago }}. The gap between "fine-tune a model" and "serve it in production" is where practitioners struggle most.</li>
+  <li><strong>Domain-specific fine-tuning tooling barely exists.</strong> Fine-tuning for code, for medical text, for legal documents, for structured output &mdash; each needs specialised data pipelines, evaluation metrics, and configuration patterns. The <a href="/insights/content-to-markdown/">content extraction layer</a> feeds directly into this.</li>
+  <li><strong>Evaluation is the missing piece.</strong> How do you know your fine-tuned model is actually better? The <a href="/insights/evolutionary-ai/">evolutionary AI</a> approach of iterative improvement through automated evaluation is one answer. The tooling for fine-tuning evaluation is thin.</li>
+</ul>
+
+<hr>
+
+<p><em>All data powered by PT-Edge, tracking {{ global_total | default('226,000+') }} AI repositories across 18 domains. Browse the full <a href="/transformers/categories/lora-qlora-fine-tuning/">LoRA fine-tuning category</a> with all {{ cats.get('transformers:lora-qlora-fine-tuning', {}).repo_count | default(273) }} repos ranked by quality. See <a href="/opportunities/">where the gaps are</a> across the ecosystem. Read our other deep dives: <a href="/insights/evolutionary-ai/">Evolutionary AI</a>, <a href="/insights/ai-discovery-landscape/">AI Discovery Landscape</a>, <a href="/insights/content-to-markdown/">Content-to-Markdown</a>.</em></p>

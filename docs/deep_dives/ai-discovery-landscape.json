@@ -1,0 +1,41 @@
+{
+    "slug": "ai-discovery-landscape",
+    "title": "226,000 AI Repos and No Way to Find the Good Ones",
+    "subtitle": "Why awesome lists are failing, registries can't keep up, and what comes after them.",
+    "author": "Graham Rowe",
+    "primary_domain": "ml-frameworks",
+    "domains": ["ml-frameworks", "llm-tools", "agents", "mcp", "rag", "nlp", "generative-ai"],
+    "meta_description": "The AI open-source ecosystem has exploded to 226K+ repos but discovery infrastructure hasn't kept up. A data-driven analysis of awesome lists, registries, and what replaces them.",
+    "template_file": "ai-discovery-landscape.html",
+    "featured_repos": [
+        "Shubhamsaboo/awesome-llm-apps",
+        "ComposioHQ/awesome-claude-skills",
+        "hesreallyhim/awesome-claude-code",
+        "ChristosChristofidis/awesome-deep-learning",
+        "e2b-dev/awesome-ai-agents",
+        "aishwaryanr/awesome-generative-ai-guide",
+        "keon/awesome-nlp",
+        "academic/awesome-datascience",
+        "EthicalML/awesome-production-machine-learning",
+        "terryum/awesome-deep-learning-papers",
+        "steven2358/awesome-generative-ai",
+        "Mooler0410/LLMsPracticalGuide",
+        "ai-collection/ai-collection",
+        "kyrolabs/awesome-langchain",
+        "KalyanKS-NLP/llm-engineer-toolkit",
+        "LiLittleCat/awesome-free-chatgpt",
+        "humanloop/awesome-chatgpt",
+        "PlexPt/awesome-chatgpt-prompts-zh",
+        "github/awesome-copilot",
+        "guofei9987/scikit-opt",
+        "adbar/trafilatura"
+    ],
+    "featured_categories": [
+        "ml-frameworks:research-paper-curation",
+        "ml-frameworks:ml-frameworks-directories",
+        "llm-tools:llm-research-curation",
+        "mcp:mcp-registry-aggregators",
+        "agents:agent-skill-registry"
+    ],
+    "status": "published"
+}

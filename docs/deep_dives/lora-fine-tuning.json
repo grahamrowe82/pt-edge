@@ -1,0 +1,31 @@
+{
+    "slug": "lora-fine-tuning",
+    "title": "273 LoRA Repos, 199K Stars, and the Quality Still Isn't There",
+    "subtitle": "The fine-tuning landscape has an average quality score of 18 out of 100. We mapped the whole thing.",
+    "author": "Graham Rowe",
+    "primary_domain": "transformers",
+    "domains": ["transformers"],
+    "meta_description": "Data-driven analysis of the LoRA/QLoRA fine-tuning landscape: 273 repos with 199K stars but an average quality score of just 18/100. Quality-scored and updated daily.",
+    "template_file": "lora-fine-tuning.html",
+    "featured_repos": [
+        "hiyouga/LlamaFactory",
+        "unslothai/unsloth",
+        "huggingface/peft",
+        "modelscope/ms-swift",
+        "oumi-ai/oumi",
+        "linkedin/Liger-Kernel",
+        "h2oai/h2o-llmstudio",
+        "predibase/lorax",
+        "ashishpatel26/LLM-Finetuning",
+        "stochasticai/xTuring",
+        "roboflow/maestro",
+        "lxe/simple-llm-finetuner",
+        "dvgodoy/FineTuningLLMs",
+        "jianzhnie/LLamaTuner",
+        "okuvshynov/slowllama"
+    ],
+    "featured_categories": [
+        "transformers:lora-qlora-fine-tuning"
+    ],
+    "status": "published"
+}

@@ -1,0 +1,110 @@
+<p>There are {{ cats.get('ml-frameworks:ml-frameworks-directories', {}).repo_count | default(258) }} repos on GitHub whose primary purpose is to catalogue other AI repos. Awesome lists, curated directories, resource collections, registry aggregators. The AI ecosystem has built an entire meta-layer of projects whose job is to help you find other projects.</p>
+
+<p>Most of them are abandoned.</p>
+
+<p>PT-Edge tracks {{ global_total | default('226,000+') }} AI repositories across 18 domains. We score every one daily on maintenance, adoption, maturity, and community signals. When we turned that scoring lens on the discovery layer itself &mdash; the awesome lists, directories, and registries that developers rely on to navigate the ecosystem &mdash; the picture was worse than expected.</p>
+
+<h2>The awesome list problem</h2>
+
+<p>Awesome lists are the first generation of AI ecosystem discovery. A person curates a markdown file of links, organises them by category, and publishes it to GitHub. The format is wildly popular:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Last push</th><th>Description</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['Shubhamsaboo/awesome-llm-apps', 'ComposioHQ/awesome-claude-skills', 'hesreallyhim/awesome-claude-code', 'ChristosChristofidis/awesome-deep-learning', 'e2b-dev/awesome-ai-agents', 'aishwaryanr/awesome-generative-ai-guide', 'keon/awesome-nlp', 'academic/awesome-datascience'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.last_pushed_at | timeago }}</td>
+      <td>{{ r.description | truncate(60) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>These lists accumulate enormous star counts because they solve a real problem: the ecosystem is too large to navigate without curation. <a href="{{ domain_path('rag') }}/servers/Shubhamsaboo/awesome-llm-apps/">awesome-llm-apps</a> has {{ repos.get('Shubhamsaboo/awesome-llm-apps', {}).stars | intcomma }} stars. <a href="{{ domain_path('agents') }}/servers/ComposioHQ/awesome-claude-skills/">awesome-claude-skills</a> has {{ repos.get('ComposioHQ/awesome-claude-skills', {}).stars | intcomma }}. Combined, the top 20 AI awesome lists have over 500,000 stars.</p>
+
+<p>But awesome lists have a structural flaw: they are maintained by humans, and humans stop. <a href="{{ domain_path('ml-frameworks') }}/servers/ChristosChristofidis/awesome-deep-learning/">awesome-deep-learning</a> ({{ repos.get('ChristosChristofidis/awesome-deep-learning', {}).stars | intcomma }} stars) was last pushed {{ repos.get('ChristosChristofidis/awesome-deep-learning', {}).last_pushed_at | timeago }}. <a href="{{ domain_path('agents') }}/servers/e2b-dev/awesome-ai-agents/">awesome-ai-agents</a> ({{ repos.get('e2b-dev/awesome-ai-agents', {}).stars | intcomma }} stars) was last pushed {{ repos.get('e2b-dev/awesome-ai-agents', {}).last_pushed_at | timeago }}. <a href="{{ domain_path('llm-tools') }}/servers/PlexPt/awesome-chatgpt-prompts-zh/">awesome-chatgpt-prompts-zh</a> ({{ repos.get('PlexPt/awesome-chatgpt-prompts-zh', {}).stars | intcomma }} stars) &mdash; {{ repos.get('PlexPt/awesome-chatgpt-prompts-zh', {}).last_pushed_at | timeago }}.</p>
+
+<p>The pattern is consistent. A person creates a list, it goes viral, stars accumulate, the person moves on, and the list fossilises. In the <a href="/ml-frameworks/categories/research-paper-curation/">research paper curation</a> category alone, our data shows {{ cats.get('ml-frameworks:research-paper-curation', {}).repo_count | default(239) }} repos with {{ cats.get('ml-frameworks:research-paper-curation', {}).total_stars | intcomma }} combined stars &mdash; and {{ cats.get('ml-frameworks:research-paper-curation', {}).graveyard_count | default(19) }} of them are abandoned high-star repos. Nineteen separate attempts to maintain a curated list of AI research papers, all given up.</p>
+
+<p>The <a href="/ml-frameworks/categories/ml-frameworks-directories/">ML frameworks directory</a> category tells the same story: {{ cats.get('ml-frameworks:ml-frameworks-directories', {}).repo_count | default(258) }} repos, {{ cats.get('ml-frameworks:ml-frameworks-directories', {}).total_stars | intcomma }} stars, {{ cats.get('ml-frameworks:ml-frameworks-directories', {}).graveyard_count | default(15) }} abandoned.</p>
+
+<h2>The registry problem</h2>
+
+<p>Registries are the second generation. Instead of a markdown file maintained by one person, they are structured databases with search, categories, and (sometimes) automated ingestion. In the MCP ecosystem, at least five competing registries index MCP servers: the official Anthropic registry, Smithery, MCP.so, PulseMCP, and SkillsIndex.</p>
+
+<p>Our data on the <a href="/mcp/categories/mcp-registry-aggregators/">MCP registry aggregator</a> category: {{ cats.get('mcp:mcp-registry-aggregators', {}).repo_count | default(67) }} repos, {{ cats.get('mcp:mcp-registry-aggregators', {}).total_stars | intcomma }} combined stars. The quality gap score is just {{ cats.get('mcp:mcp-registry-aggregators', {}).quality_gap_score | default(17) }}/100 &mdash; meaning the demand for MCP discovery is relatively well-served compared to other categories.</p>
+
+<p>But every single one of these registries is a flat catalogue. Search by name, maybe filter by category, read a description someone wrote on day one. None of them answer the question that actually matters: <em>should I use this?</em></p>
+
+<p>This is not a quality problem &mdash; it is a design problem. Registries optimise for completeness (list everything) not for decision-making (recommend the best option). When an AI agent searches for "a Postgres MCP server," it doesn't need a list of 47 options. It needs the three that are well-maintained, have package distributions, and won't break.</p>
+
+<h2>The graveyard signal</h2>
+
+<p>The most interesting pattern in our data is the graveyard. Across the discovery and curation landscape:</p>
+
+<table>
+  <thead>
+    <tr><th>Category</th><th>Repos</th><th>Stars</th><th>Abandoned high-star repos</th></tr>
+  </thead>
+  <tbody>
+    {% for key in ['ml-frameworks:research-paper-curation', 'ml-frameworks:ml-frameworks-directories', 'llm-tools:llm-research-curation', 'agents:agent-skill-registry', 'mcp:mcp-registry-aggregators'] %}
+    {% set c = cats.get(key, {}) %}
+    {% if c %}
+    <tr>
+      <td><a href="/{{ key.split(':')[0] }}/categories/{{ key.split(':')[1] }}/">{{ key.split(':')[1] | replace('-', ' ') | title }}</a></td>
+      <td>{{ c.repo_count }}</td>
+      <td>{{ c.total_stars | intcomma }}</td>
+      <td>{{ c.graveyard_count }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>The research paper curation category has 19 abandoned projects. These aren't small experiments &mdash; they're repos that attracted thousands of stars, proving real demand, before the maintainer burned out. <a href="{{ domain_path('ml-frameworks') }}/servers/terryum/awesome-deep-learning-papers/">awesome-deep-learning-papers</a> ({{ repos.get('terryum/awesome-deep-learning-papers', {}).stars | intcomma }} stars) stopped being updated after 2024. The "most cited deep learning papers" list is frozen in time.</p>
+
+<p>This is the graveyard signal from our <a href="/ml-frameworks/opportunities/">opportunity scoring</a>: when a category has multiple abandoned high-star projects, it proves the demand exists but manual maintenance can't sustain supply. The problem isn't that people don't want curated AI ecosystem intelligence. The problem is that humans can't maintain it at the scale required.</p>
+
+<h2>What breaks at scale</h2>
+
+<p>The AI open-source ecosystem adds thousands of repos per month. We track {{ global_total | default('226,000+') }} across 18 domains. No human can curate that. The specific things that break:</p>
+
+<ul>
+  <li><strong>Staleness:</strong> A list of "best Python ML libraries" that hasn't been updated in 6 months is actively harmful &mdash; it recommends abandoned projects and misses new ones.</li>
+  <li><strong>No quality signals:</strong> Awesome lists sort by name or category. They can't tell you that a project's last commit was 2 years ago, or that it has no license, or that nobody actually downloads it.</li>
+  <li><strong>No cross-vertical view:</strong> awesome-langchain covers LangChain. awesome-mcp-servers covers MCP. Nobody covers "what's the best way to build a document Q&amp;A pipeline" which requires cross-cutting knowledge across RAG, embeddings, vector databases, and LLM tools.</li>
+  <li><strong>No negative signals:</strong> Awesome lists only add. They never warn you away from something. There's no "this project was abandoned" or "this has known security issues" or "this scores 15/100 on quality."</li>
+</ul>
+
+<h2>The third generation: programmatic intelligence</h2>
+
+<p>The answer is to stop curating by hand and start computing from data. Track every repo programmatically. Score them daily on objective signals. Cluster them into categories using embeddings, not human judgement. Surface the results through both human-readable pages and machine-readable APIs.</p>
+
+<p>This is what we built with PT-Edge. The <a href="/methodology/">methodology</a> is transparent: four quality dimensions (maintenance, adoption, maturity, community), each 0-25, updated daily from live GitHub, PyPI, and npm data. 2,400+ categories discovered by embedding similarity across {{ global_total | default('226,000+') }} repos. <a href="/opportunities/">Opportunity scoring</a> that identifies underserved segments automatically.</p>
+
+<p>The results speak to why this matters. Our <a href="/insights/evolutionary-ai/">evolutionary AI landscape analysis</a> found that the most popular genetic algorithm library ({{ repos.get('guofei9987/scikit-opt', {}).stars | intcomma }} stars) hasn't been pushed in {{ repos.get('guofei9987/scikit-opt', {}).last_pushed_at | timeago }} &mdash; information that no awesome list surfaces. Our <a href="/insights/lora-fine-tuning/">LoRA fine-tuning analysis</a> revealed an average quality score of just 18/100 across 273 repos with 199K stars &mdash; massive adoption of terrible tools that registries present without distinction.</p>
+
+<p>None of this requires human curation to maintain. The scores compute daily. The categories are stable (embedding-derived, not hand-labelled). The opportunity signals update as the ecosystem evolves. A project that was abandoned yesterday will score lower today, automatically.</p>
+
+<h2>What's still missing</h2>
+
+<p>Programmatic scoring solves the maintenance and scale problems but creates new ones:</p>
+
+<ul>
+  <li><strong>Editorial judgement:</strong> Data can tell you that a project scores 72/100. It can't tell you that it's the best choice for your specific use case. That's what <a href="/insights/">deep dives like this one</a> are for &mdash; combining live data with human analysis.</li>
+  <li><strong>Recommendation context:</strong> "Best overall" is not always "best for you." A Python developer and a Rust developer need different recommendations from the same category. Personalisation is the next layer.</li>
+  <li><strong>Real-time signals:</strong> Daily scoring catches trends over days and weeks. It doesn't catch a critical security vulnerability disclosed this morning. Integration with security advisory feeds, CVE databases, and real-time social signals is the frontier.</li>
+</ul>
+
+<p>The ecosystem is moving from curated lists to computed intelligence. The question is not whether the awesome list format will be replaced &mdash; the graveyard count proves it can't scale. The question is what the replacement looks like, and whether it serves both human developers and the AI agents that are increasingly making tool selection decisions on their behalf.</p>
+
+<hr>
+
+<p><em>All data powered by PT-Edge, tracking {{ global_total | default('226,000+') }} AI repositories across 18 domains with daily-updated quality scores. Explore the <a href="/ml-frameworks/categories/research-paper-curation/">research paper curation graveyard</a>, browse <a href="/mcp/categories/mcp-registry-aggregators/">MCP registries ranked by quality</a>, or see <a href="/opportunities/">where the gaps are</a> across the full ecosystem. Read our other deep dives: <a href="/insights/evolutionary-ai/">Evolutionary AI</a>, <a href="/insights/content-to-markdown/">Content-to-Markdown</a>, <a href="/insights/lora-fine-tuning/">LoRA Fine-Tuning</a>.</em></p>

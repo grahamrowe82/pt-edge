@@ -1,0 +1,95 @@
+<p>Every RAG pipeline starts the same way: take a document, extract the text, convert it to something an LLM can process. Usually markdown. This step is so fundamental that it's easy to overlook &mdash; until it breaks, and your AI gives confident answers from garbled OCR output or missing table data.</p>
+
+<p>PT-Edge tracks {{ cats.get('llm-tools:content-to-markdown', {}).repo_count | default(113) + cats.get('rag:web-to-markdown-rag', {}).repo_count | default(114) + cats.get('rag:file-content-extraction', {}).repo_count | default(71) }} repositories across the content extraction landscape. Three overlapping categories, all scoring Prime on our <a href="/opportunities/">opportunity index</a>:</p>
+
+<table>
+  <thead>
+    <tr><th>Category</th><th>Repos</th><th>Stars</th><th>Opportunity</th><th>Quality gap</th></tr>
+  </thead>
+  <tbody>
+    {% for key, label in [('llm-tools:content-to-markdown', 'Content to Markdown'), ('rag:web-to-markdown-rag', 'Web to Markdown'), ('rag:file-content-extraction', 'File Content Extraction')] %}
+    {% set c = cats.get(key, {}) %}
+    {% if c %}
+    <tr>
+      <td><a href="/{{ key.split(':')[0] }}/categories/{{ key.split(':')[1] }}/">{{ label }}</a></td>
+      <td>{{ c.repo_count }}</td>
+      <td>{{ c.total_stars | intcomma }}</td>
+      <td>{{ c.opportunity_score }}/100 ({{ c.opportunity_tier | capitalize }})</td>
+      <td>{{ c.quality_gap_score }}/100</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>All three score above 80 on opportunity. All three have quality gaps above 80. That's the signal: enormous demand, and the supply isn't good enough.</p>
+
+<h2>The giants</h2>
+
+<p><a href="{{ domain_path('llm-tools') }}/servers/microsoft/markitdown/">Microsoft's markitdown</a> dominates the space with {{ repos.get('microsoft/markitdown', {}).stars | intcomma }} stars and {{ repos.get('microsoft/markitdown', {}).downloads_monthly | intcomma }} downloads per month. It converts Office documents, PDFs, images, HTML, and more into clean markdown. Those download numbers are staggering &mdash; this is one of the most downloaded AI-adjacent packages on PyPI, and it's less than a year old.</p>
+
+<p><a href="{{ domain_path('rag') }}/servers/PaddlePaddle/PaddleOCR/">PaddleOCR</a> ({{ repos.get('PaddlePaddle/PaddleOCR', {}).stars | intcomma }} stars, {{ repos.get('PaddlePaddle/PaddleOCR', {}).downloads_monthly | intcomma }} downloads/month) is the OCR backbone that sits underneath many extraction pipelines. Baidu's contribution to the space, supporting 100+ languages. It converts images and scanned PDFs into structured text &mdash; the hardest part of the extraction problem.</p>
+
+<p>Together, these two projects account for over 5 million monthly downloads. They are the infrastructure layer that most AI applications depend on without realising it.</p>
+
+<h2>The quiet giants</h2>
+
+<p>Some of the most important projects in this space are almost invisible by star count.</p>
+
+<p><a href="{{ domain_path('rag') }}/servers/adbar/trafilatura/">trafilatura</a> has {{ repos.get('adbar/trafilatura', {}).stars | intcomma }} stars but {{ repos.get('adbar/trafilatura', {}).downloads_monthly | intcomma }} downloads per month. That's a download-to-star ratio of roughly {{ (repos.get('adbar/trafilatura', {}).downloads_monthly | default(1) / (repos.get('adbar/trafilatura', {}).stars | default(1) + 1)) | int }}:1. For comparison, most popular open-source projects have ratios between 1:1 and 10:1. trafilatura is foundational web extraction infrastructure &mdash; crawling, scraping, and converting web content to clean text &mdash; embedded in production pipelines across thousands of companies, almost none of whom have starred it on GitHub.</p>
+
+<p>This is exactly the kind of insight that <a href="/insights/ai-discovery-landscape/">awesome lists miss</a>. A curated list would rank trafilatura below flashier projects with more stars. A quality-scored system sees the download signal and recognises it as critical infrastructure.</p>
+
+<p><a href="{{ domain_path('rag') }}/servers/explosion/spacy-layout/">spacy-layout</a> ({{ repos.get('explosion/spacy-layout', {}).stars | intcomma }} stars, {{ repos.get('explosion/spacy-layout', {}).downloads_monthly | intcomma }} downloads/month) from Explosion AI bridges document layout understanding with the spaCy NLP pipeline. Small star count, real production usage.</p>
+
+<h2>The velocity leaders</h2>
+
+<p>The most interesting signal in this space is development velocity. Some projects are shipping at extraordinary pace:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Downloads/mo</th><th>Commits (30d)</th><th>Last push</th></tr>
+  </thead>
+  <tbody>
+    {% for name in ['kreuzberg-dev/kreuzberg', 'opendataloader-project/opendataloader-pdf', 'kreuzberg-dev/html-to-markdown', 'any4ai/AnyCrawl', 'doocs/md'] %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma }}</td>
+      <td>{{ r.commits_30d | default(0) }}</td>
+      <td>{{ r.last_pushed_at | timeago }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('rag') }}/servers/kreuzberg-dev/kreuzberg/">kreuzberg</a> is the story to watch. {{ repos.get('kreuzberg-dev/kreuzberg', {}).stars | intcomma }} stars, {{ repos.get('kreuzberg-dev/kreuzberg', {}).downloads_monthly | intcomma }} downloads per month, and {{ repos.get('kreuzberg-dev/kreuzberg', {}).commits_30d | default(0) }} commits in the last 30 days. It's a Rust-core polyglot document intelligence framework with bindings for Python, Ruby, Java, Go, PHP, and more. The velocity is extraordinary &mdash; and it's building out an MCP server, CLI, and REST API alongside the core library. This is what a well-resourced challenger to markitdown looks like.</p>
+
+<p><a href="{{ domain_path('rag') }}/servers/opendataloader-project/opendataloader-pdf/">opendataloader-pdf</a> ({{ repos.get('opendataloader-project/opendataloader-pdf', {}).stars | intcomma }} stars, {{ repos.get('opendataloader-project/opendataloader-pdf', {}).commits_30d | default(0) }} commits/month) is focused specifically on PDF parsing for AI-ready data &mdash; a narrower scope than kreuzberg but with intense development focus.</p>
+
+<h2>The web scraping layer</h2>
+
+<p>A parallel ecosystem exists for converting live web pages (not documents) to markdown. This is the Firecrawl, Jina Reader territory &mdash; tools that take a URL and return clean, LLM-ready content.</p>
+
+<p><a href="{{ domain_path('rag') }}/servers/ScrapeGraphAI/Scrapegraph-ai/">ScrapeGraphAI</a> ({{ repos.get('ScrapeGraphAI/Scrapegraph-ai', {}).stars | intcomma }} stars) takes an AI-native approach to scraping &mdash; using LLMs to understand page structure rather than relying on CSS selectors. <a href="{{ domain_path('rag') }}/servers/any4ai/AnyCrawl/">AnyCrawl</a> ({{ repos.get('any4ai/AnyCrawl', {}).stars | intcomma }} stars, {{ repos.get('any4ai/AnyCrawl', {}).commits_30d | default(0) }} commits/month) focuses on multi-threaded bulk crawling with native TypeScript.</p>
+
+<p>The <a href="/rag/categories/web-to-markdown-rag/">web-to-markdown</a> category scores {{ cats.get('rag:web-to-markdown-rag', {}).opportunity_score }}/100 on opportunity &mdash; slightly lower than document-to-markdown because Firecrawl (not open-source core) and Jina Reader have captured significant market share.</p>
+
+<h2>Why this matters beyond RAG</h2>
+
+<p>Content-to-markdown is not just a RAG preprocessing step. It's becoming the universal interchange format for AI systems:</p>
+
+<ul>
+  <li><strong>Agent tool use:</strong> MCP servers that read documents or web pages convert to markdown before passing to the LLM. The quality of this conversion directly affects agent accuracy.</li>
+  <li><strong>Fine-tuning data pipelines:</strong> Every <a href="/insights/lora-fine-tuning/">LoRA fine-tuning</a> job needs training data. For domain-specific models, that data often starts as PDFs, docs, or web pages that need clean extraction.</li>
+  <li><strong>Knowledge base construction:</strong> Enterprise AI deployments start by converting internal documents to searchable, embeddable text. The extraction quality determines the knowledge base quality.</li>
+</ul>
+
+<p>The opportunity scores reflect this breadth of demand. Three categories, all Prime, all with quality gaps above 80. The infrastructure layer is being built in real time, and the projects that get it right will become as foundational as tokenizers or embedding models.</p>
+
+<hr>
+
+<p><em>All data powered by PT-Edge, tracking {{ global_total | default('226,000+') }} AI repositories across 18 domains. Browse the full <a href="/llm-tools/categories/content-to-markdown/">content-to-markdown</a>, <a href="/rag/categories/web-to-markdown-rag/">web-to-markdown</a>, and <a href="/rag/categories/file-content-extraction/">file content extraction</a> categories ranked by quality. See <a href="/opportunities/">where the gaps are</a> across the ecosystem. Read our other deep dives: <a href="/insights/evolutionary-ai/">Evolutionary AI</a>, <a href="/insights/ai-discovery-landscape/">AI Discovery Landscape</a>, <a href="/insights/lora-fine-tuning/">LoRA Fine-Tuning</a>.</em></p>
