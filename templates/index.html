@@ -110,5 +110,19 @@
     </div>
   </div>
 
+  {% if top_comparisons %}
+  <div class="mb-12">
+    <h2 class="text-xl font-bold text-gray-900 mb-4">Popular comparisons</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+      {% for c in top_comparisons %}
+      <a href="{{ base_path }}/compare/{{ c.slug }}/" class="block rounded-lg border border-gray-200 p-3 hover:border-blue-300 transition-all">
+        <p class="font-medium text-sm text-gray-900">{{ c.name_a }} and {{ c.name_b }}</p>
+        <p class="text-xs text-gray-500">{{ c.score_a }} vs {{ c.score_b }}</p>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
 </div>
 {% endblock %}
