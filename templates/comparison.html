@@ -112,6 +112,17 @@
     {% endfor %}
   </div>
 
+  {% if related_comparisons %}
+  <div class="mt-8 mb-8">
+    <h2 class="text-lg font-bold text-gray-900 mb-3">Related comparisons</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {% for c in related_comparisons %}
+      <a href="{{ base_path }}/compare/{{ c.slug }}/" class="block text-sm text-blue-600 hover:underline">{{ c.name_a }} and {{ c.name_b }}</a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="text-center text-sm text-gray-500">
     <p>Scores updated daily from GitHub, PyPI, and npm data. <a href="{{ base_path }}/methodology/" class="text-blue-600 hover:underline">How scores work</a></p>
   </div>

@@ -703,6 +703,42 @@ def main():
 
     ctx = {"total_count": total_count, **domain_ctx}
 
+    # Pre-load comparison pairs for cross-linking (cheap cache read)
+    print("  Loading comparison pairs from cache...")
+    cached_pairs = load_comparison_pairs(domain)
+    server_map = {s["full_name"]: s for s in servers}
+    comparison_lookup = {}
+    cat_comparisons = {}
+    top_comparisons = []
+
+    if cached_pairs:
+        for cp in cached_pairs:
+            a = server_map.get(cp["repo_a"])
+            b = server_map.get(cp["repo_b"])
+            if not a or not b:
+                continue
+            a_name = cp["repo_a"].split("/")[1] if "/" in cp["repo_a"] else cp["repo_a"]
+            b_name = cp["repo_b"].split("/")[1] if "/" in cp["repo_b"] else cp["repo_b"]
+            comparison_lookup.setdefault(cp["repo_a"], []).append(
+                {"slug": cp["slug"], "partner": b_name, "partner_full": cp["repo_b"]})
+            comparison_lookup.setdefault(cp["repo_b"], []).append(
+                {"slug": cp["slug"], "partner": a_name, "partner_full": cp["repo_a"]})
+            cat = cp.get("category", "")
+            combined_stars = (a.get("stars") or 0) + (b.get("stars") or 0)
+            cat_comparisons.setdefault(cat, []).append({
+                "slug": cp["slug"], "name_a": a_name, "name_b": b_name,
+                "score_a": int(a.get("quality_score", 0)),
+                "score_b": int(b.get("quality_score", 0)),
+                "combined_stars": combined_stars,
+            })
+        for cat in cat_comparisons:
+            cat_comparisons[cat].sort(key=lambda x: -x["combined_stars"])
+        top_comparisons = sorted(
+            [c for comps in cat_comparisons.values() for c in comps],
+            key=lambda x: -x["combined_stars"]
+        )[:6]
+        print(f"  {len(cached_pairs)} cached pairs, {len(comparison_lookup)} repos with comparisons")
+
     # Phase 2: Render pages
     print("  Generating homepage...")
     write_file(
@@ -711,6 +747,7 @@ def main():
             top_servers=servers[:20],
             tiers=tiers,
             categories=[{"subcategory": c["subcategory"], "label": c["label"], "count": c["count"]} for c in categories],
+            top_comparisons=top_comparisons,
             **ctx,
         ),
     )
@@ -745,7 +782,8 @@ def main():
         if owner != last_owner:
             os.makedirs(os.path.join(out_dir, "servers", owner), exist_ok=True)
             last_owner = owner
-        write_file(path, detail_tpl.render(server=s, related_servers=related, **ctx))
+        write_file(path, detail_tpl.render(server=s, related_servers=related,
+                                          comparisons=comparison_lookup.get(s["full_name"], [])[:10], **ctx))
 
         if (i + 1) % 5000 == 0:
             print(f"  {i + 1}/{total_count} detail pages...")
@@ -764,7 +802,8 @@ def main():
         write_file(
             os.path.join(out_dir, "categories", cat["subcategory"], "index.html"),
             cat_tpl.render(subcategory=cat["subcategory"], category_label=cat["label"],
-                           category_desc=cat["desc"], servers=cat["servers"], **ctx),
+                           category_desc=cat["desc"], servers=cat["servers"],
+                           category_comparisons=cat_comparisons.get(cat["subcategory"], [])[:10], **ctx),
         )
     print(f"  {len(categories)} category pages")
 
@@ -784,15 +823,11 @@ def main():
         env.get_template("methodology.html").render(**ctx),
     )
 
-    # Comparison pages (read from structural_cache, no embedding queries)
-    print("  Loading comparison pairs from cache...")
-    cached_pairs = load_comparison_pairs(domain)
+    # Generate comparison pages (lookups already built earlier)
     comparison_pairs = []
     if cached_pairs:
-        # Look up full server data for each pair from the already-loaded servers list
-        server_map = {s["full_name"]: s for s in servers}
         sentences = fetch_comparison_sentences()
-        print(f"  {len(cached_pairs)} cached pairs, {len(sentences)} decision sentences")
+        print(f"  Generating comparison pages ({len(sentences)} decision sentences)...")
 
         comp_tpl = env.get_template("comparison.html")
         for cp in cached_pairs:
@@ -800,11 +835,23 @@ def main():
             b = server_map.get(cp["repo_b"])
             if not a or not b:
                 continue
-            # Build the category label from category_meta
-            cat_meta = category_meta.get(cp.get("category", ""), {})
-            cat_label = cat_meta.get("display_label", cp.get("category", "").replace("-", " ").title())
+            cat_m = category_meta.get(cp.get("category", ""), {})
+            cat_label = cat_m.get("display_label", cp.get("category", "").replace("-", " ").title())
             slug = cp["slug"]
             sentence = sentences.get((cp["repo_a"], cp["repo_b"]), "")
+
+            # Related comparisons: other pairs involving A or B
+            related = []
+            seen = {slug}
+            for r in comparison_lookup.get(cp["repo_a"], []) + comparison_lookup.get(cp["repo_b"], []):
+                if r["slug"] not in seen:
+                    seen.add(r["slug"])
+                    # Determine both names for display
+                    other_a = cp["repo_a"].split("/")[1] if r["partner_full"] != cp["repo_a"] else r["partner"]
+                    other_b = r["partner"] if r["partner_full"] != cp["repo_a"] else cp["repo_a"].split("/")[1]
+                    related.append({"slug": r["slug"], "name_a": other_a, "name_b": other_b})
+                if len(related) >= 6:
+                    break
 
             write_file(
                 os.path.join(out_dir, "compare", slug, "index.html"),
@@ -812,6 +859,7 @@ def main():
                     repo_a=a, repo_b=b, slug=slug, sentence=sentence,
                     comparison_category=cp.get("category", ""),
                     category_label=cat_label,
+                    related_comparisons=related,
                     **ctx,
                 ),
             )
