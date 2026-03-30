@@ -3,12 +3,12 @@
 {% set name_a = repo_a.name or repo_a.full_name.split('/')[1] %}
 {% set name_b = repo_b.name or repo_b.full_name.split('/')[1] %}
 
-{% block title %}{{ name_a }} and {{ name_b }} &mdash; Side by Side | PT-Edge{% endblock %}
+{% block title %}{{ name_a }} vs {{ name_b }} &mdash; {{ repo_a.quality_score | int }} vs {{ repo_b.quality_score | int }} Quality Score | PT-Edge{% endblock %}
 
 {% block meta %}
-<meta name="description" content="{{ repo_a.full_name }} (score {{ repo_a.quality_score | int }}) and {{ repo_b.full_name }} (score {{ repo_b.quality_score | int }}) side by side. Quality scores, maintenance, adoption, and community metrics compared.">
-<meta property="og:title" content="{{ name_a }} and {{ name_b }} | PT-Edge">
-<meta property="og:description" content="Side by side: {{ repo_a.quality_score | int }} vs {{ repo_b.quality_score | int }}. Scores, metadata, and context.">
+<meta name="description" content="{{ name_a }} ({{ repo_a.quality_score | int }}/100, {{ repo_a.stars | human_stars }} stars) vs {{ name_b }} ({{ repo_b.quality_score | int }}/100, {{ repo_b.stars | human_stars }} stars). Maintenance, adoption, maturity, and community metrics compared side by side. Updated daily.">
+<meta property="og:title" content="{{ name_a }} vs {{ name_b }} &mdash; Quality Compared | PT-Edge">
+<meta property="og:description" content="{{ name_a }} ({{ repo_a.quality_score | int }}/100) vs {{ name_b }} ({{ repo_b.quality_score | int }}/100). Scores, activity, and community compared.">
 {% endblock %}
 
 {% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/compare/{{ slug }}/"> {% endblock %}

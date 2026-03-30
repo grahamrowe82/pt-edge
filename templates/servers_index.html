@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}All {{ domain_label_plural }}{% if page > 1 %} &mdash; Page {{ page }}{% endif %} | PT-Edge{% endblock %}
+{% block title %}All {{ total_count | int }} {{ domain_label_plural }} by Quality Score{% if page > 1 %} (Page {{ page }}){% endif %} | PT-Edge{% endblock %}
 
 {% block meta %}
-<meta name="description" content="Browse {{ total_count | int }} {{ domain_label_plural | lower }} ranked by quality score{% if page > 1 %} (page {{ page }}){% endif %}. Updated daily.">
+<meta name="description" content="Complete ranking of {{ total_count | int }} {{ domain_label_plural | lower }} by quality score{% if page > 1 %} — page {{ page }} of {{ total_pages }}{% endif %}. Scored on maintenance, adoption, maturity, and community. Updated daily.">
 {% endblock %}
 
 {% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/servers/{% if page > 1 %}page/{{ page }}/{% endif %}">{% endblock %}

@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}{{ server.name }} &mdash; {{ domain_label }} Quality Score {{ server.quality_score | int }}/100 | PT-Edge{% endblock %}
+{% block title %}{{ server.name }} ({{ server.quality_score | int }}/100) &mdash; {{ server.stars | human_stars }} Stars, {{ server.quality_tier | capitalize }} | PT-Edge{% endblock %}
 
 {% block meta %}
-<meta name="description" content="{{ server.description | truncate(155) }} Quality tier: {{ server.quality_tier }}. {{ server.stars | int }} stars, {{ server.language or 'unknown language' }}. Scored {{ server.quality_score | int }}/100.">
-<meta property="og:title" content="{{ server.name }} &mdash; {{ domain_label }} Score {{ server.quality_score | int }}/100">
+<meta name="description" content="Quality assessment of {{ server.name }}: scored {{ server.quality_score | int }}/100 ({{ server.quality_tier }}). {{ server.stars | human_stars }} stars{% if server.language %}, {{ server.language }}{% endif %}{% if server.commits_30d %}, {{ server.commits_30d }} commits last month{% endif %}. {% if server.ai_summary %}{{ server.ai_summary | truncate(80) }}{% else %}{{ server.description | truncate(80) }}{% endif %}">
+<meta property="og:title" content="{{ server.name }} ({{ server.quality_score | int }}/100) &mdash; {{ server.stars | human_stars }} Stars | PT-Edge">
 <meta property="og:description" content="{{ server.description | truncate(200) }}">
 <meta property="og:type" content="article">
 <meta property="og:url" content="{{ base_url }}{{ base_path }}/servers/{{ server.full_name }}/">
