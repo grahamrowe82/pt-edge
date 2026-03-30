@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block title %}Where to Build &mdash; {{ domain_label }} Opportunity Map | PT-Edge{% endblock %}
+
+{% block meta %}
+<meta name="description" content="Data-driven whitespace analysis for {{ domain_label_plural | lower }}. Categories scored on demand, quality gaps, market concentration, and growth momentum. Updated daily from {{ global_total }} tracked repos.">
+{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/opportunities/">{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+
+  <nav class="text-sm text-gray-500 mb-6">
+    <a href="{{ base_path }}/" class="hover:text-gray-700">Home</a>
+    <span class="mx-1">/</span>
+    <span class="text-gray-700">Opportunities</span>
+  </nav>
+
+  <h1 class="text-2xl font-bold text-gray-900 mb-1">Where to Build: {{ domain_label }} Opportunities</h1>
+  <p class="text-gray-500 text-sm mb-2">Categories ranked by unmet opportunity &mdash; high demand, low quality supply, fragmented competition, or proven demand with failed execution.</p>
+
+  {% if opportunities %}
+  {% set conf = opportunities[0].confidence_level %}
+  <div class="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 mb-8 text-sm text-blue-800">
+    <strong>Data confidence: {{ conf | capitalize }}</strong> &mdash;
+    {% if conf == 'structural' %}
+    Scores are based on demand, quality gaps, market concentration, and graveyard analysis. Momentum and stadium signals will activate once 7+ days of metric snapshots accumulate.
+    {% elif conf == 'short-term' %}
+    Scores include 7-day momentum signals. Full 30-day trend analysis will activate once more snapshots accumulate.
+    {% else %}
+    Full signal set active: structural analysis, 7-day momentum, 30-day trends, and stadium detection.
+    {% endif %}
+  </div>
+
+  {# Top opportunity cards #}
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-10">
+    {% for opp in opportunities[:9] %}
+    <a href="{{ base_path }}/categories/{{ opp.subcategory }}/" class="block rounded-lg border border-gray-200 p-4 hover:border-blue-300 hover:shadow-sm transition-colors">
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="font-semibold text-gray-900 text-sm truncate">{{ opp.subcategory | replace('-', ' ') | title }}</h3>
+        <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium
+          {% if opp.opportunity_tier == 'prime' %}bg-green-100 text-green-800
+          {% elif opp.opportunity_tier == 'promising' %}bg-blue-100 text-blue-800
+          {% elif opp.opportunity_tier == 'growing' %}bg-yellow-100 text-yellow-800
+          {% elif opp.opportunity_tier == 'competitive' %}bg-gray-100 text-gray-700
+          {% else %}bg-red-100 text-red-700{% endif %}">
+          {{ opp.opportunity_tier | capitalize }}
+        </span>
+      </div>
+      <div class="flex items-baseline gap-1 mb-3">
+        <span class="text-2xl font-bold text-gray-900">{{ opp.opportunity_score }}</span>
+        <span class="text-xs text-gray-400">/100</span>
+      </div>
+      <div class="space-y-1.5">
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-gray-500">Demand</span>
+          <div class="flex items-center gap-1.5">
+            <div class="w-16 h-1.5 rounded-full bg-gray-200"><div class="h-1.5 rounded-full bg-blue-500" style="width:{{ opp.demand_score }}%"></div></div>
+            <span class="text-gray-600 w-6 text-right">{{ opp.demand_score }}</span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-gray-500">Quality gap</span>
+          <div class="flex items-center gap-1.5">
+            <div class="w-16 h-1.5 rounded-full bg-gray-200"><div class="h-1.5 rounded-full bg-orange-500" style="width:{{ opp.quality_gap_score }}%"></div></div>
+            <span class="text-gray-600 w-6 text-right">{{ opp.quality_gap_score }}</span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-gray-500">Concentration</span>
+          <div class="flex items-center gap-1.5">
+            <div class="w-16 h-1.5 rounded-full bg-gray-200"><div class="h-1.5 rounded-full bg-purple-500" style="width:{{ opp.concentration_score }}%"></div></div>
+            <span class="text-gray-600 w-6 text-right">{{ opp.concentration_score }}</span>
+          </div>
+        </div>
+        {% if opp.momentum_score is not none %}
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-gray-500">Momentum</span>
+          <div class="flex items-center gap-1.5">
+            <div class="w-16 h-1.5 rounded-full bg-gray-200"><div class="h-1.5 rounded-full bg-green-500" style="width:{{ opp.momentum_score }}%"></div></div>
+            <span class="text-gray-600 w-6 text-right">{{ opp.momentum_score }}</span>
+          </div>
+        </div>
+        {% endif %}
+        {% if opp.graveyard_count > 0 %}
+        <div class="flex items-center justify-between text-xs">
+          <span class="text-gray-500">Graveyard</span>
+          <span class="text-gray-600">{{ opp.graveyard_count }} abandoned ({{ "{:,}".format(opp.graveyard_score) }} signal)</span>
+        </div>
+        {% endif %}
+      </div>
+      <div class="mt-3 pt-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
+        <span>{{ opp.repo_count }} {{ noun_plural }}</span>
+        <span>{{ "{:,}".format(opp.total_stars | int) }} stars</span>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+  {# Full table #}
+  <h2 class="text-lg font-semibold text-gray-900 mb-3">All scored categories</h2>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-gray-200 text-left text-gray-500">
+          <th class="py-2 pr-3 font-medium">#</th>
+          <th class="py-2 pr-3 font-medium">Category</th>
+          <th class="py-2 pr-3 font-medium">Score</th>
+          <th class="py-2 pr-3 font-medium">Tier</th>
+          <th class="py-2 pr-3 font-medium hidden sm:table-cell">Demand</th>
+          <th class="py-2 pr-3 font-medium hidden sm:table-cell">Quality gap</th>
+          <th class="py-2 pr-3 font-medium hidden sm:table-cell">Concentration</th>
+          <th class="py-2 pr-3 font-medium hidden md:table-cell">Repos</th>
+          <th class="py-2 font-medium hidden md:table-cell">Stars</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for opp in opportunities %}
+        <tr class="border-b border-gray-100 hover:bg-gray-50">
+          <td class="py-2 pr-3 text-gray-400">{{ loop.index }}</td>
+          <td class="py-2 pr-3">
+            <a href="{{ base_path }}/categories/{{ opp.subcategory }}/" class="font-medium text-blue-600 hover:underline">{{ opp.subcategory | replace('-', ' ') | title }}</a>
+          </td>
+          <td class="py-2 pr-3 font-semibold">{{ opp.opportunity_score }}</td>
+          <td class="py-2 pr-3">
+            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium
+              {% if opp.opportunity_tier == 'prime' %}bg-green-100 text-green-800
+              {% elif opp.opportunity_tier == 'promising' %}bg-blue-100 text-blue-800
+              {% elif opp.opportunity_tier == 'growing' %}bg-yellow-100 text-yellow-800
+              {% elif opp.opportunity_tier == 'competitive' %}bg-gray-100 text-gray-700
+              {% else %}bg-red-100 text-red-700{% endif %}">{{ opp.opportunity_tier | capitalize }}</span>
+          </td>
+          <td class="py-2 pr-3 hidden sm:table-cell text-gray-600">{{ opp.demand_score }}</td>
+          <td class="py-2 pr-3 hidden sm:table-cell text-gray-600">{{ opp.quality_gap_score }}</td>
+          <td class="py-2 pr-3 hidden sm:table-cell text-gray-600">{{ opp.concentration_score }}</td>
+          <td class="py-2 pr-3 hidden md:table-cell text-gray-500">{{ opp.repo_count }}</td>
+          <td class="py-2 hidden md:table-cell text-gray-500">{{ "{:,}".format(opp.total_stars | int) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="rounded-lg border border-gray-200 p-8 text-center text-gray-500">
+    <p>Opportunity scoring requires category data. Check back after the next daily refresh.</p>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

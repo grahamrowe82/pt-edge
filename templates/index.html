@@ -98,6 +98,32 @@
     </div>
   </div>
 
+  {% if top_opportunities %}
+  <div class="mb-12">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-xl font-bold text-gray-900">Top opportunities</h2>
+      <a href="{{ base_path }}/opportunities/" class="text-sm text-blue-600 hover:underline">View all</a>
+    </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+      {% for opp in top_opportunities %}
+      <a href="{{ base_path }}/categories/{{ opp.subcategory }}/" class="block rounded-lg border border-gray-200 p-3 hover:border-blue-300 hover:shadow-sm transition-all">
+        <div class="flex items-center justify-between mb-1">
+          <p class="font-medium text-sm text-gray-900 truncate">{{ opp.subcategory | replace('-', ' ') | title }}</p>
+          <span class="ml-1 text-sm font-bold text-gray-900">{{ opp.opportunity_score }}</span>
+        </div>
+        <span class="inline-block px-1.5 py-0.5 rounded-full text-xs font-medium
+          {% if opp.opportunity_tier == 'prime' %}bg-green-100 text-green-800
+          {% elif opp.opportunity_tier == 'promising' %}bg-blue-100 text-blue-800
+          {% elif opp.opportunity_tier == 'growing' %}bg-yellow-100 text-yellow-800
+          {% elif opp.opportunity_tier == 'competitive' %}bg-gray-100 text-gray-700
+          {% else %}bg-red-100 text-red-700{% endif %}">{{ opp.opportunity_tier | capitalize }}</span>
+        <p class="text-xs text-gray-400 mt-1">{{ opp.repo_count }} {{ noun_plural }} &middot; {{ "{:,}".format(opp.total_stars | int) }} stars</p>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="mb-12">
     <h2 class="text-xl font-bold text-gray-900 mb-4">Browse by category</h2>
     <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
