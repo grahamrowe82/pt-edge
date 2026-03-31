@@ -17,6 +17,18 @@
 - [x] Site polish: about page, methodology page, favicon, cross-domain nav in header, proper category labels via Haiku, API docs integrated
 - [x] Site audit critical fixes: broken footer, NOASSERTION license, empty trending, categories sync, risk flags repositioned
 - [x] Domain reassignment via centroid similarity: 1,717 applied, 10K/day in daily ingest
+- [x] Allocation engine: dual-score (Established Heat + Emergence), barbell strategy, daily snapshots, deep dive priority queue
+- [x] Umami self-hosted analytics at a.phasetransitions.ai (replaces Render log analysis)
+- [x] CTR-optimised title tags and meta descriptions across all 6 page types
+- [x] Deep dive infrastructure: reverse links from server detail pages to deep dives via featured_repos
+- [x] Voice AI deep dive (driven by GSC data showing voice-ai as strongest domain)
+- [x] Deep dive process documented (docs/briefs/deep-dive-process.md)
+
+## Near-term infrastructure
+
+- [ ] **Cross-category comparison discovery:** Embedding similarity currently only runs within subcategories, so the most valuable matchups (WhisperX vs whisper.cpp, ElevenLabs vs edge-tts) are never generated. Needs domain-level comparison pass across top N projects regardless of subcategory.
+- [ ] **Subcategory classifier quality:** High-quality repos land in wrong solo categories (e.g., ElevenLabs in `ai-workflow-automation` with 1 repo). This isolates them from comparisons and related servers. Investigate why the LLM classifier misclassifies and fix the process.
+- [ ] **GSC-driven deep dive queue automation:** The allocation engine's `v_deep_dive_queue` identifies topics but doesn't generate alerts or reports. Add a weekly summary of top candidates.
 
 ## Remaining site quality items
 

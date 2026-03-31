@@ -1,0 +1,43 @@
+<p>PT-Edge tracks 9,679 voice AI repositories and scores every one of them daily on maintenance, adoption, maturity, and community. The results are stark: only 20 projects score above 70 out of 100. The voice AI open-source landscape is enormous, but the signal-to-noise ratio is terrible.</p>
+
+<p>If you're choosing a TTS library, a speech recognition engine, or a voice agent framework right now, here's what the data says about your options.</p>
+
+<h2>The TTS decision</h2>
+
+<p>Text-to-speech has the most activity in voice AI — and the most confusion. The decision comes down to what you're optimising for.</p>
+
+<p><strong>If you need production quality and don't mind paying:</strong> <a href="https://mcp.phasetransitions.ai/voice-ai/servers/elevenlabs/elevenlabs-python/">ElevenLabs</a> is the safe bet. Well-maintained, actively developed, voice quality is the industry benchmark.</p>
+
+<p><strong>If you need free and good-enough:</strong> Microsoft's Edge TTS API offers high-quality voice synthesis at zero cost, and an entire wrapper ecosystem has grown around it. <a href="https://mcp.phasetransitions.ai/voice-ai/servers/rany2/edge-tts/">edge-tts</a> by rany2 is the foundation — a Python library with over 10,000 stars and a quality score of 69/100. Around it, developers have built GUI wrappers like <a href="https://mcp.phasetransitions.ai/voice-ai/servers/farukseker/Microsoft-Edge-TTS-Simple-Gui/">Microsoft-Edge-TTS-Simple-Gui</a>, cross-platform integrations like <a href="https://mcp.phasetransitions.ai/voice-ai/servers/travisvn/edge-tts-universal/">edge-tts-universal</a>, and video translation tools like <a href="https://mcp.phasetransitions.ai/voice-ai/servers/jianchang512/pyvideotrans/">pyvideotrans</a> that use Edge TTS as their voice backend. The risk: this entire ecosystem depends on an unofficial API. Microsoft hasn't shut it down, but there's no guarantee.</p>
+
+<p><strong>If you need to run locally:</strong> <a href="https://mcp.phasetransitions.ai/voice-ai/servers/k2-fsa/sherpa-onnx/">sherpa-onnx</a> (84/100) runs TTS and ASR on everything from phones to Raspberry Pis via ONNX Runtime — the deployment play when you need voice without a cloud bill. <a href="https://mcp.phasetransitions.ai/voice-ai/servers/Blaizzy/mlx-audio/">mlx-audio</a> (86/100) is the newcomer — Apple Silicon-native audio built on MLX. Newer but quality score is already high and climbing.</p>
+
+<p><strong>If you're doing research:</strong> <a href="https://mcp.phasetransitions.ai/voice-ai/servers/espnet/espnet/">ESPnet</a> scores 89/100 — the highest in the entire voice AI domain. Full end-to-end speech processing covering TTS, ASR, speech translation, and speech enhancement. Not the right choice if you want something you can pip install and call in three lines, but nothing else comes close for breadth.</p>
+
+<h2>The Coqui trap</h2>
+
+<p>If you search "best open source TTS", every list still recommends <a href="https://mcp.phasetransitions.ai/voice-ai/servers/coqui-ai/TTS/">Coqui TTS</a>. It has over 44,000 stars. But Coqui the company shut down in 2024, and the repo hasn't been meaningfully updated since. <a href="https://mcp.phasetransitions.ai/voice-ai/servers/mozilla/DeepSpeech/">Mozilla DeepSpeech</a> tells a similar story — Mozilla wound down its voice ambitions years ago, but the repo still dominates star-ranked search results.</p>
+
+<p>This is precisely why quality scoring matters more than star counting. Our daily maintenance score catches what a GitHub star count can't: the moment a project stops being maintained, even if it still has tens of thousands of stars.</p>
+
+<h2>Speech recognition: settled, Whisper dominates</h2>
+
+<p>ASR is more consolidated than TTS. The Whisper family dominates, and the decision is about deployment constraints. <a href="https://mcp.phasetransitions.ai/voice-ai/servers/m-bain/whisperX/">WhisperX</a> (83/100) for Python with speaker diarisation. <a href="https://mcp.phasetransitions.ai/voice-ai/servers/ggml-org/whisper.cpp/">whisper.cpp</a> for C/C++ edge deployment. <a href="https://mcp.phasetransitions.ai/voice-ai/servers/k2-fsa/sherpa-onnx/">sherpa-onnx</a> for cross-platform mobile and embedded. <a href="https://mcp.phasetransitions.ai/voice-ai/servers/espnet/espnet/">ESPnet</a> for research and benchmarking.</p>
+
+<h2>Voice agents: the frontier</h2>
+
+<p>Connecting LLMs to voice is the most exciting and least mature part of the landscape. We track 324 voice assistant repos, but most are demo projects. What's missing — and what will determine when this space matures — is the tooling layer: evaluation frameworks like <a href="https://mcp.phasetransitions.ai/voice-ai/servers/ArchishmanSengupta/autovoiceevals/">autovoiceevals</a>, debugging tools like <a href="https://mcp.phasetransitions.ai/voice-ai/servers/outspeed-ai/voice-devtools/">voice-devtools</a> from Outspeed. Infrastructure over demos.</p>
+
+<h2>Three trends</h2>
+
+<p><strong>On-device is becoming real.</strong> sherpa-onnx and mlx-audio represent a shift from "voice AI requires a cloud API" to "voice AI runs on your phone." Latency kills voice interactions — local inference solves that.</p>
+
+<p><strong>The free tier is Edge TTS.</strong> The wrapper ecosystem is growing because it solves a real problem: good voice synthesis at zero cost. Platform dependency risk, but that hasn't slowed adoption.</p>
+
+<p><strong>Voice agents need tooling, not more demos.</strong> Hundreds of voice chatbot repos exist. What's missing is evaluation, debugging, and monitoring. The space won't mature until those infrastructure projects reach quality.</p>
+
+<h2>Explore the data</h2>
+
+<p>Every project mentioned here has a <a href="https://mcp.phasetransitions.ai/voice-ai/">quality-scored page in our voice AI directory</a>, updated daily from live GitHub, PyPI, and npm data. Browse all <a href="https://mcp.phasetransitions.ai/voice-ai/categories/">166 voice AI categories</a> or check what's <a href="https://mcp.phasetransitions.ai/voice-ai/trending/">trending this week</a>.</p>
+
+<p>The full deep dive with detailed data tables and trend analysis is at <a href="https://mcp.phasetransitions.ai/insights/voice-ai-landscape/">mcp.phasetransitions.ai/insights/voice-ai-landscape</a>.</p>

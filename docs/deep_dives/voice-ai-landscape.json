@@ -15,7 +15,7 @@
         "m-bain/whisperX",
         "CorentinJ/Real-Time-Voice-Cloning",
         "RVC-Boss/GPT-SoVITS",
-        "ggerganov/whisper.cpp",
+        "ggml-org/whisper.cpp",
         "coqui-ai/TTS",
         "myshell-ai/OpenVoice",
         "mozilla/DeepSpeech",

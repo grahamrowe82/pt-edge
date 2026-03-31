@@ -478,6 +478,25 @@ def build_related_lookup(categories):
     return lookup
 
 
+def fetch_deep_dive_links():
+    """Build reverse lookup: repo full_name -> list of deep dives that feature it."""
+    lookup = {}
+    try:
+        with readonly_engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT slug, title, featured_repos
+                FROM deep_dives
+                WHERE status = 'published'
+            """)).fetchall()
+        for r in rows:
+            dd = {"slug": r._mapping["slug"], "title": r._mapping["title"]}
+            for repo_name in (r._mapping["featured_repos"] or []):
+                lookup.setdefault(repo_name, []).append(dd)
+    except Exception as e:
+        print(f"  Warning: could not fetch deep dive links: {e}")
+    return lookup
+
+
 def dynamic_threshold(score_a, score_b):
     """Higher-scored repos get a wider comparison window."""
     ms = max(score_a, score_b)
@@ -715,6 +734,12 @@ def main():
     ctx = {"total_count": total_count, **domain_ctx}
 
     # Pre-load comparison pairs for cross-linking (cheap cache read)
+    # Pre-load deep dive reverse links (repo -> deep dives featuring it)
+    print("  Loading deep dive links...")
+    deep_dive_lookup = fetch_deep_dive_links()
+    if deep_dive_lookup:
+        print(f"  {sum(len(v) for v in deep_dive_lookup.values())} deep dive links across {len(deep_dive_lookup)} repos")
+
     print("  Loading comparison pairs from cache...")
     cached_pairs = load_comparison_pairs(domain)
     server_map = {s["full_name"]: s for s in servers}
@@ -794,7 +819,9 @@ def main():
             os.makedirs(os.path.join(out_dir, "servers", owner), exist_ok=True)
             last_owner = owner
         write_file(path, detail_tpl.render(server=s, related_servers=related,
-                                          comparisons=comparison_lookup.get(s["full_name"], [])[:10], **ctx))
+                                          comparisons=comparison_lookup.get(s["full_name"], [])[:10],
+                                          deep_dive_links=deep_dive_lookup.get(s["full_name"], []),
+                                          **ctx))
 
         if (i + 1) % 5000 == 0:
             print(f"  {i + 1}/{total_count} detail pages...")
