@@ -17,7 +17,7 @@
 - [x] Site polish: about page, methodology page, favicon, cross-domain nav in header, proper category labels via Haiku, API docs integrated
 - [x] Site audit critical fixes: broken footer, NOASSERTION license, empty trending, categories sync, risk flags repositioned
 - [x] Domain reassignment via centroid similarity: 1,717 applied, 10K/day in daily ingest
-- [x] Allocation engine: dual-score (Established Heat + Emergence), barbell strategy, daily snapshots, deep dive priority queue
+- [x] Allocation engine: dual-score (EHS + ES) with Bayesian surprise, position strength, CTR vs benchmark, barbell strategy, daily snapshots, deep dive priority queue
 - [x] Umami self-hosted analytics at a.phasetransitions.ai (replaces Render log analysis)
 - [x] CTR-optimised title tags and meta descriptions across all 6 page types
 - [x] Deep dive infrastructure: reverse links from server detail pages to deep dives via featured_repos

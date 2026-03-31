@@ -179,14 +179,18 @@ def refresh_all_views():
                      umami_pageviews_7d, umami_avg_sessions,
                      github_star_velocity_7d, github_new_repos_7d,
                      github_fork_acceleration_7d, gsc_coverage_ratio,
-                     repo_count, total_stars, confidence_level)
+                     repo_count, total_stars, confidence_level,
+                     surprise_ratio, position_strength,
+                     ctr_vs_benchmark, domain_impressions_7d)
                 SELECT domain, subcategory, CURRENT_DATE, ehs, es,
                        gsc_impression_growth_7d, gsc_click_growth_7d,
                        gsc_position_improvement,
                        umami_pageviews_7d, umami_avg_sessions,
                        github_star_velocity_7d, github_new_repos_7d,
                        github_fork_acceleration_7d, gsc_coverage_ratio,
-                       repo_count, total_stars, confidence_level
+                       repo_count, total_stars, confidence_level,
+                       surprise_ratio, position_strength,
+                       ctr_vs_benchmark, domain_impressions_7d
                 FROM mv_allocation_scores
                 ON CONFLICT (domain, subcategory, snapshot_date) DO UPDATE SET
                     ehs = EXCLUDED.ehs,
@@ -202,7 +206,11 @@ def refresh_all_views():
                     gsc_coverage_ratio = EXCLUDED.gsc_coverage_ratio,
                     repo_count = EXCLUDED.repo_count,
                     total_stars = EXCLUDED.total_stars,
-                    confidence_level = EXCLUDED.confidence_level
+                    confidence_level = EXCLUDED.confidence_level,
+                    surprise_ratio = EXCLUDED.surprise_ratio,
+                    position_strength = EXCLUDED.position_strength,
+                    ctr_vs_benchmark = EXCLUDED.ctr_vs_benchmark,
+                    domain_impressions_7d = EXCLUDED.domain_impressions_7d
             """))
             conn.commit()
             logger.info(f"Snapshotted {result.rowcount} allocation scores")

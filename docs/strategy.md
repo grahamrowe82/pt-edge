@@ -61,6 +61,20 @@ Every page must be structured so an agent can extract a confident recommendation
 
 **2,400 embedding-discovered categories.** Categories found by clustering actual project embeddings, not hand-crafted taxonomies. From `mongodb-mcp-servers` to `protein-design-mcp` to `ham-radio-data` — the long tail that no competitor has indexed.
 
+## Where we win
+
+Our edge is strongest where content supply is thin relative to search demand. This is not about absolute traffic volume — it's about the gap.
+
+**The demand/supply gap.** The AI content ecosystem is heavily skewed toward LLMs, agents, and RAG — that's where the VC money, the Twitter hype, and the blog posts are. Categories like voice AI, embeddings, data engineering, MLOps, and computer vision are "plumbing" — essential for products but unsexy to write about. Nobody builds a personal brand around TTS library reviews. The people who need these tools are product engineers shipping features, not content creators. So there's real search demand but no supply of quality content.
+
+Google Search Console confirmed this in our first week of data: voice-ai pages ranked at position 3 on a brand new domain with zero backlinks. Google placed us that high because it doesn't have three better options. Meanwhile, our agents/LLM content — objectively a stronger domain for us — ranked lower because the space is crowded with competitors.
+
+**Breadth is the structural advantage.** A human expert writing about TTS libraries can't pivot to writing about vector databases overnight. Our system can — the data infrastructure is identical across all 17 domains. We can produce authoritative content on voice-ai, embeddings, MLOps, or computer vision with equal confidence because the quality scoring, category discovery, and daily refresh work the same everywhere. No competitor has this breadth.
+
+**Google's position assignment is a market signal.** When Google puts a page from a 2-week-old domain at position 3, it's directly telling us the supply of quality content for that query is thin. We treat position data as a competitive intelligence signal, not just a vanity metric. High position + new domain = content gap = opportunity.
+
+**The allocation engine finds the gap.** The scoring function uses Bayesian surprise to detect where actual search demand deviates from expected demand (based on repo distribution). A domain getting 10x its expected share of impressions is a strong signal even at low volumes. This is how voice-ai surfaced as the top priority — not because we predicted it, but because the data showed a 10x deviation from prior.
+
 ## Current state (March 2026)
 
 - 220K+ repos tracked across 17 domains
