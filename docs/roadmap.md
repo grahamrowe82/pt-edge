@@ -82,6 +82,14 @@ Lower priority but contributes to long-term health.
 - [ ] Open Graph tag verification (Twitter/LinkedIn card rendering)
 - [ ] RSS feeds per domain (distribution channel for freshness signals)
 
+## Commercial progression
+
+The full journey from anonymous traffic to enterprise revenue is documented in [docs/commercial-plan.md](commercial-plan.md). Key points:
+
+**Highest-priority commercial build: automated topical email digests.** This is the step we're completely missing — the 3→4 conversion where anonymous visitors become known contacts. Auto-generated weekly digests per domain from existing data (trending repos, score changes, new categories). No manual writing. Each digest links back to the site and includes an API promotion CTA.
+
+**The API and key system already exist** but aren't promoted. Once we have email subscribers, API promotion is a line in the digest footer.
+
 ## Long-term: the data business
 
 Once the flywheel is generating consistent organic traffic and temporal data reaches 90+ days:
@@ -95,7 +103,7 @@ Once the flywheel is generating consistent organic traffic and temporal data rea
 
 ### Enterprise data API
 
-The directory proves data quality for free. The analytics layer is the product. Pricing: $12K-36K/year for API access to the signal layer. The free directory is both the marketing surface and the trust-building mechanism.
+The directory proves data quality for free. The analytics layer is the product. Pricing: $12K-36K/year for API access to the signal layer. The free directory is both the marketing surface and the trust-building mechanism. The full commercial funnel — from anonymous visit to enterprise contract in 8 steps — is in [docs/commercial-plan.md](commercial-plan.md).
 
 ### Community features
 
