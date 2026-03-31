@@ -31,21 +31,61 @@ Be specific and technical. Do not start with the project names."""
 
 
 def _find_candidates(limit):
-    """Find comparison pairs without sentences."""
+    """Find comparison pairs without sentences, prioritised by allocation budget."""
     with readonly_engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT cs.id, cs.domain, cs.subcategory,
-                   a.full_name as a_name, a.description as a_desc,
-                   a.stars as a_stars, a.downloads_monthly as a_downloads,
-                   b.full_name as b_name, b.description as b_desc,
-                   b.stars as b_stars, b.downloads_monthly as b_downloads
-            FROM comparison_sentences cs
-            JOIN ai_repos a ON a.id = cs.repo_a_id
-            JOIN ai_repos b ON b.id = cs.repo_b_id
-            WHERE cs.sentence IS NULL
-            ORDER BY GREATEST(a.stars, b.stars) DESC
-            LIMIT :limit
-        """), {"limit": limit}).fetchall()
+        has_budget = conn.execute(text(
+            "SELECT 1 FROM content_budget WHERE pipeline = 'comparison_sentences' LIMIT 1"
+        )).fetchone()
+
+        if has_budget:
+            rows = conn.execute(text("""
+                WITH budget AS (
+                    SELECT domain, subcategory, row_limit
+                    FROM content_budget
+                    WHERE pipeline = 'comparison_sentences'
+                ),
+                ranked AS (
+                    SELECT cs.id, cs.domain, cs.subcategory,
+                           a.full_name as a_name, a.description as a_desc,
+                           a.stars as a_stars, a.downloads_monthly as a_downloads,
+                           b.full_name as b_name, b.description as b_desc,
+                           b.stars as b_stars, b.downloads_monthly as b_downloads,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY cs.domain, cs.subcategory
+                               ORDER BY GREATEST(a.stars, b.stars) DESC
+                           ) AS rn
+                    FROM comparison_sentences cs
+                    JOIN ai_repos a ON a.id = cs.repo_a_id
+                    JOIN ai_repos b ON b.id = cs.repo_b_id
+                    JOIN budget bu ON cs.domain = bu.domain
+                                  AND cs.subcategory = bu.subcategory
+                    WHERE cs.sentence IS NULL
+                )
+                SELECT r.id, r.domain, r.subcategory,
+                       r.a_name, r.a_desc, r.a_stars, r.a_downloads,
+                       r.b_name, r.b_desc, r.b_stars, r.b_downloads
+                FROM ranked r
+                JOIN budget b ON r.domain = b.domain
+                             AND r.subcategory = b.subcategory
+                WHERE r.rn <= b.row_limit
+            """)).fetchall()
+            logger.info(f"Budget-driven: {len(rows)} comparison candidates")
+        else:
+            rows = conn.execute(text("""
+                SELECT cs.id, cs.domain, cs.subcategory,
+                       a.full_name as a_name, a.description as a_desc,
+                       a.stars as a_stars, a.downloads_monthly as a_downloads,
+                       b.full_name as b_name, b.description as b_desc,
+                       b.stars as b_stars, b.downloads_monthly as b_downloads
+                FROM comparison_sentences cs
+                JOIN ai_repos a ON a.id = cs.repo_a_id
+                JOIN ai_repos b ON b.id = cs.repo_b_id
+                WHERE cs.sentence IS NULL
+                ORDER BY GREATEST(a.stars, b.stars) DESC
+                LIMIT :limit
+            """), {"limit": limit}).fetchall()
+            logger.info(f"Fallback: {len(rows)} comparison candidates by stars")
+
     return [dict(r._mapping) for r in rows]
 
 

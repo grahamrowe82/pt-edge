@@ -181,7 +181,9 @@ def refresh_all_views():
                      github_fork_acceleration_7d, gsc_coverage_ratio,
                      repo_count, total_stars, confidence_level,
                      surprise_ratio, position_strength,
-                     ctr_vs_benchmark, domain_impressions_7d)
+                     ctr_vs_benchmark, domain_impressions_7d,
+                     hn_posts_7d, hn_points_7d,
+                     newsletter_mentions_7d, releases_7d, summary_ratio)
                 SELECT domain, subcategory, CURRENT_DATE, ehs, es,
                        gsc_impression_growth_7d, gsc_click_growth_7d,
                        gsc_position_improvement,
@@ -190,7 +192,9 @@ def refresh_all_views():
                        github_fork_acceleration_7d, gsc_coverage_ratio,
                        repo_count, total_stars, confidence_level,
                        surprise_ratio, position_strength,
-                       ctr_vs_benchmark, domain_impressions_7d
+                       ctr_vs_benchmark, domain_impressions_7d,
+                       hn_posts_7d, hn_points_7d,
+                       newsletter_mentions_7d, releases_7d, summary_ratio
                 FROM mv_allocation_scores
                 ON CONFLICT (domain, subcategory, snapshot_date) DO UPDATE SET
                     ehs = EXCLUDED.ehs,
@@ -210,7 +214,12 @@ def refresh_all_views():
                     surprise_ratio = EXCLUDED.surprise_ratio,
                     position_strength = EXCLUDED.position_strength,
                     ctr_vs_benchmark = EXCLUDED.ctr_vs_benchmark,
-                    domain_impressions_7d = EXCLUDED.domain_impressions_7d
+                    domain_impressions_7d = EXCLUDED.domain_impressions_7d,
+                    hn_posts_7d = EXCLUDED.hn_posts_7d,
+                    hn_points_7d = EXCLUDED.hn_points_7d,
+                    newsletter_mentions_7d = EXCLUDED.newsletter_mentions_7d,
+                    releases_7d = EXCLUDED.releases_7d,
+                    summary_ratio = EXCLUDED.summary_ratio
             """))
             conn.commit()
             logger.info(f"Snapshotted {result.rowcount} allocation scores")

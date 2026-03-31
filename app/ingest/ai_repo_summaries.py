@@ -84,27 +84,64 @@ async def fetch_readme(client: httpx.AsyncClient, full_name: str) -> str | None:
 
 
 def _find_candidates(limit: int, min_score: int):
-    """Find repos needing summaries, ordered by quality score descending."""
+    """Find repos needing summaries, prioritised by allocation budget."""
     with engine.connect() as conn:
-        rows = conn.execute(text("""
-            SELECT ar.id, ar.full_name, ar.description
-            FROM ai_repos ar
-            JOIN (
-                SELECT id, quality_score FROM mv_mcp_quality
-                UNION ALL SELECT id, quality_score FROM mv_agents_quality
-                UNION ALL SELECT id, quality_score FROM mv_rag_quality
-                UNION ALL SELECT id, quality_score FROM mv_ai_coding_quality
-                UNION ALL SELECT id, quality_score FROM mv_voice_ai_quality
-                UNION ALL SELECT id, quality_score FROM mv_diffusion_quality
-                UNION ALL SELECT id, quality_score FROM mv_vector_db_quality
-                UNION ALL SELECT id, quality_score FROM mv_embeddings_quality
-                UNION ALL SELECT id, quality_score FROM mv_prompt_eng_quality
-            ) q ON ar.id = q.id
-            WHERE ar.ai_summary IS NULL
-              AND q.quality_score >= :min_score
-            ORDER BY q.quality_score DESC
-            LIMIT :limit
-        """), {"min_score": min_score, "limit": limit}).fetchall()
+        # Check if allocation budget is available
+        has_budget = conn.execute(text(
+            "SELECT 1 FROM content_budget WHERE pipeline = 'ai_repo_summaries' LIMIT 1"
+        )).fetchone()
+
+        if has_budget:
+            rows = conn.execute(text("""
+                WITH budget AS (
+                    SELECT domain, subcategory, row_limit
+                    FROM content_budget
+                    WHERE pipeline = 'ai_repo_summaries'
+                ),
+                ranked AS (
+                    SELECT ar.id, ar.full_name, ar.description,
+                           ar.domain, ar.subcategory,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY ar.domain, ar.subcategory
+                               ORDER BY ar.stars DESC NULLS LAST
+                           ) AS rn
+                    FROM ai_repos ar
+                    JOIN budget b ON ar.domain = b.domain
+                                 AND ar.subcategory = b.subcategory
+                    WHERE ar.ai_summary IS NULL
+                      AND ar.description IS NOT NULL
+                      AND ar.description <> ''
+                )
+                SELECT r.id, r.full_name, r.description
+                FROM ranked r
+                JOIN budget b ON r.domain = b.domain
+                             AND r.subcategory = b.subcategory
+                WHERE r.rn <= b.row_limit
+            """)).fetchall()
+            logger.info(f"Budget-driven: {len(rows)} candidates from content_budget")
+        else:
+            # Fallback: original behaviour
+            rows = conn.execute(text("""
+                SELECT ar.id, ar.full_name, ar.description
+                FROM ai_repos ar
+                JOIN (
+                    SELECT id, quality_score FROM mv_mcp_quality
+                    UNION ALL SELECT id, quality_score FROM mv_agents_quality
+                    UNION ALL SELECT id, quality_score FROM mv_rag_quality
+                    UNION ALL SELECT id, quality_score FROM mv_ai_coding_quality
+                    UNION ALL SELECT id, quality_score FROM mv_voice_ai_quality
+                    UNION ALL SELECT id, quality_score FROM mv_diffusion_quality
+                    UNION ALL SELECT id, quality_score FROM mv_vector_db_quality
+                    UNION ALL SELECT id, quality_score FROM mv_embeddings_quality
+                    UNION ALL SELECT id, quality_score FROM mv_prompt_eng_quality
+                ) q ON ar.id = q.id
+                WHERE ar.ai_summary IS NULL
+                  AND q.quality_score >= :min_score
+                ORDER BY q.quality_score DESC
+                LIMIT :limit
+            """), {"min_score": min_score, "limit": limit}).fetchall()
+            logger.info(f"Fallback: {len(rows)} candidates by quality_score")
+
     return [dict(r._mapping) for r in rows]
 
 

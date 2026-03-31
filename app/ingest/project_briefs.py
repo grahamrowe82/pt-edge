@@ -491,6 +491,159 @@ async def generate_domain_briefs() -> dict:
     return result_dict
 
 
+REPO_BRIEF_PROMPT = """\
+You are an AI infrastructure analyst writing intelligence briefs for
+a directory site that ranks open-source AI tools by quality.
+
+Write a brief for each repository below. Each brief must:
+1. Lead with the most interesting metric or trend
+2. Make concrete claims with specific numbers
+3. Flag noteworthy signals: adoption, momentum, or lack thereof
+
+Output format — return valid JSON only:
+[{{"id": <repo_id>, "title": "<headline claim, max 120 chars>", "summary": "<2-3 sentences of grounded analysis>", "evidence": [{{"type": "project", "slug": "<full_name>", "metric": "<metric_name>", "value": <number>, "as_of": "{today}"}}]}}]
+
+Rules:
+- Title must include at least one specific number
+- Summary must contain at least 2 concrete numbers
+- Do NOT describe what the repo does — focus on what is HAPPENING
+- Evidence array must include every metric cited
+
+Repositories:
+{repos_text}"""
+
+
+async def generate_repo_briefs() -> dict:
+    """Generate briefs for repos selected by allocation budget.
+
+    Works against ai_repos directly (not the legacy projects table).
+    Reads content_budget to determine which categories to prioritise.
+    """
+    if not settings.ANTHROPIC_API_KEY:
+        logger.info("No ANTHROPIC_API_KEY — skipping repo briefs")
+        return {"generated": 0, "skipped": "no API key"}
+
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    # Get allocated repos from content_budget
+    with engine.connect() as conn:
+        has_budget = conn.execute(text(
+            "SELECT 1 FROM content_budget WHERE pipeline = 'repo_briefs' LIMIT 1"
+        )).fetchone()
+
+        if not has_budget:
+            logger.info("No content_budget for repo_briefs — skipping")
+            return {"generated": 0, "skipped": "no budget"}
+
+        rows = conn.execute(text("""
+            WITH budget AS (
+                SELECT domain, subcategory, row_limit
+                FROM content_budget
+                WHERE pipeline = 'repo_briefs'
+            ),
+            ranked AS (
+                SELECT ar.id, ar.full_name, ar.name, ar.domain, ar.subcategory,
+                       COALESCE(ar.stars, 0) AS stars,
+                       COALESCE(ar.downloads_monthly, 0) AS monthly_downloads,
+                       COALESCE(ar.forks, 0) AS forks,
+                       COALESCE(ar.commits_30d, 0) AS commits_30d,
+                       ar.description,
+                       ROW_NUMBER() OVER (
+                           PARTITION BY ar.domain, ar.subcategory
+                           ORDER BY ar.stars DESC NULLS LAST
+                       ) AS rn
+                FROM ai_repos ar
+                JOIN budget b ON ar.domain = b.domain AND ar.subcategory = b.subcategory
+                LEFT JOIN repo_briefs rb ON rb.ai_repo_id = ar.id
+                WHERE rb.id IS NULL
+                  AND ar.description IS NOT NULL AND ar.description <> ''
+            )
+            SELECT r.id, r.full_name, r.name, r.domain, r.subcategory,
+                   r.stars, r.monthly_downloads, r.forks, r.commits_30d, r.description
+            FROM ranked r
+            JOIN budget b ON r.domain = b.domain AND r.subcategory = b.subcategory
+            WHERE r.rn <= b.row_limit
+        """)).fetchall()
+
+    if not rows:
+        logger.info("All allocated repos already have briefs")
+        return {"generated": 0, "checked": 0}
+
+    logger.info(f"Generating repo briefs for {len(rows)} repos")
+
+    # Batch into groups of BATCH_SIZE
+    all_rows = [dict(r._mapping) for r in rows]
+    batches = [all_rows[i:i + BATCH_SIZE] for i in range(0, len(all_rows), BATCH_SIZE)]
+    total_generated = 0
+    errors = 0
+
+    for batch_idx, batch in enumerate(batches):
+        # Format repo lines
+        lines = []
+        for r in batch:
+            lines.append(
+                f"{r['id']} | {r['full_name']} | {r.get('domain', 'n/a')} | "
+                f"★{r['stars']} | ↓{r['monthly_downloads']} | "
+                f"forks:{r['forks']} | commits_30d:{r['commits_30d']} | "
+                f"{(r.get('description') or '')[:100]}"
+            )
+        repos_text = "\n".join(lines)
+        prompt = REPO_BRIEF_PROMPT.format(repos_text=repos_text, today=today)
+
+        result = await call_haiku(prompt, max_tokens=4096)
+        if not result or not isinstance(result, list):
+            logger.warning(f"Batch {batch_idx + 1}/{len(batches)}: LLM returned no results")
+            errors += 1
+            continue
+
+        batch_generated = 0
+        for brief in result:
+            repo_id = brief.get("id")
+            title = brief.get("title", "")[:300]
+            summary = brief.get("summary", "")
+            evidence = brief.get("evidence", [])
+
+            if not repo_id or not title or not summary:
+                continue
+
+            try:
+                with engine.connect() as conn:
+                    conn.execute(text("""
+                        INSERT INTO repo_briefs (ai_repo_id, title, summary, evidence,
+                                                 generated_at, updated_at)
+                        VALUES (:repo_id, :title, :summary, :evidence::jsonb, NOW(), NOW())
+                        ON CONFLICT (ai_repo_id) DO UPDATE SET
+                            title = EXCLUDED.title,
+                            summary = EXCLUDED.summary,
+                            evidence = EXCLUDED.evidence,
+                            updated_at = EXCLUDED.updated_at
+                    """), {
+                        "repo_id": repo_id,
+                        "title": title,
+                        "summary": summary,
+                        "evidence": json.dumps(evidence),
+                    })
+                    conn.commit()
+                batch_generated += 1
+            except Exception as e:
+                logger.warning(f"Failed to upsert repo brief for {repo_id}: {e}")
+
+        total_generated += batch_generated
+        logger.info(
+            f"Batch {batch_idx + 1}/{len(batches)}: "
+            f"{batch_generated} generated, {total_generated} total"
+        )
+
+    result_dict = {
+        "generated": total_generated,
+        "checked": len(all_rows),
+        "batches": len(batches),
+        "errors": errors,
+    }
+    logger.info(f"Repo brief generation complete: {result_dict}")
+    return result_dict
+
+
 async def main():
     import sys
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
