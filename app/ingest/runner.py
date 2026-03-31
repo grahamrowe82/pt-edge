@@ -197,21 +197,7 @@ async def run_all() -> dict:
         logger.exception(f"stack_layer failed: {e}")
         results["stack_layer"] = {"error": str(e)}
 
-    # Generate AI summaries for top repos (200 per run)
-    try:
-        results["ai_summaries"] = await _run_with_retry("ai_summaries", generate_ai_summaries)
-        logger.info(f"ai_summaries: {results['ai_summaries']}")
-    except Exception as e:
-        logger.exception(f"ai_summaries failed: {e}")
-        results["ai_summaries"] = {"error": str(e)}
-
-    # Generate comparison decision sentences (2,000 per run)
-    try:
-        results["comparison_sentences"] = await _run_with_retry("comparison_sentences", generate_comparison_sentences)
-        logger.info(f"comparison_sentences: {results['comparison_sentences']}")
-    except Exception as e:
-        logger.exception(f"comparison_sentences failed: {e}")
-        results["comparison_sentences"] = {"error": str(e)}
+    # NOTE: ai_summaries + comparison_sentences moved after MV refresh (allocation-driven)
 
     # Reassign misclassified domains (10,000 repos per run via centroid similarity)
     try:
@@ -279,6 +265,39 @@ async def run_all() -> dict:
     except Exception as e:
         logger.exception(f"views failed: {e}")
         results["views"] = {"error": str(e)}
+
+    # Compute content budget from allocation scores (must run after MV refresh)
+    try:
+        from app.allocation.budget import compute_and_write_budget
+        from app.settings import settings as _settings
+        results["content_budget"] = compute_and_write_budget(_settings.LLM_BUDGET_MULTIPLIER)
+        logger.info(f"content_budget: {results['content_budget']}")
+    except Exception as e:
+        logger.exception(f"content_budget failed: {e}")
+        results["content_budget"] = {"error": str(e)}
+
+    # Content pipelines (allocation-driven — consume content_budget table)
+    try:
+        results["ai_summaries"] = await _run_with_retry("ai_summaries", generate_ai_summaries)
+        logger.info(f"ai_summaries: {results['ai_summaries']}")
+    except Exception as e:
+        logger.exception(f"ai_summaries failed: {e}")
+        results["ai_summaries"] = {"error": str(e)}
+
+    try:
+        results["comparison_sentences"] = await _run_with_retry("comparison_sentences", generate_comparison_sentences)
+        logger.info(f"comparison_sentences: {results['comparison_sentences']}")
+    except Exception as e:
+        logger.exception(f"comparison_sentences failed: {e}")
+        results["comparison_sentences"] = {"error": str(e)}
+
+    try:
+        from app.ingest.project_briefs import generate_repo_briefs
+        results["repo_briefs"] = await _run_with_retry("repo_briefs", generate_repo_briefs)
+        logger.info(f"repo_briefs: {results['repo_briefs']}")
+    except Exception as e:
+        logger.exception(f"repo_briefs failed: {e}")
+        results["repo_briefs"] = {"error": str(e)}
 
     # Export dataset to GitHub repo
     try:
