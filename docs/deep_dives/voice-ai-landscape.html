@@ -1,0 +1,142 @@
+<p>You need voice in your application. Maybe text-to-speech, maybe speech recognition, maybe a full voice agent. You search GitHub, find dozens of projects with thousands of stars, and now you need to decide which one to actually build on.</p>
+
+<p>PT-Edge tracks {{ '{:,}'.format(9679) }} voice AI repositories and scores them daily on maintenance, adoption, maturity, and community. This guide uses that data to help you make the decision: what to use, what to avoid, and where the space is heading.</p>
+
+<h2>The TTS decision: five real options in 2026</h2>
+
+<p>Text-to-speech has the most activity in voice AI &mdash; and the most confusion. Hundreds of repos, but the actual decision comes down to what you're optimising for.</p>
+
+<h3>If you need production quality and don't mind paying: ElevenLabs</h3>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/elevenlabs/elevenlabs-python/">elevenlabs-python</a> ({{ repos.get('elevenlabs/elevenlabs-python', {}).quality_score }}/100, {{ repos.get('elevenlabs/elevenlabs-python', {}).stars | intcomma }} stars) is the dominant API client. It's well-maintained ({{ repos.get('elevenlabs/elevenlabs-python', {}).commits_30d | default(0) }} commits in the last 30 days), actively developed, and the voice quality is the industry benchmark. The trade-off is cost and vendor lock-in. If you're building a commercial product and voice quality is the priority, this is the safe bet.</p>
+
+<h3>If you need free and good-enough: the Edge TTS ecosystem</h3>
+
+<p>Microsoft's Edge TTS API offers surprisingly high-quality voice synthesis at zero cost, and an entire wrapper ecosystem has grown around it.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set edge_projects = ['rany2/edge-tts', 'travisvn/edge-tts-universal', 'jianchang512/pyvideotrans', 'farukseker/Microsoft-Edge-TTS-Simple-Gui'] %}
+    {% for name in edge_projects %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/rany2/edge-tts/">edge-tts</a> ({{ repos.get('rany2/edge-tts', {}).quality_score }}/100, {{ repos.get('rany2/edge-tts', {}).stars | intcomma }} stars) is the foundation &mdash; a Python library that wraps the Edge TTS service. Around it, developers have built GUI wrappers, cross-platform integrations, and tools like <a href="{{ domain_path('voice-ai') }}/servers/jianchang512/pyvideotrans/">pyvideotrans</a> ({{ repos.get('jianchang512/pyvideotrans', {}).stars | intcomma }} stars) that use Edge TTS as their voice backend for video translation.</p>
+
+<p>The risk: this entire ecosystem depends on an unofficial API. Microsoft hasn't shut it down, and the volume of projects building on it suggests they're aware and tolerating it. But there's no guarantee it stays free or available.</p>
+
+<h3>If you need to run locally: sherpa-onnx or mlx-audio</h3>
+
+<p>On-device inference is where voice AI is moving fastest. Two projects stand out:</p>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/k2-fsa/sherpa-onnx/">sherpa-onnx</a> ({{ repos.get('k2-fsa/sherpa-onnx', {}).quality_score }}/100, {{ repos.get('k2-fsa/sherpa-onnx', {}).stars | intcomma }} stars) runs TTS and ASR on everything from phones to Raspberry Pis via ONNX Runtime. It's the deployment play &mdash; when you need voice processing without a network connection or a cloud bill. {{ repos.get('k2-fsa/sherpa-onnx', {}).commits_30d | default(0) }} commits in the last 30 days shows serious active development.</p>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/Blaizzy/mlx-audio/">mlx-audio</a> ({{ repos.get('Blaizzy/mlx-audio', {}).quality_score }}/100, {{ repos.get('Blaizzy/mlx-audio', {}).stars | intcomma }} stars) is Apple Silicon-native audio built on MLX. If you're targeting Macs or building developer tools that run locally, this is the emerging choice. It's newer than sherpa-onnx but quality score is already high and climbing.</p>
+
+<h3>If you're doing research: ESPnet</h3>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/espnet/espnet/">ESPnet</a> scores {{ repos.get('espnet/espnet', {}).quality_score }}/100 &mdash; the highest in the entire voice AI domain. It's a full end-to-end speech processing toolkit covering TTS, ASR, speech translation, speech enhancement, and speaker diarisation. With {{ repos.get('espnet/espnet', {}).stars | intcomma }} stars and {{ repos.get('espnet/espnet', {}).commits_30d | default(0) }} commits in the last 30 days, it's the project with the most sustained investment behind it.</p>
+
+<p>The trade-off: ESPnet is built for researchers and assumes you know what you're doing. It's not the right choice if you want a TTS library you can pip install and call in three lines. But if you're training models or benchmarking architectures, nothing else comes close to the breadth of supported tasks and recipes.</p>
+
+<h3>What about Coqui TTS?</h3>
+
+<p>If you search "best open source TTS", every list still recommends <a href="{{ domain_path('voice-ai') }}/servers/coqui-ai/TTS/">Coqui TTS</a>. It has {{ repos.get('coqui-ai/TTS', {}).stars | intcomma }} stars. But Coqui the company shut down in 2024, and the repo hasn't been meaningfully updated since. Our maintenance score reflects this: the overall quality has dropped because nobody is fixing bugs, reviewing PRs, or updating dependencies.</p>
+
+<p>This is the pattern to watch for in voice AI. A project can have tens of thousands of stars and still be a bad dependency choice. The question isn't "how popular is it?" but "is someone still working on it?" <a href="{{ domain_path('voice-ai') }}/servers/mozilla/DeepSpeech/">Mozilla DeepSpeech</a> ({{ repos.get('mozilla/DeepSpeech', {}).stars | intcomma }} stars) and <a href="{{ domain_path('voice-ai') }}/servers/mozilla/TTS/">Mozilla TTS</a> tell the same story &mdash; Mozilla wound down its voice ambitions years ago, but the repos still dominate star-ranked search results.</p>
+
+<h2>Speech recognition: a settled landscape with one clear winner</h2>
+
+<p>ASR is more consolidated than TTS. The Whisper family dominates, and the decision is mostly about which Whisper derivative fits your deployment constraints.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Best for</th></tr>
+  </thead>
+  <tbody>
+    {% set asr = ['m-bain/whisperX', 'ggerganov/whisper.cpp', 'k2-fsa/sherpa-onnx', 'espnet/espnet'] %}
+    {% set asr_use = {'m-bain/whisperX': 'Fast Python transcription with speaker diarisation', 'ggerganov/whisper.cpp': 'C/C++ inference, edge deployment, minimal dependencies', 'k2-fsa/sherpa-onnx': 'Cross-platform mobile/embedded deployment', 'espnet/espnet': 'Research, model training, benchmarking'} %}
+    {% for name in asr %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ asr_use.get(name, '&mdash;') }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/m-bain/whisperX/">WhisperX</a> ({{ repos.get('m-bain/whisperX', {}).quality_score }}/100) is the practical choice for most Python developers &mdash; it wraps Whisper with word-level timestamps and speaker diarisation. <a href="{{ domain_path('voice-ai') }}/servers/ggerganov/whisper.cpp/">whisper.cpp</a> ({{ repos.get('ggerganov/whisper.cpp', {}).stars | intcomma }} stars) is the performance play &mdash; pure C/C++ inference from the same developer who built llama.cpp. If you're building a product that needs to run on devices, these two plus sherpa-onnx cover the entire deployment spectrum.</p>
+
+<h2>Voice agents: the frontier that's still mostly experiments</h2>
+
+<p>Connecting LLMs to voice interfaces is the most exciting and least mature part of the voice AI landscape. We track {{ '{:,}'.format(324) }} repos categorised as voice assistants, but the average quality is low &mdash; most are demo projects that wire together an STT model, an LLM, and a TTS model into a single script.</p>
+
+<p>The projects worth watching are the ones building infrastructure rather than demos:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set agents = ['outspeed-ai/voice-devtools', 'ArchishmanSengupta/autovoiceevals'] %}
+    {% for name in agents %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/outspeed-ai/voice-devtools/">voice-devtools</a> from Outspeed is building developer tooling for voice agents &mdash; the debugging and testing layer that you need when voice goes from demo to production. <a href="{{ domain_path('voice-ai') }}/servers/ArchishmanSengupta/autovoiceevals/">autovoiceevals</a> tackles the evaluation problem: how do you measure whether a voice AI system is actually good? These are infrastructure projects, not applications, and infrastructure projects are what turn an ecosystem from "cool demos" into "things you can ship."</p>
+
+<p>Google Search Console confirms the interest: autovoiceevals is our best-positioned page on the entire site at position 3.1 with 23 impressions. People are looking for voice AI evaluation tools and not finding much.</p>
+
+<h2>Three trends shaping voice AI right now</h2>
+
+<h3>1. On-device is becoming real</h3>
+
+<p>sherpa-onnx and mlx-audio represent a shift from "voice AI requires a cloud API" to "voice AI runs on your phone." This matters because latency kills voice interactions &mdash; a 200ms round trip to a cloud TTS endpoint is the difference between a voice assistant that feels natural and one that feels broken. The projects with the highest quality scores in voice AI are increasingly the ones focused on local inference.</p>
+
+<h3>2. The free tier is Edge TTS</h3>
+
+<p>The Edge TTS wrapper ecosystem is growing because it solves a real problem: good voice synthesis with zero cost. For prototypes, internal tools, and applications where you need voice but can't justify an API subscription, Edge TTS is becoming the default choice. The risk is platform dependency, but that hasn't slowed adoption.</p>
+
+<h3>3. Voice agents need tooling, not more demos</h3>
+
+<p>There are hundreds of "voice chatbot" repos. What's missing is the tooling layer: evaluation frameworks, debugging tools, latency monitoring, conversation analytics. The voice agent space won't mature until these infrastructure projects exist and reach quality. Watch the <a href="{{ domain_path('voice-ai') }}/categories/voice-agent-applications/">voice agent applications</a> category for projects that build tools rather than demos.</p>
+
+<h2>How to use this data</h2>
+
+<p>Every project mentioned in this guide has a quality-scored page in our <a href="{{ domain_path('voice-ai') }}/">voice AI directory</a>, updated daily. You can:</p>
+
+<ul>
+  <li>Browse all <a href="{{ domain_path('voice-ai') }}/categories/">{{ 166 }} voice AI categories</a> to find projects in your specific niche</li>
+  <li>Check <a href="{{ domain_path('voice-ai') }}/trending/">trending voice AI projects</a> to see what's gaining momentum this week</li>
+  <li>Compare any two projects side by side on maintenance, adoption, maturity, and community scores</li>
+</ul>
+
+<p>Quality scores update daily from live GitHub, PyPI, and npm data. If a project stops being maintained, the score drops. If a project starts gaining real adoption, the score rises. The data does the work so you don't have to manually check each repo's commit history before making a decision.</p>
