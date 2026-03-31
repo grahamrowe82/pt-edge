@@ -1,0 +1,42 @@
+{
+    "slug": "voice-ai-landscape",
+    "title": "Choosing a Voice AI Library in 2026: What's Actually Worth Building On",
+    "subtitle": "TTS, speech recognition, and voice agents — scored on quality daily. A decision guide based on which projects are thriving, which are dying, and what the trends mean for your stack.",
+    "author": "Graham Rowe",
+    "primary_domain": "voice-ai",
+    "domains": ["voice-ai", "agents", "nlp"],
+    "meta_description": "A decision guide for voice AI in 2026. Which TTS, ASR, and voice agent libraries are actually maintained? Quality-scored daily across 9,679 repos. ESPnet, whisper.cpp, Edge TTS, and what's next.",
+    "template_file": "voice-ai-landscape.html",
+    "featured_repos": [
+        "espnet/espnet",
+        "Blaizzy/mlx-audio",
+        "elevenlabs/elevenlabs-python",
+        "k2-fsa/sherpa-onnx",
+        "m-bain/whisperX",
+        "CorentinJ/Real-Time-Voice-Cloning",
+        "RVC-Boss/GPT-SoVITS",
+        "ggerganov/whisper.cpp",
+        "coqui-ai/TTS",
+        "myshell-ai/OpenVoice",
+        "mozilla/DeepSpeech",
+        "mozilla/TTS",
+        "rany2/edge-tts",
+        "travisvn/edge-tts-universal",
+        "jianchang512/pyvideotrans",
+        "ArchishmanSengupta/autovoiceevals",
+        "outspeed-ai/voice-devtools",
+        "Picovoice/speech-to-intent-benchmark",
+        "dusty-nv/jetson-voice",
+        "farukseker/Microsoft-Edge-TTS-Simple-Gui"
+    ],
+    "featured_categories": [
+        "voice-ai:lightweight-tts-libraries",
+        "voice-ai:automatic-speech-recognition",
+        "voice-ai:general-purpose-voice-assistants",
+        "voice-ai:voice-cloning-tools",
+        "voice-ai:web-speech-api-tts",
+        "voice-ai:kokoro-tts-ecosystem",
+        "voice-ai:voice-agent-applications"
+    ],
+    "status": "published"
+}
