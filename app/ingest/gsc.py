@@ -38,9 +38,7 @@ def _get_credentials() -> Credentials:
             client_secret=data["client_secret"],
         )
     except FileNotFoundError:
-        raise RuntimeError(
-            "No GSC credentials: set GSC_REFRESH_TOKEN env vars or run scripts/gsc_auth.py"
-        )
+        return None
 
 
 def _fetch_day(service, property_uri: str, day: date) -> list[dict]:
@@ -97,6 +95,9 @@ async def ingest_gsc(days_back: int = 3) -> dict:
                    any late-arriving rows).
     """
     creds = _get_credentials()
+    if creds is None:
+        logger.info("GSC skipped (no credentials configured)")
+        return "skipped (no GSC credentials)"
     service = build("searchconsole", "v1", credentials=creds)
     property_uri = settings.GSC_PROPERTY
 
