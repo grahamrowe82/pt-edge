@@ -2,10 +2,21 @@
 
 A deep dive is a hub page that creates a cluster of cross-linked content, drives internal authority to pages Google is already ranking, and feeds the allocation engine. Writing the article is one step of many.
 
+## Why we choose topics
+
+Topics are chosen where the **demand/supply gap** is widest, not where absolute demand is highest. Our structural advantage is in categories that content creators don't cover — voice-ai, embeddings, data engineering, MLOps — because they're unsexy to write about but developers still need to make decisions there.
+
+The allocation engine identifies these gaps via:
+- **Bayesian surprise ratio:** actual impression share vs expected (proportional to repos). A 10x deviation is a strong signal even at low volumes.
+- **Position strength:** Google placing us at position 3 on a new domain = thin competition. This is Google telling us directly where the content gap is.
+- The further a topic is from the LLM/agent hype cycle, the bigger our advantage.
+
+Deep dives are framed as **decision guides** because that's the unique value daily quality scores enable. "What should I use?" is a question only daily scoring can answer well — static blog posts can't.
+
 ## Prerequisites
 
-- Allocation engine signal (GSC impressions, Umami engagement, or ES score) indicating demand
-- A clear editorial angle framed around the searcher's decision — "what should I use?" not "here's what exists"
+- Allocation engine signal (surprise ratio, position strength, or ES score) indicating a demand/supply gap
+- A clear editorial angle framed around the searcher's decision
 
 ## Process
 

@@ -1,5 +1,19 @@
 # Allocation Engine: Design Brief
 
+## Strategic context
+
+Our structural advantage is in topics where content supply is thin relative to search demand. The allocation engine exists to find that gap systematically.
+
+Voice-ai proved this: it dominated GSC data in our first week — not because absolute demand was highest, but because the gap between demand and supply was widest. Nobody writes blog posts comparing TTS libraries. Our quality scores fill that gap. The further a topic is from the LLM/agent hype cycle, the bigger our advantage.
+
+The engine uses two distinct signals from GSC:
+
+1. **Position strength (Google's signal):** When Google places a brand new domain at position 3, it's saying "I don't have 3 better options." This is a direct measure of competitive density — a discovery signal that feeds the Emergence Score.
+
+2. **CTR vs benchmark (the user's signal):** Once positioned, does the searcher click? Actual CTR divided by expected CTR for that position measures our presentation quality. Above benchmark = weak competition or strong titles. Below = crowded or poor titles. This is an optimisation signal that feeds the Established Heat Score.
+
+These are different levers. Position tells us *where to invest*. CTR tells us *how to improve what we have*.
+
 ## Problem
 
 PT-Edge has 59K+ pages across 17 domains, limited editorial time, and finite GitHub API crawl budget. Currently, all three processes — crawling, enrichment (comparisons/categories), and deep dives — run naively (top-to-bottom by star count). There is no feedback loop from demand signals (GSC, Umami, GitHub trends) back into allocation decisions.
@@ -72,6 +86,25 @@ Available daily from GitHub ingest. Leading indicator of what will matter.
 | Contributor growth | Community is diversifying beyond creator |
 | Category empty → populated | New ecosystem emerging (highest signal for speculative bets) |
 
+## Statistical Framework: Bayesian Surprise
+
+Hard minimum-impression thresholds are brittle. Instead, we use a prior-based approach:
+
+**Prior:** Each domain's expected share of impressions = its share of total repos. If voice-ai has 5% of repos, the prior says it should get ~5% of impressions.
+
+**Surprise ratio:** `actual_impression_share / expected_impression_share` per domain.
+
+- Voice-ai getting 50% of impressions when the prior says 5% = surprise ratio of 10 = massive signal even at 80 total impressions
+- A domain getting 6% when the prior says 5% = surprise ratio of 1.2 = noise
+
+This naturally handles small samples: deviations must be large relative to the prior to matter, which requires either large absolute samples or extreme ratios. No arbitrary thresholds.
+
+**Tiered confidence:**
+
+- **Domain level** (50+ impressions across the domain): compute surprise ratio and directional CTR
+- **Category level** (50+ impressions per category): inherit domain-level signal until threshold met
+- **Page level** (100+ impressions): don't make page-level CTR decisions until sample is there
+
 ## Scoring Function Design
 
 ### Two scores per topic/category, not one blended score
@@ -79,26 +112,27 @@ Available daily from GitHub ingest. Leading indicator of what will matter.
 **Established Heat Score (EHS):**
 
 ```
-EHS = w1 * gsc_impression_growth_7d
-    + w2 * gsc_click_growth_7d
-    + w3 * gsc_avg_position_improvement
-    + w4 * umami_pageviews_7d
-    + w5 * umami_avg_session_depth
+EHS = 25% * norm(gsc_impression_growth_7d)
+    + 20% * norm(gsc_click_growth_7d)
+    + 15% * norm(gsc_position_improvement)
+    + 15% * norm(ctr_vs_benchmark)       # actual CTR / expected CTR for position
+    + 15% * norm(umami_pageviews_7d)
+    + 10% * norm(umami_avg_sessions)
 ```
 
-High EHS = proven demand. Allocate from the 85-90% budget.
+High EHS = proven demand, validated by users clicking. Allocate from the 85-90% budget. The `ctr_vs_benchmark` component measures how well our presentation converts — above 1.0 means we're outperforming the benchmark for our position.
 
 **Emergence Score (ES):**
 
 ```
-ES = w6 * github_star_velocity_7d
-   + w7 * github_new_repos_in_category_7d
-   + w8 * github_fork_acceleration_7d
-   + w9 * github_contributor_growth_7d
-   + w10 * (1 - gsc_coverage_ratio)  # ABSENCE of GSC data is positive
+ES = 25% * norm(github_star_velocity_7d)
+   + 20% * norm(github_new_repos_in_category_7d)
+   + 10% * norm(github_fork_acceleration_7d)
+   + 25% * (1 - gsc_coverage_ratio)       # absence of GSC data is positive
+   + 20% * norm(position_strength)         # high position = Google sees thin competition
 ```
 
-High ES = emerging opportunity nobody else covers yet. Allocate from the 10-15% budget.
+High ES = emerging opportunity nobody else covers yet. Allocate from the 10-15% budget. The `position_strength` component is Google's direct signal that content supply is thin — a new domain ranking at position 3 means there aren't 3 better options.
 
 **Dead zone filter:** If EHS < threshold_low AND ES < threshold_low, skip entirely.
 

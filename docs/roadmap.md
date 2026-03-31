@@ -1,94 +1,104 @@
 # Roadmap
 
+## Organising principle
+
+Build what the data says matters. The allocation engine (Bayesian surprise, position strength, CTR vs benchmark) tells us where the demand/supply gap is widest. That drives what we enrich, what we write about, and what infrastructure we invest in. Speculative features wait until data validates them.
+
+The primary growth mechanism is the **content flywheel:**
+
+```
+Deep dive → Substack → traffic → Umami + GSC data → allocation engine → next deep dive
+```
+
+Everything on this roadmap either feeds the flywheel or is deferred until the flywheel justifies it.
+
 ## What's done
 
-- [x] 165,000+ page directory across 17 domains (MCP, agents, RAG, AI coding, voice AI, diffusion, vector DB, embeddings, prompt engineering, ML frameworks, LLM tools, NLP, transformers, generative AI, computer vision, data engineering, MLOps)
+- [x] 165,000+ page directory across 17 domains
 - [x] Quality scoring (0-100) with 4 sub-dimensions, daily refresh
 - [x] 2,400 embedding-discovered categories via UMAP + HDBSCAN + Haiku labelling
-- [x] Decision paragraphs on every category page (template-generated from live data)
+- [x] Decision paragraphs on every category page
 - [x] AI summaries from READMEs (Haiku-generated, 2K/day backfill)
 - [x] Template-generated metrics paragraphs on all detail pages
 - [x] Daily metric snapshots for all 220K repos (stars, forks, downloads, commits)
 - [x] 1536d embeddings for 220K+ repos (analytics/clustering)
 - [x] JSON-LD structured data, sitemaps, cross-domain navigation
-- [x] Served from FastAPI alongside MCP server and REST API
-- [x] Strategy and roadmap docs baked into repo
-- [x] Category discovery results saved to JSON for instant re-application
-- [x] Site polish: about page, methodology page, favicon, cross-domain nav in header, proper category labels via Haiku, API docs integrated
-- [x] Site audit critical fixes: broken footer, NOASSERTION license, empty trending, categories sync, risk flags repositioned
-- [x] Domain reassignment via centroid similarity: 1,717 applied, 10K/day in daily ingest
-- [x] Allocation engine: dual-score (Established Heat + Emergence), barbell strategy, daily snapshots, deep dive priority queue
-- [x] Umami self-hosted analytics at a.phasetransitions.ai (replaces Render log analysis)
+- [x] MCP server (47 tools) + REST API with keyed access
+- [x] Comparison pages: embedding-similarity pairs within categories, decision sentences via Haiku
+- [x] Domain reassignment via centroid similarity (10K/day in daily ingest)
+- [x] Allocation engine: dual-score (EHS + ES) with Bayesian surprise, position strength, CTR vs benchmark, barbell strategy, daily snapshots, deep dive priority queue
+- [x] Umami self-hosted analytics at a.phasetransitions.ai
 - [x] CTR-optimised title tags and meta descriptions across all 6 page types
-- [x] Deep dive infrastructure: reverse links from server detail pages to deep dives via featured_repos
-- [x] Voice AI deep dive (driven by GSC data showing voice-ai as strongest domain)
-- [x] Deep dive process documented (docs/briefs/deep-dive-process.md)
+- [x] Deep dive infrastructure: reverse links from server detail pages, Substack companion workflow, process documented
+- [x] Voice AI deep dive (first data-driven deep dive, validated by GSC signals)
+- [x] Google Search Console pipeline wired into daily ingest
 
-## Near-term infrastructure
+## Immediate: make the flywheel turn
 
-- [ ] **Cross-category comparison discovery:** Embedding similarity currently only runs within subcategories, so the most valuable matchups (WhisperX vs whisper.cpp, ElevenLabs vs edge-tts) are never generated. Needs domain-level comparison pass across top N projects regardless of subcategory.
-- [ ] **Subcategory classifier quality:** High-quality repos land in wrong solo categories (e.g., ElevenLabs in `ai-workflow-automation` with 1 repo). This isolates them from comparisons and related servers. Investigate why the LLM classifier misclassifies and fix the process.
-- [ ] **GSC-driven deep dive queue automation:** The allocation engine's `v_deep_dive_queue` identifies topics but doesn't generate alerts or reports. Add a weekly summary of top candidates.
+These are the things blocking the flywheel from running properly.
 
-## Remaining site quality items
+- [ ] **GSC data flowing:** The pipeline is wired (`app/ingest/gsc.py`) but `gsc_search_data` is empty. Verify GSC credentials are set on Render and the daily cron is successfully pulling data. Without this, the allocation engine has no demand signal.
+- [ ] **Noindex thin pages:** Pages without AI summaries dilute site quality. Add `<meta name="robots" content="noindex">` until summaries backfill reaches them. Google penalises sites with large numbers of thin pages.
+- [ ] **Subcategory classifier quality:** High-quality repos land in wrong solo categories (ElevenLabs in `ai-workflow-automation`). This isolates them from comparisons and related servers. Investigate the LLM classifier prompt/context and fix the process — not individual repos.
+- [ ] **Cross-category comparison discovery:** Embedding similarity only runs within subcategories. The most valuable matchups (WhisperX vs whisper.cpp, ElevenLabs vs edge-tts) cross subcategory boundaries. Add a domain-level pass across top N projects.
 
-- [ ] Noindex thin pages until AI summaries backfill reaches them
-- [ ] Cross-vertical links for projects in multiple directories
-- [ ] Open Graph tag verification (Twitter/LinkedIn card rendering)
-- [ ] RSS feeds per domain
-- [ ] Google Programmable Search Engine
-- [ ] Changelog / "what's new" page generated from data
-- [ ] Feedback button on every page
+## Data-driven: build when GSC/allocation signals justify
 
-## Phase 3: Comparison pages + language pages
+These are high-value features, but we build them when the data says to — not on a fixed schedule.
 
-**Comparison pages:** Head-to-head for top viable options in each category. "FastMCP vs MCP SDK" — side-by-side scores, capability differences, "when to use each." Catches extremely high-intent "X vs Y" queries.
+### Deep dives (allocation-driven)
 
-**Language pages:** "All Rust MCP servers." "All Python agent frameworks." Language is a primary developer filtering criterion.
+The allocation engine's `v_deep_dive_queue` ranks topics. Next deep dive should be whatever scores highest once GSC data is flowing. Likely candidates based on early signals:
+- Embeddings landscape (probably thin content supply, like voice-ai)
+- Data engineering tools (unsexy, high practitioner demand)
+- Computer vision (overshadowed by LLM narrative)
+- MLOps (same dynamic as data engineering)
 
-Both create dense internal linking and catch long-tail search queries.
+Process: [docs/briefs/deep-dive-process.md](briefs/deep-dive-process.md)
 
-## Phase 4: Temporal layer
+### Language pages
 
-Once 30+ days of snapshots accumulate (~late April 2026):
+"All Rust MCP servers." "All Python agent frameworks." Language is a primary developer filtering criterion. Dense internal linking, catches long-tail queries. Build for domains where GSC shows language-specific search intent.
 
+### Temporal layer
+
+30+ days of snapshots accumulate late April 2026. Unlocks:
 - Sparklines on detail pages (30-day star/download trends)
 - "Gained X stars this week" on detail pages
-- Star velocity-based trending (replace empty trending pages)
-- Momentum materialized view for ai_repos
+- Star velocity-based trending (replace currently empty trending pages)
 - Growth classification: accelerating, steady, declining
 
-## Phase 5: Cross-vertical stack pages
+This is a freshness signal that compounds — Google sees content that changes meaningfully on every crawl. High priority once data is available.
 
-Precomputed workflow recommendations for common capability patterns:
+### Cross-vertical stack pages
 
-- "Build a document Q&A pipeline" → embeddings + vector DB + RAG framework
-- "Add voice search to your application" → STT + embeddings + vector DB
-- "Create a code review agent" → coding agent + code analysis tools
+"Build a document Q&A pipeline" → embeddings + vector DB + RAG framework. Highest-value page type because it requires quality-scored data across multiple domains — nobody else can produce it. But speculative until GSC data shows cross-vertical search intent. Defer until allocation engine validates demand.
 
-Highest-value, most defensible page type — requires quality-scored data across all 17 domains.
+## Infrastructure quality
 
-## Phase 6: Connect-X-to-Y matrix
+Lower priority but contributes to long-term health.
 
-Pages for client x service pairings: "Connecting Claude Desktop to Postgres via MCP."
+- [ ] Cross-vertical links for projects that appear in multiple domains
+- [ ] Open Graph tag verification (Twitter/LinkedIn card rendering)
+- [ ] RSS feeds per domain (distribution channel for freshness signals)
 
-5 clients x 30 services = 150 pages. Each lists tools supporting the pairing, ranked by quality.
+## Long-term: the data business
 
-## Phase 7: Quantitative analytics layer (the terminal)
+Once the flywheel is generating consistent organic traffic and temporal data reaches 90+ days:
 
-Once 90+ days of daily snapshots accumulate:
+### Quantitative analytics layer
 
-- Moving averages and crossover signals (golden cross / death cross on star velocity)
+- Moving averages and crossover signals on star velocity
 - Factor analysis: quality, momentum, size, value (hype ratio), volatility
-- Synthetic signals: accumulation patterns, distribution patterns, dependency risk
-- Ecosystem-level analytics: capital flows, sector rotation, concentration risk
-- Enterprise API: $12K-36K/year for access to the signal layer
+- Dependency risk indicators
+- Ecosystem-level analytics: sector rotation, concentration risk
 
-## Future considerations
+### Enterprise data API
 
-- Embedding-based "similar projects" (pre-computed nearest neighbours)
+The directory proves data quality for free. The analytics layer is the product. Pricing: $12K-36K/year for API access to the signal layer. The free directory is both the marketing surface and the trust-building mechanism.
+
+### Community features
+
 - "Claim your project" for maintainers (badges for READMEs, metadata editing)
 - Feedback button on every page (wrong category, dead link, security concern)
-- RSS feeds per category/vertical
-- Changelog / "what's new" page generated from data
-- Google Programmable Search Engine for on-site search
+- On-site search
