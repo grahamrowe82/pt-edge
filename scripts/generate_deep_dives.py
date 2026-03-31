@@ -172,28 +172,31 @@ def fetch_category_opportunities(category_keys):
     if not category_keys:
         return {}
     results = {}
-    with readonly_engine.connect() as conn:
-        for key in category_keys:
-            parts = key.split(":", 1)
-            if len(parts) != 2:
-                continue
-            domain, sub = parts
-            row = conn.execute(text("""
-                SELECT domain, subcategory, ehs, es,
-                       opportunity_score, opportunity_tier,
-                       repo_count, total_stars, confidence_level,
-                       gsc_impressions_7d, gsc_clicks_7d,
-                       github_star_velocity_7d, github_new_repos_7d,
-                       umami_pageviews_7d,
-                       0 AS demand_score, 0 AS quality_gap_score,
-                       0 AS concentration_score, 0 AS graveyard_score,
-                       0 AS momentum_score, 0 AS stadium_score,
-                       0 AS avg_quality_score
-                FROM mv_allocation_scores
-                WHERE domain = :domain AND subcategory = :sub
-            """), {"domain": domain, "sub": sub}).fetchone()
-            if row:
-                results[key] = dict(row._mapping)
+    try:
+        with readonly_engine.connect() as conn:
+            for key in category_keys:
+                parts = key.split(":", 1)
+                if len(parts) != 2:
+                    continue
+                domain, sub = parts
+                row = conn.execute(text("""
+                    SELECT domain, subcategory, ehs, es,
+                           opportunity_score, opportunity_tier,
+                           repo_count, total_stars, confidence_level,
+                           gsc_impressions_7d, gsc_clicks_7d,
+                           github_star_velocity_7d, github_new_repos_7d,
+                           umami_pageviews_7d,
+                           0 AS demand_score, 0 AS quality_gap_score,
+                           0 AS concentration_score, 0 AS graveyard_score,
+                           0 AS momentum_score, 0 AS stadium_score,
+                           0 AS avg_quality_score
+                    FROM mv_allocation_scores
+                    WHERE domain = :domain AND subcategory = :sub
+                """), {"domain": domain, "sub": sub}).fetchone()
+                if row:
+                    results[key] = dict(row._mapping)
+    except Exception as e:
+        print(f"    Warning: could not fetch allocation scores: {e}")
     return results
 
 
