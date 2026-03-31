@@ -159,3 +159,9 @@ Render MCP tools are also available in Claude sessions for querying services, de
 **Memory at ceiling is normal.** PostgreSQL deliberately uses all available memory for shared buffers and page cache. The Render dashboard showing 1,000/1,024 MB does NOT mean the DB is in trouble — it means it's caching data efficiently. Check CPU to determine actual load. CPU < 5% with memory at ceiling = healthy idle. CPU > 50% with memory at ceiling = actually under load.
 
 **Deploy hook.** The ingest cron triggers a web service redeploy after completion via `RENDER_DEPLOY_HOOK_URL` environment variable. This is how the site gets fresh data daily: ingest updates DB → refreshes views → triggers deploy → start.sh regenerates site.
+
+## Content creation
+
+**Deep dives** are editorial analysis pages that create hub-and-spoke link clusters around a topic. They live at `/insights/{slug}/` and are rendered from the `deep_dives` database table with live data at build time. The full process — from data pull to Substack companion to deployment — is documented in [docs/briefs/deep-dive-process.md](briefs/deep-dive-process.md).
+
+**Allocation engine** drives deep dive prioritisation. The `v_deep_dive_queue` view ranks topics by Established Heat Score (GSC/Umami signals) and Emergence Score (GitHub velocity). Design brief at [docs/briefs/allocation-engine.md](briefs/allocation-engine.md).

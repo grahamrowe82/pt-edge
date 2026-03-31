@@ -67,8 +67,8 @@
     <tr><th>Project</th><th>Score</th><th>Stars</th><th>Best for</th></tr>
   </thead>
   <tbody>
-    {% set asr = ['m-bain/whisperX', 'ggerganov/whisper.cpp', 'k2-fsa/sherpa-onnx', 'espnet/espnet'] %}
-    {% set asr_use = {'m-bain/whisperX': 'Fast Python transcription with speaker diarisation', 'ggerganov/whisper.cpp': 'C/C++ inference, edge deployment, minimal dependencies', 'k2-fsa/sherpa-onnx': 'Cross-platform mobile/embedded deployment', 'espnet/espnet': 'Research, model training, benchmarking'} %}
+    {% set asr = ['m-bain/whisperX', 'ggml-org/whisper.cpp', 'k2-fsa/sherpa-onnx', 'espnet/espnet'] %}
+    {% set asr_use = {'m-bain/whisperX': 'Fast Python transcription with speaker diarisation', 'ggml-org/whisper.cpp': 'C/C++ inference, edge deployment, minimal dependencies', 'k2-fsa/sherpa-onnx': 'Cross-platform mobile/embedded deployment', 'espnet/espnet': 'Research, model training, benchmarking'} %}
     {% for name in asr %}
     {% set r = repos.get(name, {}) %}
     {% if r %}
@@ -83,7 +83,7 @@
   </tbody>
 </table>
 
-<p><a href="{{ domain_path('voice-ai') }}/servers/m-bain/whisperX/">WhisperX</a> ({{ repos.get('m-bain/whisperX', {}).quality_score }}/100) is the practical choice for most Python developers &mdash; it wraps Whisper with word-level timestamps and speaker diarisation. <a href="{{ domain_path('voice-ai') }}/servers/ggerganov/whisper.cpp/">whisper.cpp</a> ({{ repos.get('ggerganov/whisper.cpp', {}).stars | intcomma }} stars) is the performance play &mdash; pure C/C++ inference from the same developer who built llama.cpp. If you're building a product that needs to run on devices, these two plus sherpa-onnx cover the entire deployment spectrum.</p>
+<p><a href="{{ domain_path('voice-ai') }}/servers/m-bain/whisperX/">WhisperX</a> ({{ repos.get('m-bain/whisperX', {}).quality_score }}/100) is the practical choice for most Python developers &mdash; it wraps Whisper with word-level timestamps and speaker diarisation. <a href="{{ domain_path('voice-ai') }}/servers/ggml-org/whisper.cpp/">whisper.cpp</a> ({{ repos.get('ggml-org/whisper.cpp', {}).stars | intcomma }} stars) is the performance play &mdash; pure C/C++ inference from the same developer who built llama.cpp. If you're building a product that needs to run on devices, these two plus sherpa-onnx cover the entire deployment spectrum.</p>
 
 <h2>Voice agents: the frontier that's still mostly experiments</h2>
 
