@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     SEMANTIC_SCHOLAR_API_KEY: str = ""  # optional; unauthenticated access works
     REDDIT_CLIENT_ID: str = ""  # empty = Reddit ingest skipped
     REDDIT_CLIENT_SECRET: str = ""
-    ANTHROPIC_RPM: int = 40  # Anthropic rate limit (Tier 1 = 50 RPM, use 40 for safety)
+    ANTHROPIC_RPM: int = 120  # Anthropic rate limit (Tier 2 = 1000 RPM, use 120 for safety)
     OPENAI_RPM: int = 400  # OpenAI rate limit (500 RPM, use 400 for safety)
     SNAPSHOT_RETENTION_DAYS: int = 365  # how long to keep daily snapshots (not wired to pruning yet)
     GSC_CLIENT_ID: str = ""
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     GSC_PROPERTY: str = "sc-domain:mcp.phasetransitions.ai"  # GSC property URI
     UMAMI_DATABASE_URL: str = ""  # Umami analytics DB (external); empty = Umami signals skipped
     UMAMI_WEBSITE_ID: str = ""  # Umami website ID to filter events
-    LLM_BUDGET_MULTIPLIER: float = 1.0  # scales content pipeline LLM spend; 2.0 = double output
+    LLM_BUDGET_MULTIPLIER: float = 2.0  # scales content pipeline LLM spend; 2.0 = double output
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 
