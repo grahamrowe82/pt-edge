@@ -3,9 +3,9 @@
 Self-draining: processes CHUNK_SIZE repos per daily run where created_at IS NULL,
 prioritised by stars DESC. Once all repos have created_at, this step becomes a no-op.
 
-At ~500 repos/run with 0.8s delay = ~7 minutes per run.
-225K repos / 500 per day = ~450 days to complete the full backfill.
-Increase CHUNK_SIZE to accelerate (stay under 5,000 GitHub API calls/hour).
+Constrained by GitHub's 5,000 requests/hour token rate limit.
+At 4,500/hour sequential = 9,000 repos in ~2 hours per daily run.
+225K repos / 9,000 per day = ~25 days to complete the full backfill.
 """
 import asyncio
 import logging
@@ -20,38 +20,33 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-CHUNK_SIZE = 500  # repos per daily run
-CONCURRENCY = 5   # parallel GitHub API requests
-REQUEST_DELAY = 0.4  # seconds between requests per worker
+CHUNK_SIZE = 9_000   # repos per daily run (~2 hours, sequential)
+REQUEST_DELAY = 0.8  # seconds between requests — paces to ~4,500/hour
 
 
 async def _fetch_created_at(
     client: httpx.AsyncClient,
     repo: dict,
-    semaphore: asyncio.Semaphore,
 ) -> dict | None:
     """Fetch created_at for a single repo from GitHub REST API."""
-    async with semaphore:
-        try:
-            resp = await client.get(
-                f"https://api.github.com/repos/{repo['full_name']}"
-            )
-            if resp.status_code == 404:
-                return None
-            if resp.status_code == 403:
-                remaining = resp.headers.get("X-RateLimit-Remaining", "?")
-                logger.warning(f"GitHub 403 for {repo['full_name']} (remaining: {remaining})")
-                return None
-            resp.raise_for_status()
-            created_at = resp.json().get("created_at")
-            if created_at:
-                return {"id": repo["id"], "created_at": created_at}
+    try:
+        resp = await client.get(
+            f"https://api.github.com/repos/{repo['full_name']}"
+        )
+        if resp.status_code == 404:
             return None
-        except Exception as e:
-            logger.debug(f"Failed {repo['full_name']}: {e}")
+        if resp.status_code == 403:
+            remaining = resp.headers.get("X-RateLimit-Remaining", "?")
+            logger.warning(f"GitHub 403 for {repo['full_name']} (remaining: {remaining})")
             return None
-        finally:
-            await asyncio.sleep(REQUEST_DELAY)
+        resp.raise_for_status()
+        created_at = resp.json().get("created_at")
+        if created_at:
+            return {"id": repo["id"], "created_at": created_at}
+        return None
+    except Exception as e:
+        logger.debug(f"Failed {repo['full_name']}: {e}")
+        return None
 
 
 async def ingest_ai_repo_created_at() -> dict:
@@ -74,21 +69,23 @@ async def ingest_ai_repo_created_at() -> dict:
         logger.info("ai_repo_created_at: no repos to backfill — all done")
         return {"status": "complete", "remaining": 0}
 
-    remaining_before = len(repos)
     logger.info(f"ai_repo_created_at: fetching {len(repos)} repos from GitHub API")
 
-    # Fetch from GitHub in parallel
+    # Fetch from GitHub sequentially — rate limited to ~4,500/hour
     headers = {"Accept": "application/vnd.github+json"}
     token = settings.GITHUB_TOKEN
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    semaphore = asyncio.Semaphore(CONCURRENCY)
+    updates = []
     async with httpx.AsyncClient(headers=headers, timeout=10, follow_redirects=True) as client:
-        tasks = [_fetch_created_at(client, repo, semaphore) for repo in repos]
-        results = await asyncio.gather(*tasks)
-
-    updates = [r for r in results if r is not None]
+        for i, repo in enumerate(repos):
+            result = await _fetch_created_at(client, repo)
+            if result:
+                updates.append(result)
+            if (i + 1) % 1000 == 0:
+                logger.info(f"ai_repo_created_at: {i + 1}/{len(repos)} fetched, {len(updates)} resolved")
+            await asyncio.sleep(REQUEST_DELAY)
 
     # Bulk update via temp table
     updated = 0
