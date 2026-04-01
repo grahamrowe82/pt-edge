@@ -1,0 +1,128 @@
+<p>"Agent skills" is the new vocabulary. Six months ago, the conversation was about tool use and function calling. Now developers are searching for evoskills, antigravity-skills, and skill registries &mdash; a higher-level abstraction where agents don't just call tools but acquire composable capabilities they can combine and reuse.</p>
+
+<p>PT-Edge tracks over {{ '{:,}'.format(2700) }} repositories across skill collections, registries, marketplaces, runtime engines, and communication standards. This guide maps the emerging architecture: where skills run, where they're found, how they're composed, and where the critical trust gaps remain.</p>
+
+<h2>Skills vs tools vs MCP: what's actually different?</h2>
+
+<p>The terminology is still settling, but the distinctions matter:</p>
+
+<ul>
+  <li><strong>Function calling</strong> is the primitive: an LLM invokes a typed function with parameters. One action, one response.</li>
+  <li><strong>MCP (Model Context Protocol)</strong> is the transport: a standard way for agents to discover and call tools across servers. It handles connection, authentication, and protocol &mdash; but the tools themselves are individual endpoints.</li>
+  <li><strong>Agent skills</strong> are higher-level: a skill is a bundle of related capabilities, often with state, context, and multi-step logic. A "research skill" might combine web search, document parsing, summarisation, and citation &mdash; presented to the agent as a single composable capability rather than four separate tool calls.</li>
+</ul>
+
+<p>The practical difference: function calling and MCP give agents <em>actions</em>. Skills give agents <em>competencies</em>. The skill layer is where the intelligence about how to combine actions lives.</p>
+
+<h2>Where skills run: the platform layer</h2>
+
+<p>Skills need runtime environments that handle execution, sandboxing, authentication, and tool orchestration. A few platforms dominate this layer.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set platform_projects = ['ComposioHQ/composio', 'agno-agi/agno', 'agentscope-ai/agentscope', 'awslabs/agent-squad', 'iflytek/astron-agent'] %}
+    {% for name in platform_projects %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(90) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/ComposioHQ/composio/">Composio</a> ({{ repos.get('ComposioHQ/composio', {}).quality_score }}/100, {{ repos.get('ComposioHQ/composio', {}).stars | intcomma }} stars, {{ repos.get('ComposioHQ/composio', {}).commits_30d | default(0) }} commits in the last 30 days) is the quality leader and the closest thing to a universal skill platform. It powers 1,000+ toolkits with built-in tool search, context management, authentication, and a sandboxed workbench. If you're building agents that need to compose many capabilities, Composio is the infrastructure most teams start with.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/agno-agi/agno/">agno</a> ({{ repos.get('agno-agi/agno', {}).stars | intcomma }} stars) has the largest user base &mdash; an agent runtime for building, running, and managing agentic software at scale. <a href="{{ domain_path('agents') }}/servers/agentscope-ai/agentscope/">AgentScope</a> ({{ repos.get('agentscope-ai/agentscope', {}).quality_score }}/100) focuses on transparency and trust &mdash; agents you can see, understand, and verify.</p>
+
+<p>For enterprise deployment, <a href="{{ domain_path('agents') }}/servers/awslabs/agent-squad/">agent-squad</a> from AWS ({{ repos.get('awslabs/agent-squad', {}).stars | intcomma }} stars) provides multi-agent orchestration, and <a href="{{ domain_path('agents') }}/servers/iflytek/astron-agent/">astron-agent</a> ({{ repos.get('iflytek/astron-agent', {}).stars | intcomma }} stars, {{ repos.get('iflytek/astron-agent', {}).commits_30d | default(0) }} commits in the last 30 days) offers an enterprise-grade, commercial-friendly workflow platform.</p>
+
+<h2>Where skills are found: collections and catalogues</h2>
+
+<p>The most immediate way to give your agent new capabilities is to install skills from curated collections. Two dominate the space:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Skills</th></tr>
+  </thead>
+  <tbody>
+    {% set collection_projects = ['sickn33/antigravity-awesome-skills', 'VoltAgent/awesome-agent-skills', 'LeoYeAI/openclaw-master-skills'] %}
+    {% set collection_count = {'sickn33/antigravity-awesome-skills': '1,000+', 'VoltAgent/awesome-agent-skills': '500+', 'LeoYeAI/openclaw-master-skills': '339+'} %}
+    {% for name in collection_projects %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ collection_count.get(name, '&mdash;') }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/sickn33/antigravity-awesome-skills/">antigravity-awesome-skills</a> ({{ repos.get('sickn33/antigravity-awesome-skills', {}).stars | intcomma }} stars, {{ repos.get('sickn33/antigravity-awesome-skills', {}).commits_30d | default(0) }} commits in the last 30 days) is the largest collection: 1,000+ skills for Claude Code, Antigravity, and Cursor, including official skills from Anthropic and Vercel. <a href="{{ domain_path('agents') }}/servers/VoltAgent/awesome-agent-skills/">awesome-agent-skills</a> ({{ repos.get('VoltAgent/awesome-agent-skills', {}).stars | intcomma }} stars) offers 500+ skills compatible across agents.</p>
+
+<p>These collections grew fast because skills are easy to write but hard to discover. A "skill" can be as simple as a Markdown file with instructions, or as complex as a multi-step workflow with API integrations. The catalogues solve the discovery problem, but they don't solve the quality problem &mdash; not every skill in a 1,000-item collection is production-ready.</p>
+
+<h2>The registry problem: discovery and trust are unsolved</h2>
+
+<p>With 292 repos in the <a href="{{ domain_path('agents') }}/categories/agent-skill-registry/">agent-skill-registry</a> category (average quality 22.9/100), the ecosystem is clearly looking for a universal registry. Nobody has built one that's won.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/memodb-io/Acontext/">Acontext</a> ({{ repos.get('memodb-io/Acontext', {}).quality_score }}/100, {{ repos.get('memodb-io/Acontext', {}).stars | intcomma }} stars, {{ repos.get('memodb-io/Acontext', {}).commits_30d | default(0) }} commits in the last 30 days) takes the most interesting approach: treating agent skills as a memory layer. Instead of a static registry, skills are contextually retrieved based on what the agent is trying to do. <a href="{{ domain_path('agents') }}/servers/hashgraph-online/registry-broker-skills/">registry-broker-skills</a> ({{ repos.get('hashgraph-online/registry-broker-skills', {}).stars | intcomma }} stars) takes the scale approach: 72,000+ agents across 14 protocols.</p>
+
+<p>For practical skill installation, <a href="{{ domain_path('agents') }}/servers/gotalab/skillport/">skillport</a> ({{ repos.get('gotalab/skillport', {}).stars | intcomma }} stars) and <a href="{{ domain_path('agents') }}/servers/powroom/flins/">flins</a> offer universal installers that work across coding agents. The vision: install a skill once, use it from Claude Code, Cursor, Codex, or any MCP-compatible agent.</p>
+
+<p>The fragmentation is real. Hacker News asked <em>"Any real OpenClaw users? What's your experience?"</em> (121 points, 189 comments) &mdash; the community is interested but uncertain about which ecosystem to invest in.</p>
+
+<h2>The OpenClaw ecosystem: most visible, most debated</h2>
+
+<p>OpenClaw is the most discussed skills implementation on Hacker News. The "Agent Skills" concept post got 544 points. But the community reaction is split: excitement about the concept, concern about the execution.</p>
+
+<p>The concerns are legitimate. <em>"OpenClaw is basically a cascade of LLMs in prime position to mess stuff up"</em> (110 HN points) captures the core worry: skills execute with agent-level permissions. A malicious or buggy skill has the same access as the agent itself. The <a href="{{ domain_path('agents') }}/categories/agent-skill-security/">agent-skill-security</a> category (64 repos) exists specifically to address this, but average quality is just 23.8/100.</p>
+
+<p>The OpenClaw marketplace (<a href="{{ domain_path('agents') }}/servers/0xmythril/clawdtm/">clawdtm</a>, <a href="{{ domain_path('agents') }}/servers/LeoYeAI/openclaw-master-skills/">openclaw-master-skills</a>) is building curation and rating systems. But the 230 repos in <a href="{{ domain_path('agents') }}/categories/openclaw-skill-integrations/">openclaw-skill-integrations</a> average just 14.8/100 &mdash; the lowest quality average of any subcategory in this landscape. Most individual skills are trivial wrappers.</p>
+
+<h2>Standards: early but necessary</h2>
+
+<p>For skills to be truly composable and portable, the ecosystem needs shared standards. A few projects are attempting this:</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/langwatch/better-agents/">better-agents</a> from LangWatch ({{ repos.get('langwatch/better-agents', {}).stars | intcomma }} stars) is building standards for agent construction. <a href="{{ domain_path('agents') }}/servers/synaptiai/agent-capability-standard/">agent-capability-standard</a> defines 36 atomic capabilities across 9 cognitive layers &mdash; the most formally specified capability model in the space. <a href="{{ domain_path('agents') }}/servers/AgentsMesh/AgentsMesh/">AgentsMesh</a> ({{ repos.get('AgentsMesh/AgentsMesh', {}).stars | intcomma }} stars, {{ repos.get('AgentsMesh/AgentsMesh', {}).commits_30d | default(0) }} commits in the last 30 days) is building the orchestration layer that connects different agent runtimes.</p>
+
+<p>The benchmarking conversation is maturing too: SkillsBench (364 HN points) is attempting to measure how well skills actually work across diverse tasks, and the Agent Skills Leaderboard (135 HN points) is ranking them. These are the infrastructure projects that turn a fragmented ecosystem into something you can evaluate.</p>
+
+<h2>Three patterns shaping agent skills</h2>
+
+<h3>1. Skills collections are growing faster than quality controls</h3>
+
+<p>The biggest collections already have 1,000+ entries. But the quality distribution is bimodal: a small number of well-maintained skills sit alongside hundreds of untested wrappers. The ecosystem needs better quality signals &mdash; which is exactly what scoring and benchmarking projects are trying to provide.</p>
+
+<h3>2. The registry layer is fragmenting before consolidating</h3>
+
+<p>292 registry repos is too many. The market is searching for a standard discovery mechanism. MCP provides part of the answer (tool discovery via protocol), but skill-level discovery (finding the right <em>competency</em>, not just the right <em>function</em>) is still unsolved. Whoever cracks this becomes the npm of agent skills.</p>
+
+<h3>3. Trust is the binding constraint</h3>
+
+<p>Skills execute code with agent-level permissions. The trust model &mdash; how do you know a skill is safe? &mdash; is the most important unsolved problem. Curated collections help. Sandboxing helps. But a systematic, automated approach to skill security vetting doesn't exist yet. The skill-security subcategory (64 repos, avg quality 23.8) is where the answers will come from.</p>
+
+<h2>How to use this data</h2>
+
+<p>Every project mentioned in this guide has a quality-scored page in our <a href="{{ domain_path('agents') }}/">agents directory</a>, updated daily. You can:</p>
+
+<ul>
+  <li>Browse <a href="{{ domain_path('agents') }}/categories/agentic-workflow-skills/">{{ 327 }} workflow skills</a> ranked by quality</li>
+  <li>Compare <a href="{{ domain_path('agents') }}/categories/agent-skill-registry/">{{ 292 }} skill registries</a> to find the right discovery tool</li>
+  <li>Explore <a href="{{ domain_path('agents') }}/categories/openclaw-skill-marketplace/">{{ 271 }} OpenClaw marketplace projects</a></li>
+  <li>Track <a href="{{ domain_path('agents') }}/categories/agent-skill-security/">{{ 64 }} skill security tools</a> as trust infrastructure matures</li>
+  <li>Check <a href="{{ domain_path('agents') }}/trending/">trending agent projects</a> to see what's gaining momentum this week</li>
+</ul>
+
+<p>Quality scores update daily from live GitHub, PyPI, and npm data. In a space moving this fast, yesterday's star count doesn't tell you if a project is still maintained. The daily scoring does.</p>

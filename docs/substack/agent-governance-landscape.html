@@ -1,0 +1,43 @@
+<p>Your organisation is deploying autonomous agents. They're writing code, making API calls, and executing shell commands. What governance tooling actually exists?</p>
+
+<p>PT-Edge tracks 1,263 repositories across 12 agent governance subcategories. We score them daily. Here's what the data says about the state of agent governance in 2026.</p>
+
+<h2>The governance stack has four layers</h2>
+
+<p>Agent governance isn't one problem. It's a stack: <strong>sandboxing</strong> (runtime isolation), <strong>guardrails</strong> (pre-action authorisation), <strong>monitoring</strong> (observability), and <strong>auditing</strong> (compliance). Each layer is at a different maturity level.</p>
+
+<h2>Sandboxing is the only mature layer</h2>
+
+<p><strong><a href="https://mcp.phasetransitions.ai/agents/servers/e2b-dev/E2B/">E2B</a></strong> (85/100, 11K+ stars) is the market leader for cloud agent sandboxes. <strong><a href="https://mcp.phasetransitions.ai/agents/servers/alibaba/OpenSandbox/">Alibaba's OpenSandbox</a></strong> (83/100, 7.7K stars, 352 commits last month) is the enterprise-grade alternative with Docker/K8s runtimes.</p>
+
+<p>For local development, <strong><a href="https://mcp.phasetransitions.ai/agents/servers/eugene1g/agent-safehouse/">agent-safehouse</a></strong> (1.2K stars, 492 HN points) offers macOS-native isolation, while <strong><a href="https://mcp.phasetransitions.ai/agents/servers/always-further/nono/">nono</a></strong> (980 stars) provides kernel-enforced, capability-based sandboxing in Rust with cryptographic audit chains.</p>
+
+<p>Sandboxing has real adoption because isolation is the most tractable problem. You can sandbox an agent in an afternoon. The other layers require more organisational work.</p>
+
+<h2>Guardrails: early but accelerating</h2>
+
+<p><strong><a href="https://mcp.phasetransitions.ai/agents/servers/microsoft/agent-governance-toolkit/">Microsoft's agent-governance-toolkit</a></strong> (61/100) is the most comprehensive: policy enforcement, zero-trust identity, execution sandboxing, and reliability engineering. It's the only project claiming full OWASP Agentic Top 10 coverage.</p>
+
+<p><strong><a href="https://mcp.phasetransitions.ai/llm-tools/servers/guardrails-ai/guardrails/">guardrails-ai</a></strong> (6.5K stars) is the most adopted, but it guards LLM <em>outputs</em>, not agent <em>actions</em>. For teams that need to intercept and authorise what agents do before they do it, <strong><a href="https://mcp.phasetransitions.ai/agents/servers/ucsandman/DashClaw/">DashClaw</a></strong> and <strong><a href="https://mcp.phasetransitions.ai/agents/servers/agentcontrol/agent-control/">agent-control</a></strong> are the emerging options.</p>
+
+<p>There are 250 repos in the guardrails category, but average quality is just 24/100. Most are experimental. The gap between what enterprises need and what exists is wide.</p>
+
+<h2>The compliance gap is real</h2>
+
+<p>The most striking finding: almost no tooling connects agent actions to regulatory frameworks. Only <strong><a href="https://mcp.phasetransitions.ai/agents/servers/Cherise1608/agent-shield/">agent-shield</a></strong> attempts EU AI Act, GDPR, OWASP, and NIST AI RMF compliance scoring. NIST is actively seeking public comment on AI agent security standards. The standards are being written, but the tools to implement them barely exist.</p>
+
+<p>For enterprises deploying agents in regulated environments, this is the biggest gap and the biggest opportunity.</p>
+
+<h2>Three patterns to watch</h2>
+
+<p><strong>Sandboxing first, governance later.</strong> Most teams start with isolation, then add guardrails as they understand their agents' behaviour.</p>
+
+<p><strong>The OWASP Agentic Top 10 is creating a shared vocabulary.</strong> Microsoft's toolkit and agent-audit both map to it. Expect more alignment over the next year.</p>
+
+<p><strong>Monitoring and governance are converging.</strong> Tools like AgentOps, TruLens, and coze-loop are adding policy features. Governance tools are adding observability.</p>
+
+<h2>Explore the full data</h2>
+
+<p>The full deep dive with detailed data tables and quality comparisons is at <a href="https://mcp.phasetransitions.ai/insights/agent-governance-landscape/">mcp.phasetransitions.ai/insights/agent-governance-landscape</a>.</p>
+
+<p>Every project is quality-scored daily in our <a href="https://mcp.phasetransitions.ai/agents/">agents directory</a>. Browse <a href="https://mcp.phasetransitions.ai/agents/categories/agent-authorization-guardrails/">250 guardrails projects</a>, <a href="https://mcp.phasetransitions.ai/agents/categories/agent-code-sandboxing/">114 sandboxing tools</a>, or check <a href="https://mcp.phasetransitions.ai/agents/trending/">what's trending</a> this week.</p>

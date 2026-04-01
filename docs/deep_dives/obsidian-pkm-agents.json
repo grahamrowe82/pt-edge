@@ -1,0 +1,43 @@
+{
+    "slug": "obsidian-pkm-agents",
+    "title": "AI Agents for Obsidian and Personal Knowledge: What Actually Works in 2026",
+    "subtitle": "From established plugins to MCP bridges to experimental agent tools — scored on quality daily. A decision guide for the Obsidian user who wants AI that respects their vault.",
+    "author": "Graham Rowe",
+    "primary_domain": "agents",
+    "domains": ["agents", "llm-tools", "rag", "embeddings"],
+    "meta_description": "AI agents for Obsidian in 2026: which PKM tools, MCP servers, and agent plugins actually work? Quality-scored daily across 700+ repos. khoj, Smart Connections, mcpvault, and what's still experimental.",
+    "template_file": "obsidian-pkm-agents.html",
+    "featured_repos": [
+        "khoj-ai/khoj",
+        "siyuan-note/siyuan",
+        "MODSetter/SurfSense",
+        "codexu/note-gen",
+        "brianpetro/obsidian-smart-connections",
+        "Nexus-JPF/note-companion",
+        "eclaire-labs/eclaire",
+        "your-papa/obsidian-Smart2Brain",
+        "blueberrycongee/Lumina-Note",
+        "signerlabs/Klee",
+        "pbek/QOwnNotes",
+        "microsoft/markitdown",
+        "bitbonsai/mcpvault",
+        "cyanheads/obsidian-mcp-server",
+        "Epistates/turbovault",
+        "iwe-org/iwe",
+        "ballred/obsidian-claude-pkm",
+        "fynnfluegge/rocketnotes",
+        "aviatesk/obsidian-sonar",
+        "kizz-tech/meld",
+        "devwhodevs/engraph",
+        "gmickel/gno"
+    ],
+    "featured_categories": [
+        "agents:obsidian-vault-agents",
+        "llm-tools:obsidian-ai-plugins",
+        "rag:personal-knowledge-management",
+        "embeddings:personal-knowledge-management",
+        "agents:markdown-agent-tools",
+        "embeddings:mcp-semantic-retrieval"
+    ],
+    "status": "published"
+}
