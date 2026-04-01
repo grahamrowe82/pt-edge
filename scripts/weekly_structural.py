@@ -2,9 +2,9 @@
 
 Runs expensive tasks that don't need daily refresh:
 1. Comparison pair discovery (embedding similarity per category)
-2. Write comparison placeholders for Haiku backfill
-3. Domain centroid recomputation
-4. Display label generation for new categories
+2. Domain centroid recomputation
+3. Display label generation for new categories
+4. Coverage audit against awesome lists
 
 Results stored in structural_cache table (JSONB) for fast startup reads.
 
@@ -255,6 +255,24 @@ def main():
     if not args.skip_labels:
         logger.info("=== Step 3: Display labels for new categories ===")
         asyncio.run(label_new_categories())
+
+    # Step 4: Coverage audit against awesome lists
+    logger.info("=== Step 4: Coverage audit ===")
+    try:
+        from scripts.audit_coverage import (
+            discover_awesome_lists, upsert_sources, extract_and_store,
+            reconcile, classify_unmatched, snapshot_coverage,
+        )
+        from datetime import date
+        scan_date = date.today()
+        sources = discover_awesome_lists()
+        upsert_sources(sources)
+        extract_and_store(scan_date)
+        reconcile(scan_date)
+        classify_unmatched(scan_date, skip_metadata=False)
+        snapshot_coverage(scan_date)
+    except Exception as e:
+        logger.warning(f"Coverage audit failed (non-fatal): {e}")
 
     logger.info("=== Weekly structural computation complete ===")
 
