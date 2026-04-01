@@ -1,0 +1,166 @@
+<p>You ask your AI coding assistant "I need to add voice to my app." It recommends a TTS library. You integrate it. It works. Then you realise you also need speech-to-text. You ask again, integrate again. Then you discover your voice agent can't understand intent. Then you learn about latency budgets. Then you find out you have no way to measure whether any of it is actually working.</p>
+
+<p>Each time, the AI cheerfully helps you solve the piece you asked about. It never volunteers that you're working at the wrong level of abstraction &mdash; that "adding voice to your app" is actually a five-layer architecture problem, and choosing a TTS library is just one layer.</p>
+
+<p>This guide is the thing the AI should have told you up front. Here's the full stack, what's dominant at each layer, where the real decisions are, and where there's nothing good yet.</p>
+
+<h2>Layer 1: Speech-to-text &mdash; just use Whisper</h2>
+
+<p>This is a solved problem. Whisper won. Don't spend time evaluating alternatives unless you have a very specific constraint that Whisper can't meet.</p>
+
+<p>The only real decision is which Whisper variant fits your deployment:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Use when</th></tr>
+  </thead>
+  <tbody>
+    {% set stt = [
+      ('m-bain/whisperX', 'Python app, need word timestamps + speaker diarisation'),
+      ('SYSTRAN/faster-whisper', 'Python app, need speed (4x faster than OpenAI Whisper)'),
+      ('ggml-org/whisper.cpp', 'C/C++ deployment, edge devices, minimal dependencies'),
+      ('k2-fsa/sherpa-onnx', 'Mobile, embedded, cross-platform, runs on anything')
+    ] %}
+    {% for name, use in stt %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ use }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>If you're building a Python backend, <a href="{{ domain_path('voice-ai') }}/servers/m-bain/whisperX/">WhisperX</a> ({{ repos.get('m-bain/whisperX', {}).quality_score }}/100) is the default choice. If you need it to run on a phone or a Raspberry Pi, <a href="{{ domain_path('voice-ai') }}/servers/k2-fsa/sherpa-onnx/">sherpa-onnx</a> ({{ repos.get('k2-fsa/sherpa-onnx', {}).quality_score }}/100, {{ repos.get('k2-fsa/sherpa-onnx', {}).commits_30d | default(0) }} commits last month). That's it. Move on to the hard decisions.</p>
+
+<p>The one edge case: if you need a lightweight Python library that wraps multiple backends (Google, Sphinx, Whisper) behind a single API, <a href="{{ domain_path('voice-ai') }}/servers/Uberi/speech_recognition/">speech_recognition</a> ({{ repos.get('Uberi/speech_recognition', {}).quality_score }}/100, {{ repos.get('Uberi/speech_recognition', {}).stars | intcomma }} stars) is the established option.</p>
+
+<h2>Layer 2: Text-to-speech &mdash; this is where you actually have a decision</h2>
+
+<p>Unlike STT, there is no single dominant TTS solution. The right choice depends on what you're optimising for, and the trade-offs are real.</p>
+
+<h3>If you need the best quality and don't mind paying</h3>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/elevenlabs/elevenlabs-python/">ElevenLabs</a> ({{ repos.get('elevenlabs/elevenlabs-python', {}).quality_score }}/100). Industry benchmark for voice quality. Well-maintained SDK. The trade-off is cost and vendor dependency. If voice quality is what sells your product, this is the safe choice.</p>
+
+<h3>If you need free and good-enough</h3>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/rany2/edge-tts/">edge-tts</a> ({{ repos.get('rany2/edge-tts', {}).quality_score }}/100, {{ repos.get('rany2/edge-tts', {}).stars | intcomma }} stars). Wraps Microsoft Edge's TTS API &mdash; high quality, zero cost, dozens of voices and languages. An entire ecosystem of wrappers exists around it: <a href="{{ domain_path('voice-ai') }}/servers/travisvn/edge-tts-universal/">edge-tts-universal</a> for cross-platform use, GUI wrappers, video translation tools. The risk: it's an unofficial API. Microsoft tolerates it but doesn't guarantee it.</p>
+
+<h3>If you need to run locally</h3>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/Blaizzy/mlx-audio/">mlx-audio</a> ({{ repos.get('Blaizzy/mlx-audio', {}).quality_score }}/100) for Apple Silicon. <a href="{{ domain_path('voice-ai') }}/servers/k2-fsa/sherpa-onnx/">sherpa-onnx</a> for everything else. <a href="{{ domain_path('voice-ai') }}/servers/thewh1teagle/kokoro-onnx/">kokoro-onnx</a> ({{ repos.get('thewh1teagle/kokoro-onnx', {}).quality_score }}/100) is a newer option specifically for TTS with ONNX. Local TTS eliminates latency and cost but voice quality is below ElevenLabs.</p>
+
+<h3>If you just need something simple in Python</h3>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/nateshmbhat/pyttsx3/">pyttsx3</a> ({{ repos.get('nateshmbhat/pyttsx3', {}).quality_score }}/100) for offline, uses system voices. <a href="{{ domain_path('voice-ai') }}/servers/pndurette/gTTS/">gTTS</a> ({{ repos.get('pndurette/gTTS', {}).quality_score }}/100) for Google Translate TTS. Neither sounds amazing. Both work in 3 lines of code.</p>
+
+<h3>If you need real-time streaming TTS</h3>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/KoljaB/RealtimeTTS/">RealtimeTTS</a> ({{ repos.get('KoljaB/RealtimeTTS', {}).quality_score }}/100, {{ repos.get('KoljaB/RealtimeTTS', {}).stars | intcomma }} stars). Streams audio as it's generated, supports multiple TTS backends. This matters for voice agents where the user is waiting for a response &mdash; 200ms to first audio is the difference between feeling natural and feeling broken.</p>
+
+<h2>Layer 3: Intent and understanding &mdash; the layer AI never mentions</h2>
+
+<p>You now have speech-to-text (layer 1) and text-to-speech (layer 4). The AI coding assistant considers the problem solved. It isn't.</p>
+
+<p>Between "the user said something" and "the app responds," you need to understand what the user <em>meant</em>. In a simple case, this might be keyword matching. In a real application, it's semantic understanding: intent classification, entity extraction, context management.</p>
+
+<p>This is where the voice stack intersects with the embeddings and NLP ecosystems:</p>
+
+<ul>
+  <li><strong>For keyword/command recognition:</strong> <a href="{{ domain_path('voice-ai') }}/servers/Uberi/speech_recognition/">speech_recognition</a> can detect hotwords. <a href="{{ domain_path('voice-ai') }}/servers/k2-fsa/sherpa-onnx/">sherpa-onnx</a> supports keyword spotting on-device.</li>
+  <li><strong>For semantic intent:</strong> You need embeddings. Embed user utterances, compare against known intents via cosine similarity. <a href="{{ domain_path('embeddings') }}/servers/typesense/typesense/">Typesense</a> ({{ repos.get('typesense/typesense', {}).quality_score }}/100) handles this if you're already using it for search.</li>
+  <li><strong>For open-ended conversation:</strong> Route through an LLM. The user's transcribed speech becomes a prompt. The LLM's response becomes TTS input. This is conceptually simple but the latency budget is brutal: STT (200-500ms) + LLM (500-2000ms) + TTS (200-500ms) = 1-3 seconds of silence before the user hears anything.</li>
+</ul>
+
+<p>The latency budget is the thing nobody warns you about. Each layer adds delay, and voice interactions have much lower latency tolerance than text. A chatbot can take 3 seconds to respond. A voice assistant that takes 3 seconds sounds broken. This is why streaming TTS (<a href="{{ domain_path('voice-ai') }}/servers/KoljaB/RealtimeTTS/">RealtimeTTS</a>) and local inference (<a href="{{ domain_path('voice-ai') }}/servers/k2-fsa/sherpa-onnx/">sherpa-onnx</a>, <a href="{{ domain_path('voice-ai') }}/servers/Blaizzy/mlx-audio/">mlx-audio</a>) matter &mdash; they compress the latency budget at the edges so the LLM in the middle has more time.</p>
+
+<h2>Layer 4: Orchestration &mdash; if you're building a voice agent</h2>
+
+<p>If you're building a simple TTS feature (read this text aloud), you don't need this layer. If you're building a voice agent &mdash; something that listens, understands, acts, and responds &mdash; you do.</p>
+
+<p>The honest answer: the tooling here is immature. Most voice agent repos are demos &mdash; a script that wires STT → LLM → TTS and calls it a day. The projects worth watching are the ones building infrastructure:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set agents = ['rapidaai/voice-ai', 'outspeed-ai/voice-devtools', 'FunAudioLLM/CosyVoice'] %}
+    {% for name in agents %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('voice-ai') }}/servers/rapidaai/voice-ai/">rapida voice-ai</a> ({{ repos.get('rapidaai/voice-ai', {}).quality_score }}/100) is building a Go-based voice agent framework. <a href="{{ domain_path('voice-ai') }}/servers/outspeed-ai/voice-devtools/">voice-devtools</a> from Outspeed tackles the debugging problem &mdash; how do you inspect what's happening in a real-time voice pipeline? <a href="{{ domain_path('voice-ai') }}/servers/FunAudioLLM/CosyVoice/">CosyVoice</a> ({{ repos.get('FunAudioLLM/CosyVoice', {}).stars | intcomma }} stars) is a comprehensive voice generation system from the FunAudioLLM team.</p>
+
+<p>If you're building a voice agent today, you're mostly assembling the stack yourself: pick a STT, pick a TTS, wire them through an LLM, handle interruption, manage conversation state, optimise for latency. There's no "Rails for voice agents" yet. That's both the challenge and the opportunity.</p>
+
+<h2>Layer 5: Evaluation &mdash; nobody thinks about this until production</h2>
+
+<p>You've built the thing. It works on your laptop. How do you know it works for real users? How do you measure whether the STT is accurate enough, the TTS sounds natural enough, the latency is fast enough?</p>
+
+<p>This layer barely exists in open source:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it measures</th></tr>
+  </thead>
+  <tbody>
+    {% set evals = ['ArchishmanSengupta/autovoiceevals', 'analyticsinmotion/werpy', 'fgnt/meeteval'] %}
+    {% set eval_desc = {'ArchishmanSengupta/autovoiceevals': 'End-to-end voice AI evaluation', 'analyticsinmotion/werpy': 'Word error rate calculation', 'fgnt/meeteval': 'Meeting transcription evaluation (WER, cpWER, ORC-WER)'} %}
+    {% for name in evals %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ eval_desc.get(name, '&mdash;') }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>Most evaluation tools focus on ASR accuracy (word error rate). Almost nothing exists for evaluating TTS quality, voice agent conversation quality, or end-to-end latency in production. <a href="{{ domain_path('voice-ai') }}/servers/ArchishmanSengupta/autovoiceevals/">autovoiceevals</a> is one of the few projects attempting end-to-end voice AI evaluation.</p>
+
+<p>In practice, teams building voice apps are writing custom evaluation scripts. If you're heading toward production, budget time for this &mdash; it's the layer that determines whether your voice app feels polished or feels like a demo.</p>
+
+<h2>The full picture</h2>
+
+<p>Here's what "add voice to my app" actually means:</p>
+
+<ol>
+  <li><strong>STT:</strong> Solved. Pick a Whisper variant for your deployment target. 30 seconds of decision-making.</li>
+  <li><strong>TTS:</strong> Real decision. Free vs paid vs local vs streaming. Spend your evaluation time here.</li>
+  <li><strong>Intent/understanding:</strong> The layer you don't know you need until you need it. Embeddings for semantic matching, LLM for open conversation, latency budget for both.</li>
+  <li><strong>Orchestration:</strong> If building a voice agent, you're assembling this yourself. No dominant framework yet.</li>
+  <li><strong>Evaluation:</strong> Almost nothing exists. Plan to build custom metrics.</li>
+</ol>
+
+<p>An AI coding assistant would have walked you through layer 1, then layer 2 if you asked, and never mentioned layers 3-5 until you hit a wall. Now you know the full landscape before you start.</p>
+
+<h2>Go deeper</h2>
+
+<p>Every project mentioned here has a quality-scored page in our directory, updated daily:</p>
+
+<ul>
+  <li><a href="{{ domain_path('voice-ai') }}/categories/">Voice AI categories</a> &mdash; {{ 166 }} categories covering TTS, ASR, voice agents, and more</li>
+  <li><a href="{{ domain_path('voice-ai') }}/trending/">Trending voice AI projects</a> &mdash; what's moving this week</li>
+  <li><a href="{{ domain_path('embeddings') }}/categories/">Embeddings categories</a> &mdash; for the intent and understanding layer</li>
+  <li><a href="/insights/voice-ai-landscape/">Voice AI landscape deep dive</a> &mdash; the full quality assessment of 9,679 voice AI repos</li>
+</ul>
