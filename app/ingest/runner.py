@@ -18,6 +18,7 @@ from app.ingest.releases import ingest_releases
 from app.ingest.trending import ingest_trending
 from app.ingest.ai_repos import ingest_ai_repos
 from app.ingest.ai_repo_commits import ingest_ai_repo_commits
+from app.ingest.ai_repo_created_at import ingest_ai_repo_created_at
 from app.ingest.ai_repo_downloads import ingest_ai_repo_downloads
 from app.ingest.semantic_scholar import ingest_semantic_scholar
 from app.ingest.public_apis import ingest_public_apis
@@ -104,6 +105,7 @@ async def run_all() -> dict:
         ("npm_mcp", ingest_npm_mcp),
         ("ai_repo_downloads", ingest_ai_repo_downloads),
         ("ai_repo_commits", ingest_ai_repo_commits),
+        ("ai_repo_created_at", ingest_ai_repo_created_at),
         ("candidate_watchlist", refresh_candidate_watchlist),
         ("semantic_scholar", ingest_semantic_scholar),
         # ai_repos removed — runs on its own weekly cron (Saturday 12:00 UTC)
