@@ -643,7 +643,11 @@ def generate_sitemap(base_url, base_path, servers, categories, out_dir, comparis
 
 
 def generate_robots(base_url, base_path, out_dir):
-    content = f"User-agent: *\nAllow: /\n\nSitemap: {base_url}{base_path}sitemap.xml\n"
+    content = (
+        f"User-agent: *\nAllow: /\n\n"
+        f"Sitemap: {base_url}{base_path}sitemap.xml\n"
+        f"Sitemap: {base_url}/insights/sitemap.xml\n"
+    )
     write_file(os.path.join(out_dir, "robots.txt"), content)
 
 
