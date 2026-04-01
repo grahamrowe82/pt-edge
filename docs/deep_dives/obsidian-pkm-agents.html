@@ -1,0 +1,128 @@
+<p>You have an Obsidian vault full of notes, projects, and ideas. You want AI to work with it &mdash; search it semantically, suggest connections, summarise what you've written, maybe even manage it on your behalf. You search for options and find hundreds of repos. Most are weekend projects that won't survive a month.</p>
+
+<p>PT-Edge tracks over 700 repositories across personal knowledge management, Obsidian plugins, MCP servers, and agent tools, scoring them daily. This guide separates the real tools from the demos and maps three distinct paths for bringing AI into your knowledge workflow.</p>
+
+<h2>Three paths to AI in your vault</h2>
+
+<p>The Obsidian+AI landscape isn't one category. It's three layers, each solving a different problem:</p>
+
+<ol>
+  <li><strong>AI-native PKM apps</strong> &mdash; standalone tools with AI built in from the start. Some work with Obsidian vaults directly, others are alternatives. <em>Most mature, widest adoption.</em></li>
+  <li><strong>MCP bridge servers</strong> &mdash; give AI agents structured access to your vault via the Model Context Protocol. <em>Growing fast, the infrastructure play.</em></li>
+  <li><strong>Agent-native vault tools</strong> &mdash; built for AI agents to manage Obsidian vaults autonomously. <em>Experimental, but where it's heading.</em></li>
+</ol>
+
+<h2>AI-native PKM apps: the tools people actually use</h2>
+
+<p>If you want AI in your knowledge workflow today, these are the established options. They have real user bases, active development, and quality scores that reflect sustained maintenance.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Best for</th></tr>
+  </thead>
+  <tbody>
+    {% set pkm_projects = ['khoj-ai/khoj', 'siyuan-note/siyuan', 'MODSetter/SurfSense', 'codexu/note-gen', 'brianpetro/obsidian-smart-connections', 'Nexus-JPF/note-companion'] %}
+    {% set pkm_use = {'khoj-ai/khoj': 'Self-hosted AI second brain, works with any LLM', 'siyuan-note/siyuan': 'Privacy-first self-hosted PKM, Obsidian alternative', 'MODSetter/SurfSense': 'Team knowledge, NotebookLM alternative', 'codexu/note-gen': 'Cross-platform Markdown AI note-taking', 'brianpetro/obsidian-smart-connections': 'AI chat + semantic links inside Obsidian', 'Nexus-JPF/note-companion': 'AI file organisation and chat for Obsidian'} %}
+    {% for name in pkm_projects %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ pkm_use.get(name, '&mdash;') }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('rag') }}/servers/khoj-ai/khoj/">khoj</a> ({{ repos.get('khoj-ai/khoj', {}).quality_score }}/100, {{ repos.get('khoj-ai/khoj', {}).stars | intcomma }} stars) is the quality leader across the entire personal knowledge management space. It's self-hostable, works with any LLM (GPT, Claude, Gemini, Llama, Qwen, Mistral), and functions as a genuine AI second brain &mdash; not just a chatbot bolted onto your notes. If you want one tool that does it all and you're comfortable self-hosting, khoj is the default recommendation.</p>
+
+<p><a href="{{ domain_path('embeddings') }}/servers/brianpetro/obsidian-smart-connections/">Smart Connections</a> ({{ repos.get('brianpetro/obsidian-smart-connections', {}).stars | intcomma }} stars) is the most adopted Obsidian-specific AI plugin. It embeds your notes and shows semantically related content as you write, plus an AI chat interface that understands your vault's context. It supports local models or 100+ APIs. For Obsidian users who want AI without leaving their vault, this is where most people start.</p>
+
+<p><a href="{{ domain_path('llm-tools') }}/servers/Nexus-JPF/note-companion/">Note Companion</a> ({{ repos.get('Nexus-JPF/note-companion', {}).quality_score }}/100, {{ repos.get('Nexus-JPF/note-companion', {}).stars | intcomma }} stars, previously File Organizer 2000) goes beyond chat &mdash; it automatically organises files, suggests tags, and processes incoming notes. If your vault has become a dumping ground and you want AI to impose structure, this is the tool.</p>
+
+<p>For teams rather than individuals, <a href="{{ domain_path('rag') }}/servers/MODSetter/SurfSense/">SurfSense</a> ({{ repos.get('MODSetter/SurfSense', {}).stars | intcomma }} stars, {{ repos.get('MODSetter/SurfSense', {}).commits_30d | default(0) }} commits in the last 30 days) is an open-source NotebookLM alternative with extraordinary development velocity.</p>
+
+<h3>The Obsidian alternatives worth knowing</h3>
+
+<p>Not everyone needs to stay in Obsidian. Two alternatives have AI so deeply integrated that they're worth considering as a primary tool:</p>
+
+<p><a href="{{ domain_path('llm-tools') }}/servers/siyuan-note/siyuan/">SiYuan</a> ({{ repos.get('siyuan-note/siyuan', {}).stars | intcomma }} stars, {{ repos.get('siyuan-note/siyuan', {}).commits_30d | default(0) }} commits in the last 30 days) is privacy-first, self-hosted, and fully open source. It's the closest direct alternative to Obsidian with built-in AI capabilities. Written in TypeScript and Go, with massive active development.</p>
+
+<p><a href="{{ domain_path('llm-tools') }}/servers/eclaire-labs/eclaire/">eclaire</a> ({{ repos.get('eclaire-labs/eclaire', {}).quality_score }}/100, {{ repos.get('eclaire-labs/eclaire', {}).stars | intcomma }} stars) takes a broader approach &mdash; it unifies tasks, notes, docs, photos, and bookmarks in a local-first AI assistant. If your knowledge isn't just Markdown files but also bookmarks, PDFs, and images, eclaire handles the full surface area.</p>
+
+<h2>MCP bridge servers: giving AI agents access to your vault</h2>
+
+<p>The Model Context Protocol is changing how AI agents interact with local data. For Obsidian users, MCP servers create a structured interface that lets any MCP-capable agent &mdash; Claude, Cursor, or custom tools &mdash; read, search, and write to your vault.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><a href="/servers/bitbonsai/mcpvault/">mcpvault</a></td>
+      <td>{{ repos.get('bitbonsai/mcpvault', {}).stars | intcomma }}</td>
+      <td>Lightweight, safe vault access &mdash; the most adopted Obsidian MCP server</td>
+    </tr>
+    <tr>
+      <td><a href="/servers/cyanheads/obsidian-mcp-server/">obsidian-mcp-server</a></td>
+      <td>{{ repos.get('cyanheads/obsidian-mcp-server', {}).stars | intcomma }}</td>
+      <td>Comprehensive: read, write, search, organise notes via MCP</td>
+    </tr>
+    <tr>
+      <td><a href="/servers/Epistates/turbovault/">turbovault</a></td>
+      <td>{{ repos.get('Epistates/turbovault', {}).stars | intcomma }}</td>
+      <td>Rust SDK + MCP server, transforms vault into intelligent knowledge system</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><a href="/servers/bitbonsai/mcpvault/">mcpvault</a> ({{ repos.get('bitbonsai/mcpvault', {}).stars | intcomma }} stars) is the adoption leader &mdash; lightweight and focused on safe, read-oriented access. If you want Claude Desktop or another MCP client to be able to search and read your vault without risk of modification, mcpvault is the starting point.</p>
+
+<p><a href="/servers/cyanheads/obsidian-mcp-server/">obsidian-mcp-server</a> ({{ repos.get('cyanheads/obsidian-mcp-server', {}).stars | intcomma }} stars) is more comprehensive &mdash; it supports reading, writing, searching, and organising notes. For agents that need to create or modify vault content, not just read it, this is the fuller-featured option.</p>
+
+<p>Why MCP matters for PKM: it separates the AI model from the data access layer. You can switch between Claude, a local Llama model, or any future LLM without rebuilding your vault integration. The MCP server stays the same. This is a significant architectural advantage over plugins that hardcode a specific API.</p>
+
+<h2>Agent-native vault tools: the experimental frontier</h2>
+
+<p>The <a href="{{ domain_path('agents') }}/categories/obsidian-vault-agents/">obsidian-vault-agents</a> category has {{ 33 }} repos with an average quality of 23.2/100. Most are less than a month old. This is the bleeding edge &mdash; but the standout project already has real traction.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/ballred/obsidian-claude-pkm/">obsidian-claude-pkm</a> ({{ repos.get('ballred/obsidian-claude-pkm', {}).stars | intcomma }} stars) is a complete starter kit for building an Obsidian + Claude Code personal knowledge management system. It's not a plugin you install; it's a framework for letting Claude Code become a persistent teammate that lives in your vault. The star count tells you this resonates with people who've tried it.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/iwe-org/iwe/">iwe</a> ({{ repos.get('iwe-org/iwe', {}).quality_score }}/100, {{ repos.get('iwe-org/iwe', {}).stars | intcomma }} stars) takes a different approach: Markdown knowledge management designed from the start for both text editors and AI agents. Written in Rust, it's agent-first but editor-compatible &mdash; the inverse of most tools which are editor-first with agent support bolted on.</p>
+
+<p>Other emerging projects worth watching: <a href="{{ domain_path('embeddings') }}/servers/aviatesk/obsidian-sonar/">obsidian-sonar</a> for completely offline semantic search, <a href="{{ domain_path('embeddings') }}/servers/kizz-tech/meld/">meld</a> for a superpersonalised AI agent that shares a knowledge base with you, and <a href="{{ domain_path('embeddings') }}/servers/devwhodevs/engraph/">engraph</a> for a local knowledge graph with hybrid search via MCP.</p>
+
+<h2>The local vs cloud decision</h2>
+
+<p>Obsidian's ethos is local-first and privacy-respecting. If that matters to you &mdash; and for most Obsidian users it does &mdash; the AI tools you choose should match.</p>
+
+<p><strong>Fully local options:</strong> <a href="{{ domain_path('rag') }}/servers/khoj-ai/khoj/">khoj</a> (self-hostable), <a href="{{ domain_path('rag') }}/servers/your-papa/obsidian-Smart2Brain/">Smart2Brain</a> (privacy-focused), <a href="{{ domain_path('llm-tools') }}/servers/eclaire-labs/eclaire/">eclaire</a> (local-first), <a href="{{ domain_path('embeddings') }}/servers/aviatesk/obsidian-sonar/">obsidian-sonar</a> (completely offline), <a href="{{ domain_path('rag') }}/servers/signerlabs/Klee/">Klee</a> (secure local RAG). These use local models via Ollama or similar runtimes &mdash; your notes never leave your machine.</p>
+
+<p><strong>Cloud/API options:</strong> <a href="{{ domain_path('llm-tools') }}/servers/Nexus-JPF/note-companion/">Note Companion</a> and <a href="{{ domain_path('embeddings') }}/servers/brianpetro/obsidian-smart-connections/">Smart Connections</a> support both local models and cloud APIs, letting you choose your privacy/quality trade-off.</p>
+
+<p><strong>MCP servers are inherently local</strong> &mdash; they access your vault files on your machine. The LLM they connect to can be local or cloud, but your notes are read locally. This makes MCP a good middle ground: local data access with flexible model choice.</p>
+
+<h2>The quality reality check</h2>
+
+<p>The Obsidian+AI space has a noise problem. Hundreds of repos claim AI integration, but the data tells a clear story: the <a href="{{ domain_path('llm-tools') }}/categories/obsidian-ai-plugins/">obsidian-ai-plugins</a> category averages 27.9/100 across 65 repos, while the <a href="{{ domain_path('agents') }}/categories/obsidian-vault-agents/">obsidian-vault-agents</a> category averages just 23.2/100 across 33 repos. Most of these are proof-of-concept projects that wire together an LLM API and a file reader.</p>
+
+<p>The quality leaders are projects that have been maintained for months, have actual users, and solve a specific problem well. A quality score above 60/100 means active maintenance, real adoption, and community engagement. Below 30, you're looking at experiments.</p>
+
+<p>The conversion pipeline matters too. <a href="{{ domain_path('llm-tools') }}/servers/microsoft/markitdown/">markitdown</a> ({{ repos.get('microsoft/markitdown', {}).quality_score }}/100, {{ repos.get('microsoft/markitdown', {}).stars | intcomma }} stars) from Microsoft converts any file to Markdown &mdash; the invisible infrastructure that makes PKM+AI work. If your knowledge includes PDFs, Word docs, or web pages, markitdown is how you get them into a format AI can work with.</p>
+
+<h2>How to use this data</h2>
+
+<p>Every project mentioned in this guide has a quality-scored page in our directory, updated daily. You can:</p>
+
+<ul>
+  <li>Browse the <a href="{{ domain_path('agents') }}/categories/obsidian-vault-agents/">{{ 33 }} Obsidian vault agent projects</a> ranked by quality</li>
+  <li>Compare <a href="{{ domain_path('llm-tools') }}/categories/obsidian-ai-plugins/">{{ 65 }} Obsidian AI plugins</a> side by side</li>
+  <li>Explore <a href="{{ domain_path('rag') }}/categories/personal-knowledge-management/">{{ 126 }} PKM tools</a> across the RAG ecosystem</li>
+  <li>Check <a href="{{ domain_path('agents') }}/trending/">trending agent projects</a> to see what's gaining momentum this week</li>
+</ul>
+
+<p>Quality scores update daily from live GitHub, PyPI, and npm data. When a PKM project stops being maintained, the score drops. When a new tool starts gaining real adoption, it climbs. The data does the work so you don't have to manually evaluate each plugin before trusting it with your knowledge.</p>
