@@ -4180,7 +4180,7 @@ async def nucleation_scan(min_score: int = 30, limit: int = 20) -> str:
             # ------------------------------------------------------------------
             project_rows = conn.execute(text("""
                 SELECT full_name, name, domain, subcategory, stars,
-                       nucleation_score, narrative_gap,
+                       nucleation_score, narrative_gap, created_at,
                        star_delta_7d, star_velocity_zscore,
                        hn_posts_7d, hn_points_7d,
                        newsletter_mentions_7d, newsletter_feeds_7d,
@@ -4197,9 +4197,9 @@ async def nucleation_scan(min_score: int = 30, limit: int = 20) -> str:
             if project_rows:
                 lines.append(
                     f"  {'#':<3} {'Project':<30} {'Score':>5}  "
-                    f"{'Δ★ 7d':>7}  {'z':>5}  {'HN':>4}  {'NL':>3}  {'Rel':>3}  {'Gap':<5}"
+                    f"{'Δ★ 7d':>7}  {'z':>5}  {'HN':>4}  {'NL':>3}  {'Rel':>3}  {'Age':>5}  {'Gap':<5}"
                 )
-                lines.append("  " + "-" * 68)
+                lines.append("  " + "-" * 76)
 
                 narrative_gap_count = 0
                 for i, r in enumerate(project_rows, 1):
@@ -4220,9 +4220,22 @@ async def nucleation_scan(min_score: int = 30, limit: int = 20) -> str:
                     delta_str = f"+{delta:,}" if delta >= 0 else f"{delta:,}"
                     gap_str = "★ GAP" if gap else ""
 
+                    # Repo age from created_at
+                    created = m.get("created_at")
+                    if created:
+                        age_days = (datetime.now(timezone.utc) - created).days
+                        if age_days >= 365:
+                            age_str = f"{age_days / 365:.1f}y"
+                        elif age_days >= 30:
+                            age_str = f"{age_days // 30}mo"
+                        else:
+                            age_str = f"{age_days}d"
+                    else:
+                        age_str = "?"
+
                     lines.append(
                         f"  {i:<3} {name:<30} {score:>5}  "
-                        f"{delta_str:>7}  {zscore:>5.1f}  {hn:>4}  {nl:>3}  {rel:>3}  {gap_str:<5}"
+                        f"{delta_str:>7}  {zscore:>5.1f}  {hn:>4}  {nl:>3}  {rel:>3}  {age_str:>5}  {gap_str:<5}"
                     )
             else:
                 lines.append("  No projects above threshold.")

@@ -18,6 +18,7 @@ from app.ingest.releases import ingest_releases
 from app.ingest.trending import ingest_trending
 from app.ingest.ai_repos import ingest_ai_repos
 from app.ingest.ai_repo_commits import ingest_ai_repo_commits
+from app.ingest.ai_repo_created_at import ingest_ai_repo_created_at
 from app.ingest.ai_repo_downloads import ingest_ai_repo_downloads
 from app.ingest.semantic_scholar import ingest_semantic_scholar
 from app.ingest.public_apis import ingest_public_apis
@@ -367,6 +368,17 @@ async def run_all() -> dict:
     except Exception as e:
         logger.warning(f"static_site deploy trigger failed: {e}")
         results["static_site"] = {"error": str(e)}
+
+    # Backfill created_at — runs last, uses remaining time in the day.
+    # Self-draining: becomes a no-op once all repos have created_at.
+    try:
+        results["ai_repo_created_at"] = await _run_with_retry(
+            "ai_repo_created_at", ingest_ai_repo_created_at
+        )
+        logger.info(f"ai_repo_created_at: {results['ai_repo_created_at']}")
+    except Exception as e:
+        logger.exception(f"ai_repo_created_at failed: {e}")
+        results["ai_repo_created_at"] = {"error": str(e)}
 
     # Summary
     errors = [k for k, v in results.items() if isinstance(v, dict) and "error" in v]
