@@ -189,9 +189,13 @@ grep -oP 'href="https://mcp\.phasetransitions\.ai[^"]*"' docs/substack/{slug}.ht
 
 ## What's automated
 
-- **Reverse links** from server detail pages to deep dives: driven by `featured_repos` in the `deep_dives` table. When `generate_site.py` runs, it queries all published deep dives and builds a reverse lookup. Any repo in `featured_repos` gets a "Featured in" section on its detail page linking to the deep dive. Zero manual maintenance.
+- **Reverse links** from server detail pages to deep dives: two mechanisms, both zero-maintenance:
+  1. **Explicit repo links** via `featured_repos`: repos whose live metrics appear inside the deep dive template get a "Featured in" link. These are the 15-30 repos you explicitly analyse.
+  2. **Subcategory-level links** via `featured_categories`: every repo in a relevant subcategory gets a "Featured in" link. This means a deep dive about agent governance automatically links from all 1,263 governance repos, not just the 25 you featured. Users browsing any part of the landscape can discover the zoomed-out analysis. When `generate_site.py` runs, it builds both lookups and deduplicates them per repo.
 - **Live data** in deep dive templates: `repos.get()` pulls current stars, commits, quality scores at build time. Numbers stay fresh on every deploy.
 - **Insights index**: automatically lists all published deep dives from the database.
+
+The subcategory-level linking was added after observing real visitor behaviour: an Indian developer browsed three agent-governance repos in 90 seconds, but none were in the deep dive's `featured_repos`. With category-level linking, every repo in the relevant subcategories gets a path to the analysis page.
 
 ## Lessons from production
 

@@ -479,22 +479,32 @@ def build_related_lookup(categories):
 
 
 def fetch_deep_dive_links():
-    """Build reverse lookup: repo full_name -> list of deep dives that feature it."""
-    lookup = {}
+    """Build reverse lookups: repo full_name -> deep dives, and (domain, subcategory) -> deep dives.
+
+    Two linking mechanisms:
+    1. featured_repos: explicit per-repo links (repos whose live metrics appear in the deep dive)
+    2. featured_categories: subcategory-level links (every repo in a relevant subcategory gets
+       a "Featured in" link to the deep dive, so users browsing any part of the landscape can
+       discover the zoomed-out analysis)
+    """
+    repo_lookup = {}
+    category_lookup = {}
     try:
         with readonly_engine.connect() as conn:
             rows = conn.execute(text("""
-                SELECT slug, title, featured_repos
+                SELECT slug, title, featured_repos, featured_categories
                 FROM deep_dives
                 WHERE status = 'published'
             """)).fetchall()
         for r in rows:
             dd = {"slug": r._mapping["slug"], "title": r._mapping["title"]}
             for repo_name in (r._mapping["featured_repos"] or []):
-                lookup.setdefault(repo_name, []).append(dd)
+                repo_lookup.setdefault(repo_name, []).append(dd)
+            for cat_key in (r._mapping["featured_categories"] or []):
+                category_lookup.setdefault(cat_key, []).append(dd)
     except Exception as e:
         print(f"  Warning: could not fetch deep dive links: {e}")
-    return lookup
+    return repo_lookup, category_lookup
 
 
 def dynamic_threshold(score_a, score_b):
@@ -740,9 +750,11 @@ def main():
     # Pre-load comparison pairs for cross-linking (cheap cache read)
     # Pre-load deep dive reverse links (repo -> deep dives featuring it)
     print("  Loading deep dive links...")
-    deep_dive_lookup = fetch_deep_dive_links()
-    if deep_dive_lookup:
-        print(f"  {sum(len(v) for v in deep_dive_lookup.values())} deep dive links across {len(deep_dive_lookup)} repos")
+    deep_dive_repo_lookup, deep_dive_cat_lookup = fetch_deep_dive_links()
+    if deep_dive_repo_lookup or deep_dive_cat_lookup:
+        repo_count = sum(len(v) for v in deep_dive_repo_lookup.values())
+        cat_count = len(deep_dive_cat_lookup)
+        print(f"  {repo_count} explicit repo links + {cat_count} category-level links")
 
     print("  Loading comparison pairs from cache...")
     cached_pairs = load_comparison_pairs(domain)
@@ -822,9 +834,16 @@ def main():
         if owner != last_owner:
             os.makedirs(os.path.join(out_dir, "servers", owner), exist_ok=True)
             last_owner = owner
+        # Merge deep dive links: explicit repo links + subcategory-level links (deduplicated)
+        dd_links = list(deep_dive_repo_lookup.get(s["full_name"], []))
+        dd_cat_key = f"{domain}:{cat_key}" if cat_key != "uncategorized" else ""
+        if dd_cat_key:
+            for dd in deep_dive_cat_lookup.get(dd_cat_key, []):
+                if dd["slug"] not in {d["slug"] for d in dd_links}:
+                    dd_links.append(dd)
         write_file(path, detail_tpl.render(server=s, related_servers=related,
                                           comparisons=comparison_lookup.get(s["full_name"], [])[:10],
-                                          deep_dive_links=deep_dive_lookup.get(s["full_name"], []),
+                                          deep_dive_links=dd_links,
                                           **ctx))
 
         if (i + 1) % 5000 == 0:
