@@ -1,0 +1,41 @@
+<p>You ask your AI coding assistant "I need to add voice to my app." It recommends a TTS library. You integrate it. It works. Then you realise you also need speech-to-text. You ask again, integrate again. Then you discover your voice agent can't understand intent. Then you learn about latency budgets. Then you find out you have no way to measure whether any of it is actually working.</p>
+
+<p>Each time, the AI cheerfully helps you solve the piece you asked about. It never volunteers that you're working at the wrong level of abstraction — that "adding voice to your app" is actually a five-layer architecture problem.</p>
+
+<p>Here's the full stack.</p>
+
+<h2>Layer 1: Speech-to-text — just use Whisper</h2>
+
+<p>This is a solved problem. The only decision is which Whisper variant: <a href="https://mcp.phasetransitions.ai/voice-ai/servers/m-bain/whisperX/">WhisperX</a> (83/100) for Python with speaker diarisation, <a href="https://mcp.phasetransitions.ai/voice-ai/servers/SYSTRAN/faster-whisper/">faster-whisper</a> (68/100) for speed, <a href="https://mcp.phasetransitions.ai/voice-ai/servers/ggml-org/whisper.cpp/">whisper.cpp</a> for C++ edge deployment, <a href="https://mcp.phasetransitions.ai/voice-ai/servers/k2-fsa/sherpa-onnx/">sherpa-onnx</a> (84/100) for mobile and embedded. Don't agonise. Pick one. Move on.</p>
+
+<h2>Layer 2: Text-to-speech — this is where you actually have a decision</h2>
+
+<p><strong>Best quality, paid:</strong> <a href="https://mcp.phasetransitions.ai/voice-ai/servers/elevenlabs/elevenlabs-python/">ElevenLabs</a> (85/100). Industry benchmark.</p>
+
+<p><strong>Free and good-enough:</strong> <a href="https://mcp.phasetransitions.ai/voice-ai/servers/rany2/edge-tts/">edge-tts</a> (69/100, 10K+ stars). Wraps Microsoft Edge's TTS API — high quality, zero cost, unofficial API (risk: Microsoft could cut it off).</p>
+
+<p><strong>Local inference:</strong> <a href="https://mcp.phasetransitions.ai/voice-ai/servers/Blaizzy/mlx-audio/">mlx-audio</a> (86/100) for Apple Silicon. <a href="https://mcp.phasetransitions.ai/voice-ai/servers/k2-fsa/sherpa-onnx/">sherpa-onnx</a> for everything else.</p>
+
+<p><strong>Real-time streaming:</strong> <a href="https://mcp.phasetransitions.ai/voice-ai/servers/KoljaB/RealtimeTTS/">RealtimeTTS</a> (77/100). Streams audio as it's generated — critical for voice agents where 200ms to first audio is the difference between natural and broken.</p>
+
+<h2>Layer 3: Intent and understanding — the layer AI never mentions</h2>
+
+<p>Between "the user said something" and "the app responds," you need to understand what they <em>meant</em>. For commands, keyword matching works. For conversation, you need either embeddings (semantic similarity against known intents) or an LLM (open-ended understanding).</p>
+
+<p>The thing nobody warns you about: <strong>the latency budget.</strong> STT (200-500ms) + LLM (500-2000ms) + TTS (200-500ms) = 1-3 seconds of silence. A chatbot can take 3 seconds. A voice assistant that takes 3 seconds sounds broken. This is why local inference and streaming TTS matter — they compress the edges so the LLM has more time in the middle.</p>
+
+<h2>Layer 4: Orchestration — assembling it yourself</h2>
+
+<p>If you're building a voice agent, there's no "Rails for voice agents" yet. You're wiring STT → understanding → LLM → TTS yourself, handling interruption, managing conversation state, optimising latency. <a href="https://mcp.phasetransitions.ai/voice-ai/servers/rapidaai/voice-ai/">rapida voice-ai</a> (69/100) and <a href="https://mcp.phasetransitions.ai/voice-ai/servers/outspeed-ai/voice-devtools/">voice-devtools</a> are building toward this, but the space is early.</p>
+
+<h2>Layer 5: Evaluation — nobody thinks about this until production</h2>
+
+<p>How do you know your voice app works for real users? Most evaluation tools focus on ASR word error rate. Almost nothing exists for TTS quality, conversation quality, or end-to-end latency in production. <a href="https://mcp.phasetransitions.ai/voice-ai/servers/ArchishmanSengupta/autovoiceevals/">autovoiceevals</a> is one of the few attempts. Plan to build custom metrics.</p>
+
+<h2>The full picture</h2>
+
+<p>An AI coding assistant would walk you through layer 1, then layer 2 if you asked, and never mention layers 3-5 until you hit a wall. Now you know the full landscape before you start.</p>
+
+<p>The complete guide with quality-scored project tables at every layer: <a href="https://mcp.phasetransitions.ai/insights/voice-app-stack/">mcp.phasetransitions.ai/insights/voice-app-stack</a>.</p>
+
+<p>Browse all <a href="https://mcp.phasetransitions.ai/voice-ai/categories/">166 voice AI categories</a>, check <a href="https://mcp.phasetransitions.ai/voice-ai/trending/">what's trending this week</a>, or read the <a href="https://mcp.phasetransitions.ai/insights/voice-ai-landscape/">full voice AI landscape assessment</a>.</p>
