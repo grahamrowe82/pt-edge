@@ -18,20 +18,90 @@ Deep dives are framed as **decision guides** because that's the unique value dai
 - Allocation engine signal (surprise ratio, position strength, or ES score) indicating a demand/supply gap
 - A clear editorial angle framed around the searcher's decision
 
+## Research toolkit
+
+PT-Edge has a rich set of data tools for deep dive research. **Use the right tool for each job — never fall back to ILIKE keyword matching or manual GitHub browsing.**
+
+### Semantic search (primary discovery tool)
+
+Use embedding search to discover the landscape. It finds thematically related projects regardless of naming conventions — ILIKE misses repos that use different terminology for the same concept.
+
+| Tool | What it searches | How to use |
+|------|-----------------|------------|
+| `find_ai_tool(query)` | 100K+ AI repos (256-dim embeddings on `ai_repos.embedding`) | MCP tool or `GET /api/v1/projects?q=query` |
+| `find_mcp_server(query)` | MCP server ecosystem | MCP tool |
+| `find_public_api(query)` | 2.5K+ REST APIs with OpenAPI specs | MCP tool |
+| `find_dataset(query)` | 42K+ HuggingFace datasets | MCP tool (via `more_tools()`) |
+| `find_model(query)` | 18K+ HuggingFace models | MCP tool (via `more_tools()`) |
+| FTS fallback | `ai_repos.fts` tsvector (name=A, description=B, topics=C weights) | `WHERE fts @@ plainto_tsquery('english', :query)` |
+
+**Example:** To research agent governance, run:
+- `find_ai_tool("agent governance framework guardrails safety")`
+- `find_ai_tool("AI agent security audit compliance")`
+- `find_ai_tool("agent access control permissions")`
+
+NOT: `WHERE subcategory ILIKE '%governance%'`
+
+### MCP research tools (structured exploration)
+
+| Tool | Best for |
+|------|----------|
+| `topic(query)` | Ecosystem search — projects + HN posts + candidates in one call |
+| `trending(domain=X)` | What's gaining stars fastest |
+| `breakouts()` | Explosive % growth — rising from obscurity |
+| `hype_check(slug)` / `hype_landscape(category=X)` | Stars vs actual downloads — are projects overhyped? |
+| `compare(slugs)` | Side-by-side metrics for 2-5 projects |
+| `project_pulse(slug)` | Deep profile on one project |
+| `market_map()` | Concentration analysis, power law, lab dominance |
+| `ecosystem_layer(layer)` | Explore by stack layer (MCP gateways, agents, perception, etc.) |
+| `find_dependents(package)` | Reverse dependency lookup — who builds on this? |
+| `velocity(domain=X)` | Development pace by commits/contributors |
+| `scout()` | Rising projects not yet on the radar |
+
+### Demand signals
+
+| Source | What it tells you | How to query |
+|--------|------------------|-------------|
+| GSC (`gsc_search_data`) | What queries Google is ranking us for, impressions, CTR, position | `psql $DATABASE_URL` — join on page URL to map to domain/subcategory |
+| Umami views | Who's visiting, what intent (business/research/directory), visitor class | `psql $UMAMI_DATABASE_URL` — `v_visitors`, `v_sessions`, `v_page_classes`, `v_business_leads` |
+| Allocation engine (`mv_allocation_scores`) | EHS (demand heat from GSC+Umami) and ES (emergence from GitHub signals) | `psql $DATABASE_URL` — filter by domain, sort by `opportunity_score` |
+| `v_deep_dive_queue` | Editorial priority ranking combining all signals | `psql $DATABASE_URL` |
+
+### Contextual intelligence
+
+| Source | What it tells you | How to query |
+|--------|------------------|-------------|
+| HN posts | Community sentiment, what's getting traction | `hn_pulse()` MCP tool or `GET /api/v1/hn?q=query` |
+| Briefings | Curated intelligence per domain | `briefing(domain=X)` MCP tool |
+| Papers | Academic citations for a project | `GET /api/v1/papers?project=X` |
+| Commercial projects | Paid solutions in a category | `GET /api/v1/commercial-projects?category=X` |
+| Dependencies | What packages a project uses / who depends on it | `find_dependents(package)` or `GET /api/v1/dependencies/{pkg}/dependents` |
+
+### Anti-patterns
+
+- **Never use ILIKE** for discovery on subcategory/description fields. It misses repos with different terminology but identical purpose. Use embedding search.
+- **Never manually browse GitHub.** Every data point should come from PT-Edge queries. If you can't answer a question from our data, that's a feature gap to fix, not a reason to research manually.
+- **Never skip HuggingFace.** Datasets and models are often the most valuable complement to the software tools — they tell you what people are actually building with.
+
 ## Process
 
-### 1. Pull the data
+### 1. Research the landscape
 
-Query the PT-Edge database (`psql $DATABASE_URL`) for the domain/category data:
+Use the research toolkit above to map the landscape. The workflow for each deep dive:
 
-- Domain overview: repo count, quality distribution, category count
-- Top projects by quality score (the recommendations)
-- Top projects by stars (popular — may differ from quality leaders)
-- Category landscape (subcategories with most activity)
-- Stale high-star repos (dependency risk warnings — only if famous)
-- Language distribution
-- GSC data: which pages Google is already ranking, what queries drive impressions
-- Umami data: which pages real visitors engage with
+1. **Start with semantic search** to discover the landscape — run 3-5 embedding queries with different phrasings to cast a wide net. Run at least one **unfiltered** search (no domain filter) to catch cross-domain repos that are relevant but classified elsewhere. The governance deep dive nearly missed guardrails-ai (6.5K stars, in llm-tools) because initial searches were filtered to agents only.
+2. **Pull the subcategory quality distribution early.** Query `avg(quality_score)`, `max(quality_score)`, and repo count per relevant subcategory. This does two things: it reveals the article's section structure (subcategories often map to sections), and the contrast between volume and quality becomes the core editorial tension. "250 repos, average quality 24/100" is more powerful than either number alone.
+3. **Check HN for community signal.** HN posts tell a story the repo data can't — where community energy is concentrated, what's generating meta-discussion, what pain points people are articulating. This shapes the narrative arc and helps you identify which layers/areas are mature vs early. Do this before outlining sections.
+4. **Use allocation scores** to identify which subcategories have the strongest demand signal (EHS for established demand, ES for emerging opportunity)
+5. **Cross-reference GSC** for which pages Google is already ranking — reinforce what's working. Even one click at good position tells you which page to anchor the article to. For topics where GSC data is thin, the deep dive itself becomes the demand generation.
+6. **Check Umami** for which pages attract business-intent or research-intent visitors
+7. **Use trending/breakouts** to find emerging projects the static search might miss
+8. **Check HuggingFace** for relevant datasets and models that complement the software tools
+9. **Map dependencies** to understand which tools are infrastructure vs application layer
+
+**After research, before writing:** Draft the section structure based on the subcategory distribution and HN signal. This was the most generative step in the governance deep dive — the four-layer stack (sandbox → guardrails → monitoring → auditing) emerged from the subcategory data and HN attention patterns, not from the article outline.
+
+**Save research outputs** to `docs/briefs/{slug}-research.md` before writing — this preserves the research for future reference and ensures expensive queries aren't repeated.
 
 ### 2. Identify featured repos and categories
 
@@ -122,6 +192,22 @@ grep -oP 'href="https://mcp\.phasetransitions\.ai[^"]*"' docs/substack/{slug}.ht
 - **Reverse links** from server detail pages to deep dives: driven by `featured_repos` in the `deep_dives` table. When `generate_site.py` runs, it queries all published deep dives and builds a reverse lookup. Any repo in `featured_repos` gets a "Featured in" section on its detail page linking to the deep dive. Zero manual maintenance.
 - **Live data** in deep dive templates: `repos.get()` pulls current stars, commits, quality scores at build time. Numbers stay fresh on every deploy.
 - **Insights index**: automatically lists all published deep dives from the database.
+
+## Lessons from production
+
+Observations from producing deep dives, updated as we learn.
+
+**Semantic search is dramatically better than keyword matching.** Three embedding queries for the governance piece returned a coherent landscape that naturally clustered into four layers. ILIKE on subcategory would have found about half the repos and missed all the cross-domain connections.
+
+**The subcategory taxonomy reveals article structure.** Pulling subcategory counts + avg/max quality early gives you the section outline almost for free. The governance four-layer stack emerged from the subcategory data, not from pre-planning.
+
+**HN is the best narrative signal.** Repo metrics tell you what exists. HN tells you what people care about and where they feel pain. The governance article's central claim — "sandboxing is the only mature layer" — came from seeing 492 HN points for Agent Safehouse vs. near-silence on policy enforcement tools.
+
+**Write the full article first, Substack second.** The Substack companion is a compression of the full piece. It wrote itself once the article structure was clear. Don't try to write them in parallel.
+
+**One GSC click can anchor an entire article.** The governance piece had just one click (agent governance toolkit, position 9.8), but that told us exactly which page and audience to anchor to. For topics with thin GSC data, the deep dive itself creates the demand — write the content that will generate future impressions.
+
+**Quality distribution is the editorial hook.** "250 repos exist" is a fact. "250 repos, average quality 24/100" is a story. Always pull avg and max quality per subcategory — the gap between volume and quality is where the analysis lives.
 
 ## Known gaps (on roadmap)
 

@@ -1,0 +1,156 @@
+<p>Your organisation is deploying autonomous agents. They're writing code, making API calls, accessing databases, and executing shell commands. The question isn't whether you need governance &mdash; it's whether any governance tooling actually exists that's ready for production.</p>
+
+<p>PT-Edge tracks {{ '{:,}'.format(1263) }} repositories across 12 agent governance subcategories and scores them daily on maintenance, adoption, maturity, and community. This guide maps what exists, what's mature, what's experimental, and where the critical gaps remain.</p>
+
+<h2>The governance stack: four layers, unequal maturity</h2>
+
+<p>Agent governance isn't one problem. It's a stack, and each layer is at a different stage of maturity:</p>
+
+<ol>
+  <li><strong>Sandboxing</strong> &mdash; runtime isolation. Prevent the agent from touching what it shouldn't. <em>Most mature.</em></li>
+  <li><strong>Guardrails</strong> &mdash; pre-action authorisation. Intercept and approve actions before execution. <em>Early but accelerating.</em></li>
+  <li><strong>Monitoring</strong> &mdash; observability. See what your agent did, trace decisions, track costs. <em>Mature, but borrowed from adjacent tooling.</em></li>
+  <li><strong>Auditing &amp; compliance</strong> &mdash; prove to regulators and stakeholders that your agents operate within policy. <em>Almost nothing exists.</em></li>
+</ol>
+
+<p>Understanding which layer you need &mdash; and which layers are actually ready &mdash; is the key decision.</p>
+
+<h2>Sandboxing: the only governance layer with real adoption</h2>
+
+<p>Execution sandboxing is where agent governance is most mature. The problem is well-defined (isolate untrusted code), the solutions draw on decades of container and VM technology, and there's real adoption.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set sandbox_projects = ['e2b-dev/E2B', 'alibaba/OpenSandbox', 'boxlite-ai/boxlite', 'eugene1g/agent-safehouse', 'always-further/nono', 'zerobootdev/zeroboot', 'mavdol/capsule'] %}
+    {% for name in sandbox_projects %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if name == 'e2b-dev/E2B' %}Cloud sandboxes, multi-language SDKs{% elif name == 'alibaba/OpenSandbox' %}Docker/K8s runtimes, enterprise-grade{% elif name == 'boxlite-ai/boxlite' %}Embeddable, stateful, hardware isolation{% elif name == 'eugene1g/agent-safehouse' %}macOS-native, filesystem-level{% elif name == 'always-further/nono' %}Kernel-enforced, capability-based, Rust{% elif name == 'zerobootdev/zeroboot' %}Sub-millisecond VMs via COW forking{% elif name == 'mavdol/capsule' %}WebAssembly isolation{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/e2b-dev/E2B/">E2B</a> ({{ repos.get('e2b-dev/E2B', {}).quality_score }}/100, {{ repos.get('e2b-dev/E2B', {}).stars | intcomma }} stars) is the market leader for cloud agent sandboxes. It's well-maintained ({{ repos.get('e2b-dev/E2B', {}).commits_30d | default(0) }} commits in the last 30 days) and has the highest quality score in the entire governance landscape. If you need cloud-hosted isolated environments and don't want to build infrastructure, E2B is the default choice.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/alibaba/OpenSandbox/">OpenSandbox</a> from Alibaba ({{ repos.get('alibaba/OpenSandbox', {}).quality_score }}/100, {{ repos.get('alibaba/OpenSandbox', {}).stars | intcomma }} stars, {{ repos.get('alibaba/OpenSandbox', {}).commits_30d | default(0) }} commits in the last 30 days) is the enterprise alternative. Multi-language SDKs, unified sandbox APIs, and Docker/Kubernetes runtimes. If you're running agents at scale on your own infrastructure, OpenSandbox is built for that.</p>
+
+<p>For local development, <a href="{{ domain_path('agents') }}/servers/eugene1g/agent-safehouse/">agent-safehouse</a> ({{ repos.get('eugene1g/agent-safehouse', {}).stars | intcomma }} stars) is the macOS-native option &mdash; it reached 492 points on Hacker News and focuses on filesystem-level isolation for local AI agents. <a href="{{ domain_path('agents') }}/servers/always-further/nono/">nono</a> ({{ repos.get('always-further/nono', {}).stars | intcomma }} stars, {{ repos.get('always-further/nono', {}).commits_30d | default(0) }} commits in the last 30 days) takes a more ambitious approach: kernel-enforced capability-based isolation with cryptographic audit chains, written in Rust.</p>
+
+<p>The sandboxing space is active enough that Hacker News is asking <em>"Why are so many rolling out their own AI/LLM agent sandboxing solution?"</em> &mdash; a sign the ecosystem is fragmenting before consolidating. Expect a shakeout over the next 6-12 months.</p>
+
+<h2>Guardrails: intercepting actions before they execute</h2>
+
+<p>Sandboxing limits <em>where</em> an agent can operate. Guardrails decide <em>what</em> an agent is allowed to do. This is the layer that decides whether a database query should run, whether a file deletion should proceed, or whether an API call should be blocked.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set guardrail_projects = ['microsoft/agent-governance-toolkit', 'guardrails-ai/guardrails', 'agentcontrol/agent-control', 'ucsandman/DashClaw', 'Dicklesworthstone/destructive_command_guard'] %}
+    {% for name in guardrail_projects %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(90) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/microsoft/agent-governance-toolkit/">Microsoft's agent-governance-toolkit</a> ({{ repos.get('microsoft/agent-governance-toolkit', {}).quality_score }}/100) is the most comprehensive project in this layer. It claims coverage of all 10 items in the OWASP Agentic Top 10: policy enforcement, zero-trust identity, execution sandboxing, and reliability engineering. With {{ repos.get('microsoft/agent-governance-toolkit', {}).stars | intcomma }} stars it's still early in adoption, but it's the only project attempting a full governance framework rather than solving a single problem.</p>
+
+<p><a href="{{ domain_path('llm-tools') }}/servers/guardrails-ai/guardrails/">guardrails-ai/guardrails</a> ({{ repos.get('guardrails-ai/guardrails', {}).stars | intcomma }} stars) is the most adopted project in this space, but it solves a narrower problem: LLM output validation. It's a guardrail on what the model <em>says</em>, not on what the agent <em>does</em>. For teams that need input/output filtering &mdash; PII detection, hallucination checks, schema enforcement &mdash; it's the established choice. But it doesn't cover the agent action layer.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/agentcontrol/agent-control/">agent-control</a> ({{ repos.get('agentcontrol/agent-control', {}).stars | intcomma }} stars) takes the control plane approach: centralised governance of runtime agent behaviour at scale. <a href="{{ domain_path('agents') }}/servers/ucsandman/DashClaw/">DashClaw</a> ({{ repos.get('ucsandman/DashClaw', {}).stars | intcomma }} stars, {{ repos.get('ucsandman/DashClaw', {}).quality_score }}/100) focuses on decision infrastructure &mdash; intercept actions, enforce guard policies, require approvals, produce audit-ready decision trails.</p>
+
+<p>For a simpler, immediate need, <a href="{{ domain_path('agents') }}/servers/Dicklesworthstone/destructive_command_guard/">destructive_command_guard</a> ({{ repos.get('Dicklesworthstone/destructive_command_guard', {}).stars | intcomma }} stars) blocks dangerous shell and git commands. It's a blunt instrument, but it's the kind of tool you deploy today while building something more sophisticated.</p>
+
+<p>The pattern across this layer: 250 repos in the <a href="{{ domain_path('agents') }}/categories/agent-authorization-guardrails/">agent-authorization-guardrails</a> category, but average quality is just 24.1/100. Most are experimental or demo-grade. The gap between what enterprises need and what exists is wide.</p>
+
+<h2>Security scanning: finding vulnerabilities before deployment</h2>
+
+<p>A growing class of tools scans agent configurations, skills, and MCP setups for security issues before they run in production.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/HeadyZhang/agent-audit/">agent-audit</a> ({{ repos.get('HeadyZhang/agent-audit', {}).quality_score }}/100, {{ repos.get('HeadyZhang/agent-audit', {}).stars | intcomma }} stars) is the most complete static scanner: 49 rules mapped to the <a href="{{ domain_path('agents') }}/servers/precize/Agentic-AI-Top10-Vulnerability/">OWASP Agentic Top 10</a>, with support for LangChain, CrewAI, and AutoGen. It covers prompt injection detection, MCP config auditing, and taint analysis.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/AgentSeal/agentseal/">AgentSeal</a> ({{ repos.get('AgentSeal/agentseal', {}).quality_score }}/100, {{ repos.get('AgentSeal/agentseal', {}).stars | intcomma }} stars) takes a broader approach &mdash; scanning your machine for dangerous skills, MCP configurations, supply chain attacks, and testing prompt injection resistance. <a href="{{ domain_path('agents') }}/servers/spiffy-oss/artguard/">artguard</a> focuses specifically on detecting malicious AI artifacts: skills, MCP servers, and IDE rule files.</p>
+
+<p>The <a href="{{ domain_path('agents') }}/servers/cosai-oasis/secure-ai-tooling/">CoSAI Risk Map</a> ({{ repos.get('cosai-oasis/secure-ai-tooling', {}).stars | intcomma }} stars) provides a framework rather than a tool &mdash; it's for identifying, analysing, and mitigating security risks in AI systems, developed under the OASIS standards body.</p>
+
+<h2>Monitoring: seeing what your agents do</h2>
+
+<p>Observability is the most mature adjacent capability. Several established tools provide visibility into agent behaviour, though they were built for general LLM monitoring and have been adapted for governance use cases.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Focus</th></tr>
+  </thead>
+  <tbody>
+    {% set monitoring_projects = ['AgentOps-AI/agentops', 'truera/trulens', 'coze-dev/coze-loop', 'TracecatHQ/tracecat'] %}
+    {% set monitoring_focus = {'AgentOps-AI/agentops': 'Agent monitoring, cost tracking, benchmarking', 'truera/trulens': 'Evaluation and tracking for LLM experiments', 'coze-dev/coze-loop': 'Full lifecycle: debug, evaluate, monitor', 'TracecatHQ/tracecat': 'Security automation, purpose-built for agents'} %}
+    {% for name in monitoring_projects %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ monitoring_focus.get(name, '&mdash;') }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/AgentOps-AI/agentops/">AgentOps</a> ({{ repos.get('AgentOps-AI/agentops', {}).stars | intcomma }} stars) is the most widely integrated &mdash; it works with CrewAI, Agno, OpenAI Agents SDK, LangChain, AutoGen, and CamelAI. <a href="{{ domain_path('agents') }}/servers/truera/trulens/">TruLens</a> ({{ repos.get('truera/trulens', {}).quality_score }}/100) has the highest quality score among monitoring tools, focused on evaluation and tracking.</p>
+
+<p>The distinction matters for governance: these tools tell you what happened. They don't prevent the wrong thing from happening. A monitoring tool can show you that an agent accessed a production database at 3am. A guardrail would have stopped it. For teams starting their governance journey, monitoring is the right first step &mdash; you need visibility before you can write enforcement policies.</p>
+
+<h2>The compliance gap: what's missing</h2>
+
+<p>The most striking finding in this landscape is what <em>doesn't</em> exist. Only <a href="{{ domain_path('agents') }}/servers/Cherise1608/agent-shield/">agent-shield</a> even attempts to map agent behaviour to regulatory frameworks &mdash; EU AI Act, GDPR, OWASP LLM Top 10, and NIST AI RMF. It has {{ repos.get('Cherise1608/agent-shield', {}).stars | intcomma }} stars.</p>
+
+<p>For enterprises that need to deploy agents in regulated environments &mdash; financial services, healthcare, government &mdash; there is almost no tooling that connects agent actions to compliance obligations. You can sandbox your agents and monitor their behaviour, but you cannot automatically demonstrate compliance.</p>
+
+<p>NIST is actively seeking public comment on AI agent security standards. The OWASP Agentic Top 10 was published in early 2026. The standards are being written, but the tools to implement them barely exist. This is the largest opportunity in the governance space.</p>
+
+<h2>Three patterns shaping agent governance</h2>
+
+<h3>1. Sandboxing first, governance later</h3>
+
+<p>Most teams start with isolation. It's the most tractable problem: you can sandbox an agent in an afternoon with E2B or agent-safehouse. Policy enforcement, compliance mapping, and audit trails require much more organisational work. The practical path is: sandbox now, add guardrails as you understand your agents' behaviour, then build compliance when regulators require it.</p>
+
+<h3>2. The OWASP Agentic Top 10 is creating a shared vocabulary</h3>
+
+<p>Six months ago, "agent governance" meant different things to every team. The <a href="{{ domain_path('agents') }}/servers/precize/Agentic-AI-Top10-Vulnerability/">OWASP Agentic Top 10</a> ({{ repos.get('precize/Agentic-AI-Top10-Vulnerability', {}).stars | intcomma }} stars) is changing that. Microsoft's governance toolkit explicitly maps to all 10 items. agent-audit's 49 rules are mapped to the same framework. This shared vocabulary will accelerate convergence &mdash; expect more tools to align to it over the next year.</p>
+
+<h3>3. The gap between "agent monitoring" and "agent governance" is closing</h3>
+
+<p>Monitoring tools are adding policy features. Governance tools are adding observability. <a href="{{ domain_path('agents') }}/servers/coze-dev/coze-loop/">coze-loop</a> already spans debug, evaluation, and monitoring in a single platform. As these categories converge, the governance stack will consolidate into fewer, more complete platforms rather than the fragmented landscape we see today.</p>
+
+<h2>How to use this data</h2>
+
+<p>Every project mentioned in this guide has a quality-scored page in our <a href="{{ domain_path('agents') }}/">agents directory</a>, updated daily. You can:</p>
+
+<ul>
+  <li>Browse all <a href="{{ domain_path('agents') }}/categories/agent-authorization-guardrails/">{{ 250 }} guardrails projects</a> ranked by quality</li>
+  <li>Compare <a href="{{ domain_path('agents') }}/categories/agent-code-sandboxing/">{{ 114 }} sandboxing tools</a> side by side</li>
+  <li>Track <a href="{{ domain_path('agents') }}/categories/ai-agent-vulnerability-scanning/">{{ 106 }} security scanning tools</a> as the space evolves</li>
+  <li>Check <a href="{{ domain_path('agents') }}/trending/">trending agent projects</a> to see what's gaining momentum this week</li>
+</ul>
+
+<p>Quality scores update daily from live GitHub, PyPI, and npm data. When a governance project stops being maintained, the score drops. When a new tool starts gaining real adoption, it climbs. The data does the work so you don't have to manually audit each repo before trusting it with your agent infrastructure.</p>
