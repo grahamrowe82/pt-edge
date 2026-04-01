@@ -96,6 +96,7 @@ class AIRepo(Base):
     topics: Mapped[list | None] = mapped_column(ARRAY(Text))
     license: Mapped[str | None] = mapped_column(String)
     last_pushed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     domain: Mapped[str] = mapped_column(String(50), nullable=False, default="uncategorized")
     discovered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

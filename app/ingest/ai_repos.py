@@ -204,7 +204,7 @@ def _batch_upsert(repos: list[dict]) -> int:
                 r["github_owner"], r["github_repo"], r["full_name"], r["name"],
                 r["description"], r["stars"], r["forks"], r["language"],
                 r["topics"] if r["topics"] else None, r["license"],
-                r["last_pushed_at"], r["archived"], r["domain"],
+                r["last_pushed_at"], r.get("created_at"), r["archived"], r["domain"],
             )
             for r in repos
         ]
@@ -214,7 +214,7 @@ def _batch_upsert(repos: list[dict]) -> int:
             INSERT INTO ai_repos (
                 github_owner, github_repo, full_name, name, description,
                 stars, forks, language, topics, license,
-                last_pushed_at, archived, domain, updated_at
+                last_pushed_at, created_at, archived, domain, updated_at
             ) VALUES %s
             ON CONFLICT (github_owner, github_repo) DO UPDATE SET
                 name = EXCLUDED.name,
@@ -225,6 +225,7 @@ def _batch_upsert(repos: list[dict]) -> int:
                 topics = EXCLUDED.topics,
                 license = EXCLUDED.license,
                 last_pushed_at = EXCLUDED.last_pushed_at,
+                created_at = COALESCE(EXCLUDED.created_at, ai_repos.created_at),
                 archived = EXCLUDED.archived,
                 domain = CASE
                     WHEN ai_repos.domain = 'uncategorized' THEN EXCLUDED.domain
@@ -233,7 +234,7 @@ def _batch_upsert(repos: list[dict]) -> int:
                 updated_at = NOW()
             """,
             tuples,
-            template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())",
+            template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())",
             page_size=500,
         )
         raw_conn.commit()

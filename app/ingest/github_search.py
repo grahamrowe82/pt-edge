@@ -224,6 +224,7 @@ async def _paginate(
                 "topics": item.get("topics") or [],
                 "license": lic.get("spdx_id"),
                 "last_pushed_at": item.get("pushed_at"),
+                "created_at": item.get("created_at"),
                 "archived": item.get("archived", False),
             })
 
