@@ -105,7 +105,6 @@ async def run_all() -> dict:
         ("npm_mcp", ingest_npm_mcp),
         ("ai_repo_downloads", ingest_ai_repo_downloads),
         ("ai_repo_commits", ingest_ai_repo_commits),
-        ("ai_repo_created_at", ingest_ai_repo_created_at),
         ("candidate_watchlist", refresh_candidate_watchlist),
         ("semantic_scholar", ingest_semantic_scholar),
         # ai_repos removed — runs on its own weekly cron (Saturday 12:00 UTC)
@@ -369,6 +368,17 @@ async def run_all() -> dict:
     except Exception as e:
         logger.warning(f"static_site deploy trigger failed: {e}")
         results["static_site"] = {"error": str(e)}
+
+    # Backfill created_at — runs last, uses remaining time in the day.
+    # Self-draining: becomes a no-op once all repos have created_at.
+    try:
+        results["ai_repo_created_at"] = await _run_with_retry(
+            "ai_repo_created_at", ingest_ai_repo_created_at
+        )
+        logger.info(f"ai_repo_created_at: {results['ai_repo_created_at']}")
+    except Exception as e:
+        logger.exception(f"ai_repo_created_at failed: {e}")
+        results["ai_repo_created_at"] = {"error": str(e)}
 
     # Summary
     errors = [k for k, v in results.items() if isinstance(v, dict) and "error" in v]
