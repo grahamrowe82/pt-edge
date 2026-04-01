@@ -1,0 +1,39 @@
+<p>"Agent skills" is the new vocabulary. Not just tool calling or function invocation — composable capabilities that agents acquire, combine, and reuse. PT-Edge tracks 2,700+ repos building this layer. Here's the map.</p>
+
+<h2>Skills vs tools vs MCP</h2>
+
+<p>Function calling is the primitive (one action, one response). MCP is the transport (standard protocol for discovering tools). <strong>Skills are higher-level</strong>: bundles of related capabilities with state and multi-step logic. A "research skill" combines web search, parsing, summarisation, and citation into one composable competency.</p>
+
+<h2>Where skills run: the platforms</h2>
+
+<p><strong><a href="https://mcp.phasetransitions.ai/agents/servers/ComposioHQ/composio/">Composio</a></strong> (87/100, 27K+ stars) is the quality leader — 1,000+ toolkits with built-in search, auth, and sandboxing. <strong><a href="https://mcp.phasetransitions.ai/agents/servers/agno-agi/agno/">agno</a></strong> (38K+ stars) has the largest user base. <strong><a href="https://mcp.phasetransitions.ai/agents/servers/agentscope-ai/agentscope/">AgentScope</a></strong> (83/100) focuses on agents you can see and trust.</p>
+
+<h2>Where skills are found: the collections</h2>
+
+<p><strong><a href="https://mcp.phasetransitions.ai/agents/servers/sickn33/antigravity-awesome-skills/">antigravity-awesome-skills</a></strong> (23K+ stars) is the largest: 1,000+ skills for Claude Code, Antigravity, and Cursor. <strong><a href="https://mcp.phasetransitions.ai/agents/servers/VoltAgent/awesome-agent-skills/">awesome-agent-skills</a></strong> (11K+ stars) offers 500+ cross-agent skills.</p>
+
+<p>Collections solve discovery but not quality. Not every skill in a 1,000-item list is production-ready.</p>
+
+<h2>The registry problem</h2>
+
+<p>292 registry repos, average quality 22.9/100. The ecosystem wants a universal registry but nobody has won. <strong><a href="https://mcp.phasetransitions.ai/agents/servers/memodb-io/Acontext/">Acontext</a></strong> (3.2K stars) treats skills as a memory layer — contextual retrieval instead of static lookup. Whoever cracks skill discovery becomes the npm of agent skills.</p>
+
+<h2>The trust gap</h2>
+
+<p>Skills execute with agent-level permissions. HN captured the concern: <em>"OpenClaw is basically a cascade of LLMs in prime position to mess stuff up"</em> (110 points). The OpenClaw skill-integrations category averages just 14.8/100 quality — most individual skills are trivial wrappers.</p>
+
+<p>The 64 repos in agent-skill-security are building trust infrastructure, but it's early. Curated collections and sandboxing help. A systematic approach to skill vetting doesn't exist yet.</p>
+
+<h2>Three patterns to watch</h2>
+
+<p><strong>Collections outpace quality controls.</strong> 1,000+ skill collections exist alongside no automated quality vetting. Benchmarking (SkillsBench, 364 HN points) is the emerging answer.</p>
+
+<p><strong>Registries fragment before consolidating.</strong> 292 registry repos is too many. MCP handles tool discovery; skill-level discovery is still unsolved.</p>
+
+<p><strong>Trust is the binding constraint.</strong> Until skill security vetting is automated, adoption will be limited to curated, trusted sources.</p>
+
+<h2>Explore the full data</h2>
+
+<p>The full deep dive is at <a href="https://mcp.phasetransitions.ai/insights/agent-skills-architecture/">mcp.phasetransitions.ai/insights/agent-skills-architecture</a>.</p>
+
+<p>Browse <a href="https://mcp.phasetransitions.ai/agents/categories/agentic-workflow-skills/">327 workflow skills</a>, <a href="https://mcp.phasetransitions.ai/agents/categories/agent-skill-registry/">292 registries</a>, or <a href="https://mcp.phasetransitions.ai/agents/categories/agent-skill-security/">64 security tools</a> — all quality-scored daily.</p>

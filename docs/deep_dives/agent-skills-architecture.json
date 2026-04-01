@@ -1,0 +1,42 @@
+{
+    "slug": "agent-skills-architecture",
+    "title": "How Agents Acquire Skills: The Emerging Architecture of Composable Capabilities",
+    "subtitle": "Skills, registries, marketplaces, and the trust problem — scored on quality daily. A map of the 2,700+ repos building the capability layer for autonomous agents.",
+    "author": "Graham Rowe",
+    "primary_domain": "agents",
+    "domains": ["agents", "llm-tools"],
+    "meta_description": "Agent skills architecture in 2026: how Composio, OpenClaw, Antigravity, and 2,700+ repos are building the composable capability layer for AI agents. Quality-scored daily. What works, what's noise, and where the trust gap is.",
+    "template_file": "agent-skills-architecture.html",
+    "featured_repos": [
+        "ComposioHQ/composio",
+        "agno-agi/agno",
+        "agentscope-ai/agentscope",
+        "awslabs/agent-squad",
+        "sickn33/antigravity-awesome-skills",
+        "VoltAgent/awesome-agent-skills",
+        "LeoYeAI/openclaw-master-skills",
+        "memodb-io/Acontext",
+        "hashgraph-online/registry-broker-skills",
+        "gotalab/skillport",
+        "powroom/flins",
+        "langwatch/better-agents",
+        "AgentsMesh/AgentsMesh",
+        "synaptiai/agent-capability-standard",
+        "0xmythril/clawdtm",
+        "iflytek/astron-agent",
+        "darrenhinde/OpenAgentsControl",
+        "AgentDock/AgentDock",
+        "agent-skills-hub/agent-skills-hub",
+        "mikeng-io/agent-skills"
+    ],
+    "featured_categories": [
+        "agents:agentic-workflow-skills",
+        "agents:agent-skill-registry",
+        "agents:openclaw-skill-marketplace",
+        "agents:agent-runtime-engines",
+        "agents:typescript-agent-frameworks",
+        "agents:agent-communication-standards",
+        "agents:agent-skill-security"
+    ],
+    "status": "published"
+}
