@@ -1,0 +1,55 @@
+<p>Every week, developers build keyword search systems, tune Elasticsearch clusters, or write regex pipelines to match text. And every week, they could have replaced the whole thing with an embedding API call and a Postgres query.</p>
+
+<p>Embeddings sound like ML research. They're not. In 2026, generating an embedding is an API call that costs fractions of a cent. Storing and searching embeddings is a Postgres extension. The entire workflow is 20 lines of code and the results are dramatically better than keyword matching.</p>
+
+<h2>What embeddings actually are</h2>
+
+<p>An embedding turns text into a list of numbers. Similar text produces similar numbers. "Government infrastructure tender" and "public works construction bid" have near-identical embeddings despite sharing zero keywords. That's the magic: semantic similarity without keyword matching.</p>
+
+<p>You generate one with a single API call. It costs less than $0.00002. No model training, no GPU, no data pipeline.</p>
+
+<h2>Just use Postgres</h2>
+
+<p>The vector database market wants you to believe you need specialised infrastructure. For most applications, you don't.</p>
+
+<p><strong>pgvector</strong> is a Postgres extension. If you already run Postgres, you add the extension, create a vector column, and query with <code>ORDER BY embedding &lt;=&gt; query_vector LIMIT 10</code>. No new database, no new vendor.</p>
+
+<p>The threshold is roughly 1 million vectors. Below that, pgvector is simpler, cheaper, and fast enough. Above that, the dedicated vector databases earn their keep: <a href="https://mcp.phasetransitions.ai/vector-db/servers/qdrant/qdrant/">Qdrant</a> (87/100), <a href="https://mcp.phasetransitions.ai/vector-db/servers/chroma-core/chroma/">Chroma</a> (87/100), <a href="https://mcp.phasetransitions.ai/vector-db/servers/weaviate/weaviate/">Weaviate</a> (87/100), <a href="https://mcp.phasetransitions.ai/vector-db/servers/lancedb/lancedb/">LanceDB</a> (87/100). All excellent, all overkill for most use cases.</p>
+
+<h2>Which embedding model?</h2>
+
+<p><strong>If you have an OpenAI key:</strong> <code>text-embedding-3-small</code>. Cheap, good quality, no infrastructure. Done.</p>
+
+<p><strong>If you want local:</strong> <a href="https://mcp.phasetransitions.ai/embeddings/servers/qdrant/fastembed/">fastembed</a> (77/100) from Qdrant — runs on CPU. <a href="https://mcp.phasetransitions.ai/embeddings/servers/Blaizzy/mlx-embeddings/">mlx-embeddings</a> (69/100) for Apple Silicon.</p>
+
+<p><strong>Best open-source:</strong> <a href="https://mcp.phasetransitions.ai/embeddings/servers/FlagOpen/FlagEmbedding/">FlagEmbedding</a> (82/100) — the BGE models that top the <a href="https://mcp.phasetransitions.ai/embeddings/servers/embeddings-benchmark/mteb/">MTEB benchmark</a> (92/100).</p>
+
+<h2>What embeddings replace</h2>
+
+<p>This is the part nobody says clearly enough. Embeddings don't supplement your existing approach. They replace it:</p>
+
+<ul>
+  <li><strong>Keyword search:</strong> Embeddings find semantically similar results when keywords differ. No synonym dictionaries, no stemming.</li>
+  <li><strong>Regex matching:</strong> Embed your categories, embed the input, take the closest match. Works across languages.</li>
+  <li><strong>Elasticsearch:</strong> The operational cost of a cluster usually exceeds what you get from it. pgvector gives better relevance with zero additional infrastructure.</li>
+</ul>
+
+<h2>The cost reality</h2>
+
+<p>Embedding 100,000 documents: ~$2. Each search query: ~$0.00002. Storage for 1M vectors: ~6GB in standard Postgres. Compare to running an Elasticsearch cluster ($50-500/month) or the engineering hours writing regex.</p>
+
+<h2>Getting started in 15 minutes</h2>
+
+<ol>
+  <li>Get an embedding API key (OpenAI, Cohere, or install <a href="https://mcp.phasetransitions.ai/embeddings/servers/qdrant/fastembed/">fastembed</a> for local)</li>
+  <li>Add pgvector: <code>CREATE EXTENSION vector;</code></li>
+  <li>Create a column: <code>ALTER TABLE docs ADD COLUMN embedding vector(1536);</code></li>
+  <li>Embed your data (loop, API call, store)</li>
+  <li>Search: <code>SELECT * FROM docs ORDER BY embedding &lt;=&gt; $query LIMIT 10;</code></li>
+</ol>
+
+<p>No ML pipeline, no model training, no GPU. If you've been putting off "adding AI" because it seemed complex, this is the shortcut.</p>
+
+<p>The full guide with quality-scored project tables: <a href="https://mcp.phasetransitions.ai/insights/embeddings-shortcut/">mcp.phasetransitions.ai/insights/embeddings-shortcut</a>.</p>
+
+<p>Browse all <a href="https://mcp.phasetransitions.ai/embeddings/categories/">113 embedding categories</a>, <a href="https://mcp.phasetransitions.ai/vector-db/categories/">vector database tools</a>, or <a href="https://mcp.phasetransitions.ai/rag/categories/">RAG frameworks</a>.</p>

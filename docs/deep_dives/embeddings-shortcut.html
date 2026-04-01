@@ -1,0 +1,137 @@
+<p>Every week, developers build elaborate keyword search systems, tune Elasticsearch clusters, or write increasingly brittle regex pipelines to match text. And every week, they could have replaced the whole thing with an embedding API call and a Postgres query.</p>
+
+<p>Embeddings sound like ML research. They're not. In 2026, generating an embedding is an API call that costs fractions of a cent. Storing and searching embeddings is a Postgres extension. The entire workflow is 20 lines of code and the results are dramatically better than keyword matching for almost any text similarity, search, or classification task.</p>
+
+<p>If you're building anything that involves matching, searching, or comparing text and you're not using embeddings, you're working too hard.</p>
+
+<h2>What embeddings actually are (in 30 seconds)</h2>
+
+<p>An embedding turns text into a list of numbers &mdash; a vector. Similar text produces similar vectors. "government infrastructure tender" and "public works construction bid" have almost identical embeddings even though they share zero keywords. That's the magic: semantic similarity without keyword matching.</p>
+
+<p>You generate an embedding with one API call:</p>
+
+<pre><code>response = openai.embeddings.create(
+    model="text-embedding-3-small",
+    input="your text here"
+)
+vector = response.data[0].embedding  # list of 1536 floats</code></pre>
+
+<p>That's it. No model training, no data pipeline, no GPU. One API call, one vector, less than $0.00002.</p>
+
+<h2>The storage question: just use Postgres</h2>
+
+<p>The vector database market wants you to believe you need specialised infrastructure. For most applications, you don't.</p>
+
+<p><strong>pgvector</strong> is a Postgres extension that adds vector column types and similarity search. If you already run Postgres (and you probably do), you add the extension, create a column, and query with <code>ORDER BY embedding &lt;=&gt; query_vector LIMIT 10</code>. No new database, no new ops burden, no new vendor.</p>
+
+<p>The honest breakdown:</p>
+
+<table>
+  <thead>
+    <tr><th>Option</th><th>When to use</th><th>When not to</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>pgvector in Postgres</strong></td>
+      <td>Under ~1M vectors, you already use Postgres, you want simplicity</td>
+      <td>Billions of vectors, need sub-millisecond latency at scale</td>
+    </tr>
+    <tr>
+      <td><strong>SQLite + extensions</strong></td>
+      <td>Local-first apps, prototyping, single-user tools</td>
+      <td>Concurrent writes, production multi-user</td>
+    </tr>
+    <tr>
+      <td><strong>Dedicated vector DB</strong></td>
+      <td>10M+ vectors, need advanced filtering + vector search, performance-critical</td>
+      <td>Under 1M vectors (overkill), tight budgets (another service to run)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>The threshold is roughly 1 million vectors. Below that, pgvector in your existing database is simpler, cheaper, and fast enough. Above that, or if you need complex filtered vector search at scale, the dedicated vector databases earn their keep:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set vdbs = ['qdrant/qdrant', 'chroma-core/chroma', 'weaviate/weaviate', 'lancedb/lancedb'] %}
+    {% for name in vdbs %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>All four score 87/100 &mdash; these are well-maintained, well-adopted projects. <a href="{{ domain_path('vector-db') }}/servers/qdrant/qdrant/">Qdrant</a> and <a href="{{ domain_path('vector-db') }}/servers/weaviate/weaviate/">Weaviate</a> are the production-grade options. <a href="{{ domain_path('vector-db') }}/servers/chroma-core/chroma/">Chroma</a> is the developer-friendly choice (great for prototyping, simple API). <a href="{{ domain_path('vector-db') }}/servers/lancedb/lancedb/">LanceDB</a> is serverless and embedded &mdash; no separate process to run.</p>
+
+<p>But if your dataset is under a million records: <strong>pgvector. In the Postgres you already have. Move on.</strong></p>
+
+<h2>Which embedding model?</h2>
+
+<p>Another area where the decision is simpler than it looks:</p>
+
+<p><strong>If you have an OpenAI API key:</strong> Use <code>text-embedding-3-small</code>. It's cheap ($0.02 per million tokens), good quality, and you don't have to run anything. For better quality at 6x the cost, <code>text-embedding-3-large</code>.</p>
+
+<p><strong>If you want to run locally:</strong> <a href="{{ domain_path('embeddings') }}/servers/qdrant/fastembed/">fastembed</a> ({{ repos.get('qdrant/fastembed', {}).quality_score }}/100) from Qdrant. Lightweight, fast, runs on CPU. <a href="{{ domain_path('embeddings') }}/servers/Blaizzy/mlx-embeddings/">mlx-embeddings</a> ({{ repos.get('Blaizzy/mlx-embeddings', {}).quality_score }}/100) for Apple Silicon.</p>
+
+<p><strong>If you need the best open-source model:</strong> <a href="{{ domain_path('embeddings') }}/servers/FlagOpen/FlagEmbedding/">FlagEmbedding</a> ({{ repos.get('FlagOpen/FlagEmbedding', {}).quality_score }}/100, {{ repos.get('FlagOpen/FlagEmbedding', {}).stars | intcomma }} stars) &mdash; the BGE embedding models that consistently top the <a href="{{ domain_path('embeddings') }}/servers/embeddings-benchmark/mteb/">MTEB benchmark</a> ({{ repos.get('embeddings-benchmark/mteb', {}).quality_score }}/100).</p>
+
+<p><strong>If you want a full pipeline, not just embeddings:</strong> <a href="{{ domain_path('vector-db') }}/servers/neuml/txtai/">txtai</a> ({{ repos.get('neuml/txtai', {}).quality_score }}/100) wraps embeddings, indexing, and search into one framework. Good for prototyping end-to-end semantic search without assembling components.</p>
+
+<h2>What embeddings replace</h2>
+
+<p>This is the part nobody tells you clearly enough. Embeddings don't <em>supplement</em> your existing approach. They <em>replace</em> it, and the replacement is better:</p>
+
+<ul>
+  <li><strong>Keyword search</strong> &mdash; Embeddings find semantically similar results even when keywords differ. "cheap flights to Paris" matches "budget airfare France." No synonym dictionaries, no stemming rules, no query expansion. Just vectors.</li>
+  <li><strong>Regex matching</strong> &mdash; If you're writing regex to classify or route text, embeddings do it better with less code. Embed your categories, embed the input, take the closest match. Works across languages too.</li>
+  <li><strong>Elasticsearch / Solr</strong> &mdash; For most teams, the operational cost of running an Elasticsearch cluster far exceeds what they get from it. pgvector + embeddings gives better relevance with zero additional infrastructure.</li>
+  <li><strong>TF-IDF / BM25</strong> &mdash; These are good algorithms that embeddings have surpassed. <a href="{{ domain_path('embeddings') }}/servers/xhluca/bm25s/">bm25s</a> ({{ repos.get('xhluca/bm25s', {}).quality_score }}/100) is an excellent BM25 implementation if you need it as a baseline or hybrid, but pure embedding search outperforms it on most benchmarks.</li>
+</ul>
+
+<h2>The cost reality</h2>
+
+<p>The biggest misconception about embeddings is that they're expensive. They were in 2023. In 2026:</p>
+
+<ul>
+  <li><strong>Embedding 100,000 documents:</strong> ~$2 with OpenAI's small model. One-time cost.</li>
+  <li><strong>Embedding each search query:</strong> ~$0.00002. Essentially free.</li>
+  <li><strong>Storage:</strong> 1M vectors at 1536 dimensions = ~6GB. Fits in a standard Postgres instance.</li>
+  <li><strong>Compute:</strong> pgvector similarity search over 1M vectors takes milliseconds on commodity hardware.</li>
+</ul>
+
+<p>Compare this to running an Elasticsearch cluster ($50-500/month), maintaining a keyword search pipeline (ongoing engineering time), or the developer hours spent writing and debugging regex patterns. Embeddings are cheaper on every dimension.</p>
+
+<h2>Getting started in 15 minutes</h2>
+
+<p>The practical path:</p>
+
+<ol>
+  <li><strong>Get an embedding API key.</strong> OpenAI, Cohere, or Voyage. Or install <a href="{{ domain_path('embeddings') }}/servers/qdrant/fastembed/">fastembed</a> for local.</li>
+  <li><strong>Add pgvector to your Postgres.</strong> <code>CREATE EXTENSION vector;</code> One line.</li>
+  <li><strong>Create a column.</strong> <code>ALTER TABLE documents ADD COLUMN embedding vector(1536);</code></li>
+  <li><strong>Embed your data.</strong> Loop through your rows, call the API, store the vector.</li>
+  <li><strong>Search.</strong> <code>SELECT * FROM documents ORDER BY embedding &lt;=&gt; $query_vector LIMIT 10;</code></li>
+</ol>
+
+<p>That's the entire implementation. No ML pipeline, no model training, no GPU, no Kubernetes. If you've been putting off "adding AI" to your application because it seemed complex, this is the shortcut.</p>
+
+<h2>Go deeper</h2>
+
+<p>Every project mentioned here has a quality-scored page in our directory, updated daily:</p>
+
+<ul>
+  <li><a href="{{ domain_path('embeddings') }}/categories/">All {{ 113 }} embedding categories</a> &mdash; from sentence transformers to graph embeddings to multimodal</li>
+  <li><a href="{{ domain_path('vector-db') }}/categories/">Vector database categories</a> &mdash; Qdrant, Chroma, Weaviate, pgvector ecosystem, and more</li>
+  <li><a href="{{ domain_path('embeddings') }}/trending/">Trending embedding projects</a> &mdash; what's moving this week</li>
+  <li><a href="{{ domain_path('rag') }}/categories/">RAG categories</a> &mdash; where embeddings meet retrieval-augmented generation</li>
+</ul>

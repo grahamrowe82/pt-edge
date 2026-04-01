@@ -1,0 +1,41 @@
+{
+    "slug": "embeddings-shortcut",
+    "title": "Embeddings Are Easier Than Whatever You're Doing Instead",
+    "subtitle": "You're writing regex, tuning Elasticsearch, or building keyword indexes. Meanwhile, 20 lines of code and a $0.02 API call would give you better results. Here's how to stop overcomplicating it.",
+    "author": "Graham Rowe",
+    "primary_domain": "embeddings",
+    "domains": ["embeddings", "vector-db", "rag"],
+    "meta_description": "Embeddings are cheaper, simpler, and more powerful than keyword search, regex, or Elasticsearch for most use cases. pgvector in your existing Postgres handles 90% of needs. Here's the practical guide.",
+    "template_file": "embeddings-shortcut.html",
+    "featured_repos": [
+        "embeddings-benchmark/mteb",
+        "FlagOpen/FlagEmbedding",
+        "MinishLab/model2vec",
+        "qdrant/fastembed",
+        "Blaizzy/mlx-embeddings",
+        "shibing624/text2vec",
+        "typesense/typesense",
+        "huggingface/text-embeddings-inference",
+        "lancedb/lancedb",
+        "qdrant/qdrant",
+        "chroma-core/chroma",
+        "weaviate/weaviate",
+        "neuml/txtai",
+        "meilisearch/meilisearch",
+        "srbhr/Resume-Matcher",
+        "xhluca/bm25s",
+        "qdrant/qdrant-client",
+        "pixeltable/pixeltable",
+        "topoteretes/cognee"
+    ],
+    "featured_categories": [
+        "embeddings:self-hosted-embedding-servers",
+        "embeddings:embedding-evaluation-benchmarks",
+        "embeddings:text-embedding-runtimes",
+        "vector-db:postgresql-vector-extensions",
+        "vector-db:qdrant-vector-search",
+        "vector-db:chroma-database-tools",
+        "vector-db:semantic-search-engines"
+    ],
+    "status": "published"
+}
