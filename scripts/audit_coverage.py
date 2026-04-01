@@ -7,10 +7,23 @@ Usage:
 
 Discovers AI-related awesome lists on GitHub, extracts every repo they reference,
 reconciles against our ai_repos table, classifies gaps, and diagnoses why the
-scanner missed them.
+scanner missed them. Runs as Step 4 of the weekly structural cron (Sunday 3am UTC).
 
 Principle: we never manually add missing repos. We diagnose why the scanner
 didn't find them and fix the scanner.
+
+Checking results after a run:
+
+    -- Worst-covered lists first
+    SELECT source_full_name, coverage_pct, matched, unmatched
+    FROM coverage_snapshots ORDER BY scan_date DESC, coverage_pct ASC;
+
+    -- Top genuine gaps (active repos we're missing)
+    SELECT alr.repo_full_name, alr.github_stars, alr.github_description, als.full_name as source
+    FROM awesome_list_repos alr
+    JOIN awesome_list_sources als ON als.id = alr.source_id
+    WHERE alr.status = 'unmatched' AND COALESCE(alr.github_stars, 0) >= 100
+    ORDER BY alr.github_stars DESC LIMIT 20;
 """
 
 import argparse
