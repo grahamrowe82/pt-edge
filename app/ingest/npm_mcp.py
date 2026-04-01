@@ -109,6 +109,7 @@ async def _fetch_github_metadata(
         "topics": data.get("topics") or None,
         "license": (data.get("license") or {}).get("spdx_id"),
         "last_pushed_at": data.get("pushed_at"),
+        "created_at": data.get("created_at"),
         "archived": data.get("archived", False),
         "domain": "mcp",
     }
@@ -127,8 +128,8 @@ def _batch_upsert(repos: list[dict], npm_names: dict[str, str]) -> int:
             (
                 r["github_owner"], r["github_repo"], r["full_name"], r["name"],
                 r["description"], r["stars"], r["forks"], r["language"],
-                r["topics"], r["license"], r["last_pushed_at"], r["archived"],
-                r["domain"],
+                r["topics"], r["license"], r["last_pushed_at"], r.get("created_at"),
+                r["archived"], r["domain"],
                 npm_names.get(r["full_name"].lower(), ""),
             )
             for r in repos
@@ -139,7 +140,7 @@ def _batch_upsert(repos: list[dict], npm_names: dict[str, str]) -> int:
             INSERT INTO ai_repos (
                 github_owner, github_repo, full_name, name, description,
                 stars, forks, language, topics, license,
-                last_pushed_at, archived, domain, npm_package, updated_at
+                last_pushed_at, created_at, archived, domain, npm_package, updated_at
             ) VALUES %s
             ON CONFLICT (github_owner, github_repo) DO UPDATE SET
                 description = COALESCE(EXCLUDED.description, ai_repos.description),
@@ -149,6 +150,7 @@ def _batch_upsert(repos: list[dict], npm_names: dict[str, str]) -> int:
                 topics = EXCLUDED.topics,
                 license = EXCLUDED.license,
                 last_pushed_at = EXCLUDED.last_pushed_at,
+                created_at = COALESCE(EXCLUDED.created_at, ai_repos.created_at),
                 archived = EXCLUDED.archived,
                 domain = CASE
                     WHEN ai_repos.domain = 'uncategorized' THEN EXCLUDED.domain
@@ -162,7 +164,7 @@ def _batch_upsert(repos: list[dict], npm_names: dict[str, str]) -> int:
                 updated_at = NOW()
             """,
             tuples,
-            template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())",
+            template="(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())",
             page_size=500,
         )
         raw_conn.commit()
