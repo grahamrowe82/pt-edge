@@ -884,7 +884,7 @@ class TestRateLimiter:
 
     def test_rpm_setting(self):
         from app.ingest.rate_limit import ANTHROPIC_LIMITER, OPENAI_LIMITER
-        assert ANTHROPIC_LIMITER.rpm == 40
+        assert ANTHROPIC_LIMITER.rpm == 120
         assert OPENAI_LIMITER.rpm == 400
 
     def test_interval_calculation(self):
