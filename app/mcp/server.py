@@ -4147,7 +4147,190 @@ async def radar() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Tool 22: explain — deep methodology documentation
+# Tool 22: nucleation_scan — surfaces forming patterns before they're named
+# ---------------------------------------------------------------------------
+
+@mcp.tool()
+@track_usage
+async def nucleation_scan(min_score: int = 30, limit: int = 20) -> str:
+    """Surfaces nucleation signals — patterns forming in the AI ecosystem
+    that haven't been named yet. Shows projects with unusual cross-signal
+    momentum and subcategories with accelerating creation velocity.
+
+    Projects with narrative_gap=True have strong GitHub traction but zero
+    media coverage — the moment before a phase transition crystallizes.
+
+    Use radar() for untracked candidates. Use nucleation_scan() for patterns
+    in what we already track.
+
+    Args:
+        min_score: Minimum nucleation score for projects (0-100, default 30)
+        limit: Max rows per section (default 20)
+    """
+    lines = [
+        "NUCLEATION SCAN",
+        "=" * 70,
+        "",
+    ]
+
+    try:
+        with engine.connect() as conn:
+            # ------------------------------------------------------------------
+            # SECTION 1: PROJECT SIGNALS
+            # ------------------------------------------------------------------
+            project_rows = conn.execute(text("""
+                SELECT full_name, name, domain, subcategory, stars,
+                       nucleation_score, narrative_gap,
+                       star_delta_7d, star_velocity_zscore,
+                       hn_posts_7d, hn_points_7d,
+                       newsletter_mentions_7d, newsletter_feeds_7d,
+                       releases_7d, commits_30d
+                FROM mv_nucleation_project
+                WHERE nucleation_score >= :min_score
+                ORDER BY nucleation_score DESC
+                LIMIT :limit
+            """), {"min_score": min_score, "limit": limit}).fetchall()
+
+            lines.append("PROJECT NUCLEATION SIGNALS")
+            lines.append("-" * 70)
+
+            if project_rows:
+                lines.append(
+                    f"  {'#':<3} {'Project':<30} {'Score':>5}  "
+                    f"{'Δ★ 7d':>7}  {'z':>5}  {'HN':>4}  {'NL':>3}  {'Rel':>3}  {'Gap':<5}"
+                )
+                lines.append("  " + "-" * 68)
+
+                narrative_gap_count = 0
+                for i, r in enumerate(project_rows, 1):
+                    m = r._mapping
+                    name = str(m["full_name"] or "?")
+                    if len(name) > 28:
+                        name = name[:27] + "…"
+                    score = int(m["nucleation_score"] or 0)
+                    delta = int(m["star_delta_7d"] or 0)
+                    zscore = float(m["star_velocity_zscore"] or 0)
+                    hn = int(m["hn_posts_7d"] or 0)
+                    nl = int(m["newsletter_mentions_7d"] or 0)
+                    rel = int(m["releases_7d"] or 0)
+                    gap = bool(m["narrative_gap"])
+                    if gap:
+                        narrative_gap_count += 1
+
+                    delta_str = f"+{delta:,}" if delta >= 0 else f"{delta:,}"
+                    gap_str = "★ GAP" if gap else ""
+
+                    lines.append(
+                        f"  {i:<3} {name:<30} {score:>5}  "
+                        f"{delta_str:>7}  {zscore:>5.1f}  {hn:>4}  {nl:>3}  {rel:>3}  {gap_str:<5}"
+                    )
+            else:
+                lines.append("  No projects above threshold.")
+                lines.append("  Try lowering min_score or check that mv_nucleation_project has been refreshed.")
+
+            # ------------------------------------------------------------------
+            # SECTION 2: CATEGORY CREATION VELOCITY
+            # ------------------------------------------------------------------
+            lines.append("")
+            lines.append("CATEGORY CREATION VELOCITY")
+            lines.append("-" * 70)
+
+            cat_rows = conn.execute(text("""
+                SELECT domain, subcategory,
+                       new_repos_7d, new_repos_14d, new_repo_stars_7d,
+                       acceleration,
+                       hn_coverage_7d, newsletter_coverage_7d,
+                       creation_without_buzz
+                FROM mv_nucleation_category
+                WHERE new_repos_7d >= 1
+                ORDER BY new_repos_7d DESC
+                LIMIT :limit
+            """), {"limit": limit}).fetchall()
+
+            if cat_rows:
+                lines.append(
+                    f"  {'#':<3} {'Domain':<16} {'Subcategory':<30} "
+                    f"{'7d':>4}  {'14d':>4}  {'★ new':>7}  {'Accel':>5}  {'Buzz':<6}"
+                )
+                lines.append("  " + "-" * 68)
+
+                buzz_gap_count = 0
+                for i, r in enumerate(cat_rows, 1):
+                    m = r._mapping
+                    domain = str(m["domain"] or "?")[:14]
+                    subcat = str(m["subcategory"] or "?")
+                    if len(subcat) > 28:
+                        subcat = subcat[:27] + "…"
+                    n7 = int(m["new_repos_7d"] or 0)
+                    n14 = int(m["new_repos_14d"] or 0)
+                    stars = int(m["new_repo_stars_7d"] or 0)
+                    accel = m["acceleration"]
+                    accel_str = f"{float(accel):.1f}x" if accel is not None else "—"
+                    no_buzz = bool(m["creation_without_buzz"])
+                    if no_buzz:
+                        buzz_gap_count += 1
+                    buzz_str = "QUIET" if no_buzz else ""
+
+                    lines.append(
+                        f"  {i:<3} {domain:<16} {subcat:<30} "
+                        f"{n7:>4}  {n14:>4}  {_fmt_number(stars):>7}  {accel_str:>5}  {buzz_str:<6}"
+                    )
+            else:
+                lines.append("  No categories with new repo creation in the last 7 days.")
+
+            # ------------------------------------------------------------------
+            # NARRATIVES
+            # ------------------------------------------------------------------
+            lines.append("")
+            lines.append("NARRATIVES")
+            lines.append("-" * 70)
+
+            # Summary stats
+            total_scored = conn.execute(text(
+                "SELECT COUNT(*) FROM mv_nucleation_project"
+            )).scalar() or 0
+
+            gap_count = conn.execute(text(
+                "SELECT COUNT(*) FROM mv_nucleation_project WHERE narrative_gap"
+            )).scalar() or 0
+
+            quiet_count = conn.execute(text(
+                "SELECT COUNT(*) FROM mv_nucleation_category WHERE creation_without_buzz"
+            )).scalar() or 0
+
+            lines.append(f"  • {total_scored:,} projects scored, {gap_count} with narrative gaps")
+            lines.append(f"  • {quiet_count} subcategories building without buzz")
+
+            if project_rows:
+                top = project_rows[0]._mapping
+                lines.append(
+                    f"  • Top signal: {top['full_name']} "
+                    f"(score {top['nucleation_score']}, "
+                    f"Δ★ {int(top['star_delta_7d'] or 0):+,})"
+                )
+
+            if cat_rows:
+                top_cat = cat_rows[0]._mapping
+                lines.append(
+                    f"  • Fastest creation: {top_cat['domain']}/{top_cat['subcategory']} "
+                    f"({top_cat['new_repos_7d']} new repos in 7d)"
+                )
+
+            lines.append("")
+            lines.append("  ★ GAP = GitHub signal without media coverage (predictive edge)")
+            lines.append("  QUIET = builders active, HN + newsletters silent")
+            lines.append("")
+            lines.append("  Use project_pulse('owner/repo') to drill into specific projects.")
+            lines.append("  Use topic('theme') to explore a category in depth.")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Error generating nucleation scan: {e}"
+
+
+# ---------------------------------------------------------------------------
+# Tool 23: explain — deep methodology documentation
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
