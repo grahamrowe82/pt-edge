@@ -1,0 +1,33 @@
+<p>Your AI agent needs to interact with the web. Maybe it extracts data from a page, maybe it fills out forms, maybe it monitors sites for changes. You search GitHub and find 340+ repos in the browser automation space alone. PT-Edge tracks them all and scores them daily. Here's what the data says about your options.</p>
+
+<h2>Three layers, not one problem</h2>
+
+<p>Most confusion comes from treating browser automation as a single category. It isn't. The space has stratified into three distinct layers, and you probably need one or two of them, not all three.</p>
+
+<p><strong>Layer 1: Data extraction</strong> — turn web pages into structured data. <a href="https://mcp.phasetransitions.ai/perception/servers/firecrawl/firecrawl/">Firecrawl</a> (92,000+ stars) dominates this layer with LLM-ready markdown output, JavaScript rendering, and an MCP server. <a href="https://mcp.phasetransitions.ai/perception/servers/scrapy/scrapy/">Scrapy</a> remains the veteran (60K+ stars, 3M downloads/month, BSD-licensed) for teams that want full control. The surprise newcomer is <a href="https://mcp.phasetransitions.ai/perception/servers/D4Vinci/Scrapling/">Scrapling</a> — created in October 2024, already at 28K+ stars, with adaptive parsing that survives website redesigns and built-in Cloudflare bypass.</p>
+
+<p><strong>Layer 2: Agentic browser control</strong> — let LLMs drive browsers autonomously. <a href="https://mcp.phasetransitions.ai/perception/servers/browser-use/browser-use/">browser-use</a> (80K+ stars, 5.3M downloads/month, MIT) is the clear leader. It combines vision-based control with DOM understanding and supports multiple LLM backends. <a href="https://mcp.phasetransitions.ai/perception/servers/Skyvern-AI/skyvern/">Skyvern</a> (20K+ stars) takes a task-automation angle. The one to watch is <a href="https://mcp.phasetransitions.ai/perception/servers/lightpanda-io/browser/">Lightpanda</a> — a headless browser built from scratch in Zig specifically for AI automation, claiming 16x less memory and 9x faster than Chrome.</p>
+
+<p><strong>Layer 3: Stealth infrastructure</strong> — evade bot detection at the protocol level. This is the layer nobody talks about openly but production systems depend on. The <a href="https://mcp.phasetransitions.ai/perception/servers/Kaliiiiiiiiii-Vinyzu/patchright/">Patchright</a> ecosystem (undetected Playwright forks) pulls 2.8 million downloads per month combined. <a href="https://mcp.phasetransitions.ai/perception/servers/seleniumbase/SeleniumBase/">SeleniumBase</a> does 4.8 million.</p>
+
+<h2>Downloads tell a different story than stars</h2>
+
+<p>The most revealing finding in this research: <a href="https://mcp.phasetransitions.ai/perception/servers/lexiforest/curl_cffi/">curl_cffi</a> has 5,000 stars but 21 million monthly downloads — more than every other tool in this guide combined. It's a Python binding that impersonates browser TLS fingerprints, and it's what production scraping infrastructure actually runs on. Stars measure interest. Downloads measure deployment.</p>
+
+<h2>The MCP bridge is exploding</h2>
+
+<p>Browser-automation-mcp is the fastest-growing subcategory in our tracking: 200 repos and 19 new ones appearing per week. <a href="https://mcp.phasetransitions.ai/mcp/servers/ChromeDevTools/chrome-devtools-mcp/">chrome-devtools-mcp</a> (28K+ stars, 2.6M downloads/month) bridges coding agents to Chrome's DevTools Protocol. This is where browser automation meets the agent ecosystem — every major coding tool wants to control a browser now.</p>
+
+<h2>What foundation models change</h2>
+
+<p>Claude Computer Use, GPT-5.4 Computer Use, and ByteDance's UI-TARS are shipping native browser control. This threatens Layer 2 (agentic control) directly — why use a wrapper when the model can drive the browser itself? But Layer 1 (data extraction) and Layer 3 (stealth) are likely safe: foundation models still need structured data as input, and they don't solve bot detection.</p>
+
+<h2>The anti-scraping backlash</h2>
+
+<p>The counter-signal is real. "Miasma: A tool to trap AI web scrapers in an endless poison pit" got 309 points on Hacker News. News publishers are blocking Internet Archive over AI scraping concerns (569 HN points). If you're building on browser automation, factor in that the web is getting more adversarial, not less.</p>
+
+<h2>Explore the data</h2>
+
+<p>Every project mentioned here has a quality-scored page in our <a href="https://mcp.phasetransitions.ai/perception/">perception directory</a>, updated daily. Browse all <a href="https://mcp.phasetransitions.ai/perception/categories/">browser automation categories</a> or check what's <a href="https://mcp.phasetransitions.ai/perception/trending/">trending this week</a>.</p>
+
+<p>The full deep dive with detailed data tables and architecture analysis is at <a href="https://mcp.phasetransitions.ai/insights/perception-browser-automation/">mcp.phasetransitions.ai/insights/perception-browser-automation</a>.</p>
