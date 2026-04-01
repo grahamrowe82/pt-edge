@@ -1,0 +1,203 @@
+<p>Your AI agent forgets everything between sessions. You know this is a problem. You search GitHub for "agent memory" and find 977 repos across five different domains, using ten different names for roughly the same concept. Welcome to the most fragmented category in AI infrastructure.</p>
+
+<p>This guide exists because the fragmentation IS the story. Agent memory in 2026 is pre-nucleation: builders are shipping faster than the ecosystem can agree on vocabulary, architecture, or even which database to use. PT-Edge tracks all {{ '{:,}'.format(977) }} of these repos and scores them daily on quality, maintenance, and adoption. Here's what that data says about what actually works.</p>
+
+<h2>The context window paradox: why memory systems aren't optional</h2>
+
+<p>Start with the assumption most builders make: "I have a 1M token context window, so I don't need a memory system." The data says otherwise.</p>
+
+<p>Newsletter coverage from the last 90 days tells a clear story. Claude supports 1M tokens. GPT-5.4 supports 1M tokens. But Latent Space reported in March 2026 that GPT-5.4 accuracy degrades to 36% at 512K-1M tokens. Context windows have plateaued at 1M for two years running, constrained by HBM and DRAM limits. And even within that 1M, practical performance drops off a cliff above 256K tokens.</p>
+
+<p>This is the paradox: the context window is large enough that you think you don't need memory, but too unreliable at scale to actually replace it. Every project in this guide exists because that gap is real. The 18 newsletter articles covering memory and context in the last 90 days &mdash; from Latent Space, Zvi, Simon Willison, and One Useful Thing &mdash; all converge on the same conclusion: persistent memory systems are becoming THE way to give agents long-term state.</p>
+
+<h2>The landscape at scale: 977 repos, no agreed vocabulary</h2>
+
+<p>PT-Edge classifies agent memory repos under the subcategory "agent-memory-systems" across five domains: RAG ({{ '{:,}'.format(132) }} repos), agents ({{ '{:,}'.format(122) }}), MCP ({{ '{:,}'.format(358) }}), vector-db ({{ '{:,}'.format(146) }}), and embeddings ({{ '{:,}'.format(219) }}). Add in adjacent categories like agent-memory-infrastructure ({{ '{:,}'.format(208) }} repos), claude-code-memory ({{ '{:,}'.format(70) }}), and session-context-memory ({{ '{:,}'.format(59) }}), and the total universe exceeds 1,300 repos touching memory in some form.</p>
+
+<p>The category names tell you everything: agent-memory-systems, agent-memory-infrastructure, agent-memory-architectures, session-context-memory, claude-code-memory, ai-session-persistence. Ten different subcategory names for variations on the same problem. When an ecosystem can't agree on what to call itself, that's a classic pre-nucleation signal &mdash; the space is real, the demand is real, but consolidation hasn't happened yet.</p>
+
+<p>The creation velocity confirms it: 55 new MCP memory repos appeared in the last 7 days alone. Session-context-memory shows 12x acceleration week-over-week. All of this is "creation without buzz" &mdash; builders are shipping memory infrastructure before the narrative catches up.</p>
+
+<h2>The leaders: four projects defining the category</h2>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Commits (30d)</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set leaders = [
+      ('mem0ai/mem0', 'Multi-level memory (user, session, agent state)'),
+      ('thedotmack/claude-mem', 'Progressive disclosure, skill-based search'),
+      ('memvid/memvid', 'Single-file .mv2 format, sub-5ms retrieval'),
+      ('topoteretes/cognee', 'Graph + vector hybrid, ontology grounding')
+    ] %}
+    {% for name, approach in leaders %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.commits_30d | default(0) }}</td>
+      <td>{{ approach }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('rag') }}/servers/mem0ai/mem0/">mem0</a> ({{ repos.get('mem0ai/mem0', {}).quality_score }}/100, {{ repos.get('mem0ai/mem0', {}).stars | intcomma }} stars) is the category definer. Apache-2.0 licensed, {{ repos.get('mem0ai/mem0', {}).commits_30d | default(0) }} commits in the last 30 days, with Python and JavaScript SDKs plus integrations into LangGraph and CrewAI. It implements multi-level memory &mdash; user, session, and agent state &mdash; and claims 26% higher accuracy with 90% lower token usage compared to full-context approaches. If you're starting from zero and want the most established option, mem0 is where you begin.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/thedotmack/claude-mem/">claude-mem</a> ({{ repos.get('thedotmack/claude-mem', {}).stars | intcomma }} stars) is the Claude Code ecosystem play. It captures everything Claude does, compresses it with AI, and provides progressive disclosure &mdash; surfacing relevant memories without flooding the context window. With {{ repos.get('thedotmack/claude-mem', {}).commits_30d | default(0) }} commits and 8 releases in the last 30 days, it's the fastest-growing memory plugin in the coding agent space.</p>
+
+<p><a href="{{ domain_path('vector-db') }}/servers/topoteretes/cognee/">Cognee</a> ({{ repos.get('topoteretes/cognee', {}).stars | intcomma }} stars, {{ repos.get('topoteretes/cognee', {}).commits_30d | default(0) }} commits in 30 days) takes a different approach: graph plus vector hybrid retrieval with ontology grounding and audit trails. If your use case requires understanding relationships between memories &mdash; not just retrieving similar ones &mdash; Cognee's knowledge graph approach is the most mature option. The {{ repos.get('topoteretes/cognee', {}).commits_30d | default(0) }} commits in 30 days makes it the most actively developed project in the entire category.</p>
+
+<p><a href="{{ domain_path('vector-db') }}/servers/memvid/memvid/">Memvid</a> ({{ repos.get('memvid/memvid', {}).stars | intcomma }} stars) is the radical simplicity play. It stores memories in a single <code>.mv2</code> file with sub-5ms retrieval &mdash; no database server, no network calls, no infrastructure. Written in Rust with Node.js, Python, and Rust SDKs. At 13.4K stars with only 6 commits in 30 days, it's a case where the core design was right enough that it doesn't need constant iteration.</p>
+
+<h2>Architecture decision 1: storage backend</h2>
+
+<p>The most fundamental choice in agent memory is where memories live. The research reveals four distinct approaches, each with real trade-offs.</p>
+
+<h3>Vector database (Qdrant, Chroma, Milvus, LanceDB)</h3>
+
+<p>The established path. Store memories as embeddings, retrieve by semantic similarity. Projects like <a href="{{ domain_path('embeddings') }}/servers/zilliztech/GPTCache/">GPTCache</a> ({{ repos.get('zilliztech/GPTCache', {}).stars | intcomma }} stars, {{ repos.get('zilliztech/GPTCache', {}).downloads_monthly | intcomma if repos.get('zilliztech/GPTCache', {}).downloads_monthly else '463K' }} downloads/month) and <a href="{{ domain_path('vector-db') }}/servers/CortexReach/memory-lancedb-pro/">memory-lancedb-pro</a> ({{ repos.get('CortexReach/memory-lancedb-pro', {}).stars | intcomma }} stars, {{ repos.get('CortexReach/memory-lancedb-pro', {}).commits_30d | default(0) }} commits in 30 days) build on this foundation. The advantage is mature tooling and well-understood retrieval semantics. The risk is that similarity search alone misses temporal relationships, causal chains, and structured knowledge.</p>
+
+<h3>Graph database (Cognee, Graphiti, Memary)</h3>
+
+<p><a href="{{ domain_path('rag') }}/servers/getzep/graphiti/">Graphiti</a> ({{ repos.get('getzep/graphiti', {}).stars | intcomma }} stars) from Zep builds real-time knowledge graphs for agents. <a href="{{ domain_path('rag') }}/servers/kingjulio8238/Memary/">Memary</a> ({{ repos.get('kingjulio8238/Memary', {}).stars | intcomma }} stars) combines entity knowledge graphs with episodic memory streams. The graph approach excels when your agent needs to reason about relationships &mdash; "what projects does this user work on?" rather than "what's similar to this query?" The trade-off is operational complexity and the need for graph database expertise.</p>
+
+<h3>SQL-native (Memori, Memobase)</h3>
+
+<p><a href="{{ domain_path('rag') }}/servers/MemoriLabs/Memori/">Memori</a> ({{ repos.get('MemoriLabs/Memori', {}).stars | intcomma }} stars) makes the case that you don't need a specialised database at all. It intercepts LLM conversations automatically, stores memories in SQL, and claims 81.95% accuracy at approximately 5% of the token usage of full-context approaches. <a href="{{ domain_path('rag') }}/servers/memodb-io/memobase/">Memobase</a> ({{ repos.get('memodb-io/memobase', {}).stars | intcomma }} stars) takes a similar SQL-first approach with user profiles and timestamped timelines, delivering sub-100ms retrieval and 40-50% token cost reduction. If you already run Postgres or MySQL, the argument for adding a vector database just for memory becomes harder to justify.</p>
+
+<h3>File-based (Memvid, ReMe, Acontext)</h3>
+
+<p>The emerging counter-narrative. <a href="{{ domain_path('vector-db') }}/servers/memvid/memvid/">Memvid</a>'s single-file approach, <a href="{{ domain_path('rag') }}/servers/agentscope-ai/ReMe/">ReMe</a>'s human-readable Markdown persistence ({{ repos.get('agentscope-ai/ReMe', {}).stars | intcomma }} stars, {{ repos.get('agentscope-ai/ReMe', {}).commits_30d | default(0) }} commits in 30 days), and Acontext's skills-as-Markdown-files pattern all point the same direction: sometimes the simplest storage is a file. No server, no schema migration, no connection pooling. A Hacker News post titled "You Don't Need a Vector Database" (March 2026) resonated because this sentiment is real.</p>
+
+<h2>Architecture decision 2: memory structure</h2>
+
+<p>Beyond storage, you need to decide what kind of memories your agent keeps. The research shows three distinct types, and the most sophisticated systems implement all three.</p>
+
+<table>
+  <thead>
+    <tr><th>Memory Type</th><th>What it stores</th><th>Best projects</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Episodic</strong></td>
+      <td>What happened &mdash; session logs, conversation traces, interaction history</td>
+      <td><a href="{{ domain_path('rag') }}/servers/mem0ai/mem0/">mem0</a>, <a href="{{ domain_path('rag') }}/servers/kingjulio8238/Memary/">Memary</a>, <a href="{{ domain_path('rag') }}/servers/EverMind-AI/EverMemOS/">EverMemOS</a></td>
+    </tr>
+    <tr>
+      <td><strong>Semantic</strong></td>
+      <td>What things mean &mdash; entity relationships, knowledge graphs, user profiles</td>
+      <td><a href="{{ domain_path('vector-db') }}/servers/topoteretes/cognee/">Cognee</a>, <a href="{{ domain_path('rag') }}/servers/getzep/graphiti/">Graphiti</a>, <a href="{{ domain_path('rag') }}/servers/memodb-io/memobase/">Memobase</a></td>
+    </tr>
+    <tr>
+      <td><strong>Procedural</strong></td>
+      <td>How to do things &mdash; learned skills, preferences, workflows</td>
+      <td><a href="{{ domain_path('vector-db') }}/servers/CaviraOSS/OpenMemory/">OpenMemory</a>, <a href="{{ domain_path('agents') }}/servers/MemMachine/MemMachine/">MemMachine</a>, <a href="{{ domain_path('rag') }}/servers/MemTensor/MemOS/">MemOS</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/MemMachine/MemMachine/">MemMachine</a> ({{ repos.get('MemMachine/MemMachine', {}).stars | intcomma }} stars) implements all three explicitly: episodic memory backed by graph storage, profile memory in SQL, and working memory for the current session. <a href="{{ domain_path('vector-db') }}/servers/CaviraOSS/OpenMemory/">OpenMemory</a> ({{ repos.get('CaviraOSS/OpenMemory', {}).stars | intcomma }} stars) takes a similar multi-sector approach with temporal reasoning built in. <a href="{{ domain_path('rag') }}/servers/MemTensor/MemOS/">MemOS</a> ({{ repos.get('MemTensor/MemOS', {}).stars | intcomma }} stars, {{ repos.get('MemTensor/MemOS', {}).commits_30d | default(0) }} commits in 30 days) reports 43.70% accuracy gains over OpenAI Memory and 35.24% token reduction.</p>
+
+<p>The practical takeaway: if your agent just needs to remember past conversations, episodic memory alone works fine (mem0, Memvid). If your agent needs to build and maintain a model of its user or domain, you need semantic memory (Cognee, Graphiti). If your agent needs to learn and improve at tasks over time, you need procedural memory &mdash; and the projects implementing it are the newest and least proven.</p>
+
+<h2>The Claude Code memory ecosystem</h2>
+
+<p>A rich ecosystem has formed specifically around giving Claude Code and similar coding agents persistent memory. This matters because coding agents have unique memory requirements: they need to remember project structure, coding conventions, past decisions, and the reasoning behind architectural choices.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set claude_projects = ['thedotmack/claude-mem', 'volcengine/OpenViking', 'MemTensor/MemOS', 'CortexReach/memory-lancedb-pro', 'campfirein/cipher'] %}
+    {% for name in claude_projects %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('rag') }}/servers/volcengine/OpenViking/">OpenViking</a> ({{ repos.get('volcengine/OpenViking', {}).stars | intcomma }} stars, {{ repos.get('volcengine/OpenViking', {}).commits_30d | default(0) }} commits in 30 days) from ByteDance's Volcengine provides a three-tier hierarchical storage system (L0/L1/L2) with both directory-based and semantic retrieval. <a href="{{ domain_path('mcp') }}/servers/campfirein/cipher/">Cipher</a> ({{ repos.get('campfirein/cipher', {}).stars | intcomma }} stars) implements dual-layer memory specifically for code concepts and AI reasoning traces, supporting multiple LLMs and vector stores. The 70 repos in the claude-code-memory subcategory and 19 new ones per week show this ecosystem is still expanding rapidly.</p>
+
+<h2>The "you don't need a vector database" counter-narrative</h2>
+
+<p>Not everyone is adding infrastructure. A growing contingent argues that agent memory should be simpler, not more complex.</p>
+
+<p>The evidence: Memvid stores everything in a single file. ReMe persists memories as human-readable Markdown. Acontext ({{ repos.get('memodb-io/Acontext', {}).stars | default('3,154') }} stars from memodb-io) extracts conversation traces into editable Markdown files with no embeddings needed. <a href="{{ domain_path('embeddings') }}/servers/aiming-lab/SimpleMem/">SimpleMem</a> ({{ repos.get('aiming-lab/SimpleMem', {}).stars | intcomma }} stars) uses a three-stage semantic compression pipeline and claims 64% better performance than Claude's native memory.</p>
+
+<p>On Hacker News, "You Don't Need a Vector Database" generated 24 comments in March 2026. A "file-based agent memory framework" Show HN got engagement. A Google PM open-sourced an "Always On Memory Agent" that ditches vector DBs entirely. The pattern: builders who've tried the full vector-DB-plus-embeddings stack are finding that simpler approaches often work as well or better for agent memory specifically, because agent memories are typically short, structured, and relatively few compared to document corpora.</p>
+
+<p>This doesn't mean vector databases are wrong. It means the default assumption that agent memory requires one is worth questioning. If your agent handles dozens to thousands of memories, a file or SQL table may outperform a vector database on latency, operational simplicity, and debuggability.</p>
+
+<h2>What's shipping: release velocity as a quality signal</h2>
+
+<p>Talk is cheap. Releases aren't. Here's what the last 30 days of release activity looks like for the most active memory projects:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Releases (30d)</th><th>Commits (30d)</th><th>Downloads/mo</th></tr>
+  </thead>
+  <tbody>
+    {% set shipping = [
+      ('doobidoo/mcp-memory-service', 25),
+      ('thedotmack/claude-mem', 8),
+      ('topoteretes/cognee', 7),
+      ('mem0ai/mem0', 5),
+      ('memvid/memvid', 2)
+    ] %}
+    {% for name, releases in shipping %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ releases }}</td>
+      <td>{{ r.commits_30d | default(0) }}</td>
+      <td>{{ r.downloads_monthly | intcomma if r.downloads_monthly else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('mcp') }}/servers/doobidoo/mcp-memory-service/">mcp-memory-service</a> ({{ repos.get('doobidoo/mcp-memory-service', {}).stars | intcomma }} stars) stands out: 25 releases in 30 days. That's nearly one release per day. It provides persistent memory for AI agent pipelines with Claude integration, and the shipping pace suggests a team responding to real user feedback at speed.</p>
+
+<p>Cognee's {{ repos.get('topoteretes/cognee', {}).commits_30d | default(0) }} commits in 30 days and mem0's {{ repos.get('mem0ai/mem0', {}).commits_30d | default(0) }} commits tell a similar story. The top memory projects are not in maintenance mode. They're in rapid iteration, adding features, fixing bugs, and responding to an ecosystem that's pulling hard on memory infrastructure.</p>
+
+<h2>Where this is heading: platform absorption risk</h2>
+
+<p>The biggest open question for every project in this guide: will the platforms absorb them?</p>
+
+<p>The signals are clear. Claude launched Memory Export in March 2026. Microsoft Copilot Tasks added persistent multi-session memory in February. IBM published research showing that reusing agent strategies (a form of procedural memory) improves task completion rates. When three of the largest AI companies ship memory features within 60 days of each other, that's not coincidence &mdash; that's platform convergence.</p>
+
+<p>The newsletter signal &mdash; 18 articles in 90 days &mdash; points to memory becoming a first-class platform feature rather than a third-party add-on. The question isn't whether platforms will have memory, but whether purpose-built memory projects offer enough advantage to survive alongside platform-native options.</p>
+
+<p>The likely survivors are projects that do things platforms won't: cross-platform memory that works across Claude, GPT, and Gemini (mem0's positioning); memory architectures that are fundamentally different from what platforms ship (Cognee's knowledge graphs, Memvid's single-file approach); and memory for specific verticals where the general platform solution isn't good enough (coding agents, autonomous agents, multi-agent systems).</p>
+
+<p>The projects most at risk are thin memory wrappers that add a persistence layer without a differentiated retrieval or storage mechanism. If your entire value proposition is "remember things between sessions," the platform will do that natively.</p>
+
+<h2>How to use this data</h2>
+
+<p>Every project in this guide has a quality-scored page in our directory, updated daily. You can:</p>
+
+<ul>
+  <li>Browse <a href="{{ domain_path('rag') }}/categories/agent-memory-systems/">RAG memory systems</a> ({{ '{:,}'.format(132) }} repos) or <a href="{{ domain_path('agents') }}/categories/agent-memory-systems/">agent memory systems</a> ({{ '{:,}'.format(122) }} repos) by domain</li>
+  <li>Track the <a href="{{ domain_path('mcp') }}/categories/agent-memory-systems/">MCP memory ecosystem</a> ({{ '{:,}'.format(358) }} repos) where creation velocity is highest</li>
+  <li>Explore the <a href="{{ domain_path('agents') }}/categories/claude-code-memory/">Claude Code memory</a> subcategory for coding-agent-specific solutions</li>
+  <li>Check <a href="{{ domain_path('vector-db') }}/categories/agent-memory-systems/">vector-db memory</a> and <a href="{{ domain_path('embeddings') }}/categories/agent-memory-systems/">embeddings memory</a> for infrastructure-layer projects</li>
+  <li>Compare any project's quality score, maintenance activity, and adoption metrics side by side</li>
+</ul>
+
+<p>Quality scores update daily from live GitHub, PyPI, and npm data. In a space moving this fast &mdash; 55 new repos per week, 25 releases per month from the most active project &mdash; yesterday's recommendation can be wrong tomorrow. The scores do the monitoring so you don't have to.</p>

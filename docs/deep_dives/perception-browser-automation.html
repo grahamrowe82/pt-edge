@@ -1,0 +1,255 @@
+<p>You need your AI agent to interact with the web. Maybe it needs to extract data from a page. Maybe it needs to fill out a form, navigate a workflow, or monitor a site for changes. You search GitHub, find 340+ repositories in the perception domain alone, and now you need to decide what to actually build on.</p>
+
+<p>PT-Edge tracks these projects and scores them daily on maintenance, adoption, maturity, and community. This guide cuts through the noise: three layers of browser automation, what's actually in production (downloads tell a different story than stars), and which layers foundation model vendors are about to make obsolete.</p>
+
+<h2>The three layers of giving AI eyes</h2>
+
+<p>The browser automation space has stratified into three distinct layers. Most confusion comes from treating them as one problem. They aren't.</p>
+
+<ul>
+  <li><strong>Layer 1: Data extraction</strong> &mdash; turn web pages into structured data an LLM can consume</li>
+  <li><strong>Layer 2: Agentic browser control</strong> &mdash; let LLMs drive browsers autonomously to complete tasks</li>
+  <li><strong>Layer 3: Stealth infrastructure</strong> &mdash; evade bot detection at the protocol level</li>
+</ul>
+
+<p>You probably need one or two of these layers, not all three. The decision starts with which layer your problem lives in.</p>
+
+<h2>Layer 1: Data extraction &mdash; giving AI eyes to read</h2>
+
+<p>This is the most mature layer and where the majority of production downloads live. The job: take a URL, return structured data.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Downloads/mo</th><th>Best for</th></tr>
+  </thead>
+  <tbody>
+    {% set extraction = [
+      ('firecrawl/firecrawl', 'LLM-ready markdown, schema-driven extraction, managed API'),
+      ('scrapy/scrapy', 'Large-scale crawling, mature ecosystem, battle-tested'),
+      ('apify/crawlee', 'Node.js browser automation with Playwright/Puppeteer'),
+      ('D4Vinci/Scrapling', 'Adaptive scraping that survives site redesigns'),
+      ('lexiforest/curl_cffi', 'HTTP fingerprint impersonation at massive scale'),
+      ('apify/crawlee-python', 'Python equivalent of Crawlee for browser-based crawling')
+    ] %}
+    {% for name, use in extraction %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma if r.downloads_monthly else '&mdash;' }}</td>
+      <td>{{ use }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('perception') }}/servers/firecrawl/firecrawl/">Firecrawl</a> ({{ repos.get('firecrawl/firecrawl', {}).quality_score }}/100, {{ repos.get('firecrawl/firecrawl', {}).stars | intcomma }} stars) is the dominant force in this layer. It combines JavaScript rendering, proxy rotation, and schema-driven JSON extraction into a single API. With {{ repos.get('firecrawl/firecrawl', {}).commits_30d | default(0) }} commits in the last 30 days and an official <a href="{{ domain_path('mcp') }}/servers/firecrawl/firecrawl-mcp-server/">MCP server</a> ({{ repos.get('firecrawl/firecrawl-mcp-server', {}).stars | intcomma }} stars), it's the safe bet for teams that want data extraction without managing infrastructure. The trade-off: AGPL license and a SaaS pricing model that scales with volume.</p>
+
+<p><a href="{{ domain_path('perception') }}/servers/scrapy/scrapy/">Scrapy</a> ({{ repos.get('scrapy/scrapy', {}).quality_score }}/100, {{ repos.get('scrapy/scrapy', {}).stars | intcomma }} stars, {{ repos.get('scrapy/scrapy', {}).downloads_monthly | intcomma }} downloads/mo) is the veteran. Twelve years old, BSD-licensed, and still pulling 3 million downloads a month. If you need a crawling framework you control end-to-end, Scrapy is the answer. But it doesn't render JavaScript natively, and {{ repos.get('scrapy/scrapy', {}).commits_30d | default(0) }} commits in 30 days suggests maintenance mode rather than active innovation.</p>
+
+<p><a href="{{ domain_path('perception') }}/servers/D4Vinci/Scrapling/">Scrapling</a> ({{ repos.get('D4Vinci/Scrapling', {}).quality_score }}/100, {{ repos.get('D4Vinci/Scrapling', {}).stars | intcomma }} stars) is the most interesting newcomer. Created October 2024 and already at 28K+ stars, it handles adaptive parsing that automatically relocates selectors when websites change structure. It integrates with AI agent ecosystems via MCP and bypasses anti-bot systems like Cloudflare Turnstile. At {{ repos.get('D4Vinci/Scrapling', {}).commits_30d | default(0) }} commits in 30 days, it's shipping fast.</p>
+
+<p>But the real story in this layer is hidden in the download numbers. <a href="{{ domain_path('perception') }}/servers/lexiforest/curl_cffi/">curl_cffi</a> has {{ repos.get('lexiforest/curl_cffi', {}).stars | intcomma }} stars &mdash; modest by GitHub standards &mdash; but pulls {{ '{:,}'.format(21237975) }} downloads per month. That's more than the rest of this table combined. It's a Python binding for curl-impersonate that can mimic browser TLS/JA3/HTTP2 fingerprints, and it's what production scraping infrastructure actually runs on. Stars measure interest. Downloads measure deployment.</p>
+
+<h2>Layer 2: Agentic browser control &mdash; giving AI hands to act</h2>
+
+<p>This is where the excitement lives. Instead of extracting data from a page, these tools let an LLM navigate, click, type, and complete multi-step workflows in a real browser.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Commits/30d</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set agents = [
+      ('browser-use/browser-use', 'Vision + DOM, multi-LLM, cloud stealth browsers'),
+      ('Skyvern-AI/skyvern', 'AI workflow automation, visual understanding'),
+      ('nanobrowser/nanobrowser', 'Chrome extension, multi-agent architecture'),
+      ('alibaba/page-agent', 'In-page GUI agent, text-based DOM analysis'),
+      ('steel-dev/steel-browser', 'Browser API sandbox for AI agents'),
+      ('lightpanda-io/browser', 'From-scratch Zig browser, 16x less memory than Chrome'),
+      ('getmaxun/maxun', 'No-code platform for non-technical users')
+    ] %}
+    {% for name, approach in agents %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.commits_30d | default('&mdash;') }}</td>
+      <td>{{ approach }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('perception') }}/servers/browser-use/browser-use/">browser-use</a> ({{ repos.get('browser-use/browser-use', {}).quality_score }}/100, {{ repos.get('browser-use/browser-use', {}).stars | intcomma }} stars) is the clear leader. Created October 2024, it hit 80K+ stars in under 18 months. It works by combining vision-based browser control (interpreting screenshots) with DOM element access, supporting multiple LLM backends including Claude and Gemini. At {{ repos.get('browser-use/browser-use', {}).downloads_monthly | intcomma }} downloads per month, it's not just hype &mdash; it's in production. {{ repos.get('browser-use/browser-use', {}).commits_30d | default(0) }} commits in the last 30 days and 5 releases in the past month confirm active shipping.</p>
+
+<p><a href="{{ domain_path('perception') }}/servers/Skyvern-AI/skyvern/">Skyvern</a> ({{ repos.get('Skyvern-AI/skyvern', {}).quality_score }}/100, {{ repos.get('Skyvern-AI/skyvern', {}).stars | intcomma }} stars) takes a different approach: it focuses on automating specific business workflows rather than general browsing. With {{ repos.get('Skyvern-AI/skyvern', {}).commits_30d | default(0) }} commits in 30 days and 6 releases this month, it's the most actively shipping project in the space. If you need to automate a specific multi-step web process (filling insurance forms, navigating procurement portals), Skyvern is purpose-built for that.</p>
+
+<p><a href="{{ domain_path('perception') }}/servers/lightpanda-io/browser/">Lightpanda</a> deserves special attention. At {{ repos.get('lightpanda-io/browser', {}).stars | intcomma }} stars and {{ repos.get('lightpanda-io/browser', {}).commits_30d | default(0) }} commits in 30 days &mdash; the highest commit velocity in the entire browser automation space &mdash; it's building a headless browser from scratch in Zig specifically for AI and automation. The claims: 16x less memory and 9x faster than Chrome. It exposes a CDP server compatible with Playwright, Puppeteer, and chromedp, so you can use existing tooling without Chrome's overhead. This is a from-scratch bet that the current approach (forking Chromium, patching it for stealth) is fundamentally wrong. Worth watching closely.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/alibaba/page-agent/">page-agent</a> from Alibaba ({{ repos.get('alibaba/page-agent', {}).stars | intcomma }} stars, {{ repos.get('alibaba/page-agent', {}).commits_30d | default(0) }} commits/30d) represents the large-company approach: text-based DOM analysis that doesn't rely on screenshots, making it faster and cheaper per interaction. The fact that Alibaba is investing {{ repos.get('alibaba/page-agent', {}).commits_30d | default(0) }} commits a month into an open-source browser agent tells you where enterprise is heading.</p>
+
+<h2>Layer 3: Stealth infrastructure &mdash; the uncomfortable layer</h2>
+
+<p>Nobody talks about this layer in conference talks, but the download numbers don't lie. Anti-detection is a massive, quietly thriving ecosystem.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Downloads/mo</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set stealth = [
+      ('Kaliiiiiiiiii-Vinyzu/patchright', 'Undetected Playwright (TypeScript)'),
+      ('botswin/BotBrowser', 'Unified fingerprint defense browser'),
+      ('saifyxpro/HeadlessX', 'Self-hosted undetected platform (Camoufox/Firefox)'),
+      ('pinchtab/pinchtab', 'Multi-instance orchestrator with stealth injection'),
+      ('seleniumbase/SeleniumBase', 'Automation framework with built-in anti-detection')
+    ] %}
+    {% for name, desc in stealth %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma if r.downloads_monthly else '&mdash;' }}</td>
+      <td>{{ desc }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>The Patchright ecosystem tells the real story. <a href="{{ domain_path('perception') }}/servers/Kaliiiiiiiiii-Vinyzu/patchright/">Patchright</a> is an undetected fork of Playwright &mdash; same API, patched to evade bot detection. Combined across its TypeScript, Python, and Node.js packages, it pulls {{ '{:,}'.format(2822399) }} downloads per month. That's 2.8 million monthly downloads of a tool whose entire purpose is bypassing anti-bot systems. For context, that's more than Crawlee, Scrapling, and Firecrawl combined.</p>
+
+<p><a href="{{ domain_path('perception') }}/servers/seleniumbase/SeleniumBase/">SeleniumBase</a> ({{ repos.get('seleniumbase/SeleniumBase', {}).quality_score }}/100, {{ repos.get('seleniumbase/SeleniumBase', {}).stars | intcomma }} stars, {{ repos.get('seleniumbase/SeleniumBase', {}).downloads_monthly | intcomma }} downloads/mo) is the stealth tool that hides in plain sight. Marketed as a testing and automation framework, its anti-detection capabilities are a core feature. Nearly 5 million monthly downloads make it the most-deployed browser automation tool in the entire space after curl_cffi.</p>
+
+<p><a href="{{ domain_path('perception') }}/servers/pinchtab/pinchtab/">pinchtab</a> ({{ repos.get('pinchtab/pinchtab', {}).stars | intcomma }} stars, {{ repos.get('pinchtab/pinchtab', {}).commits_30d | default(0) }} commits/30d) is the second-highest commit velocity project in the space behind Lightpanda, focused on multi-instance browser orchestration with stealth injection. It's Go-based, aimed at teams running hundreds of concurrent browser sessions.</p>
+
+<p>The trade-off here is straightforward: the anti-detection arms race never ends. Every stealth technique has a shelf life. If you're building core infrastructure on top of undetected browsing, you're signing up for continuous maintenance as detection evolves. That said, the download numbers suggest most production scraping already depends on this layer.</p>
+
+<h2>The MCP bridge: browsers as agent tools</h2>
+
+<p>Browser-automation-mcp is the fastest-growing subcategory in the entire perception space: {{ '{:,}'.format(200) }} repos, 19 new in the last 7 days, with an acceleration score of 0.83 and a classic nucleation signal &mdash; creation without buzz. Developers are building before the media notices.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Downloads/mo</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set mcp_projects = [
+      ('ChromeDevTools/chrome-devtools-mcp', 'Chrome DevTools Protocol bridge for AI coding agents'),
+      ('firecrawl/firecrawl-mcp-server', 'Official Firecrawl MCP server for data extraction'),
+      ('tinyfish-io/agentql', 'AI-native web query language for agent interaction')
+    ] %}
+    {% for name, desc in mcp_projects %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma if r.downloads_monthly else '&mdash;' }}</td>
+      <td>{{ desc }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('mcp') }}/servers/ChromeDevTools/chrome-devtools-mcp/">chrome-devtools-mcp</a> ({{ repos.get('ChromeDevTools/chrome-devtools-mcp', {}).stars | intcomma }} stars, {{ repos.get('ChromeDevTools/chrome-devtools-mcp', {}).downloads_monthly | intcomma }} downloads/mo) is the breakout hit. Created September 2025 and already at 28K+ stars with 6 releases in the last 30 days, it bridges AI coding agents with Chrome's DevTools Protocol. This is the pattern that's winning: rather than building a new browser automation framework, wrap the existing one (Chrome DevTools) in an MCP interface so any AI agent can use it.</p>
+
+<p>The MCP layer matters because it's standardising how agents talk to browsers. Instead of every agent framework building its own browser integration, MCP provides a common protocol. Browse the full <a href="{{ domain_path('mcp') }}/categories/browser-automation-mcp/">browser-automation-mcp</a> category to see the 200 repos building on this pattern.</p>
+
+<h2>What foundation models change</h2>
+
+<p>Claude Computer Use and GPT-5.4 Computer Use both shipped native browser control capabilities in early 2026. <a href="{{ domain_path('agents') }}/servers/bytedance/UI-TARS-desktop/">UI-TARS</a> from ByteDance ({{ repos.get('bytedance/UI-TARS-desktop', {}).stars | intcomma }} stars) brings the same capability to open-source with a vision model that understands screenshots and drives GUI interactions.</p>
+
+<p>This changes the calculus for each layer differently:</p>
+
+<ul>
+  <li><strong>Layer 1 (data extraction) survives.</strong> Foundation models are expensive per page. Running Claude Computer Use to scrape 10,000 product pages is economically absurd. curl_cffi at 21 million downloads a month isn't going anywhere &mdash; the cost per request is orders of magnitude lower.</li>
+  <li><strong>Layer 2 (agentic control) gets disrupted.</strong> If Claude can drive a browser natively, do you need browser-use? The answer is: yes, for now. Foundation model computer use is slow, expensive, and unreliable on complex workflows. But the ceiling is rising fast. Projects in this layer need to differentiate on reliability, cost, and specialisation &mdash; not just "LLM drives browser."</li>
+  <li><strong>Layer 3 (stealth) becomes more important.</strong> Paradoxically, as more agents hit the web, anti-bot systems get more aggressive, and stealth infrastructure becomes more valuable. Foundation model computer use doesn't solve the detection problem &mdash; it makes it worse.</li>
+</ul>
+
+<p>The safe bet: invest in Layer 1 for data extraction, use Layer 2 tools for workflows that require interaction, and assume Layer 3 will be necessary for any production-scale web access.</p>
+
+<h2>The anti-scraping backlash</h2>
+
+<p>The Hacker News signal is unambiguous. "News publishers limit Internet Archive access due to AI scraping concerns" hit 569 points. "Miasma: A tool to trap AI web scrapers in an endless poison pit" hit 309 points with 222 comments. The sentiment is shifting.</p>
+
+<p>This isn't just cultural backlash. LinkedIn is checking for 2,953 browser extensions (534 HN points). Publishers are blocking crawlers. Sites are deploying increasingly sophisticated detection. The web is becoming adversarial to automated access in ways it wasn't two years ago.</p>
+
+<p>For builders, this means three things:</p>
+
+<ol>
+  <li><strong>API-first data access is the legal safe path.</strong> Firecrawl's managed service model, where they handle the compliance and proxy infrastructure, is winning partly because teams don't want to own that risk.</li>
+  <li><strong>The stealth arms race has real consequences.</strong> Patchright's 2.8 million monthly downloads tell you the demand is there. But building core business logic on anti-detection is building on sand.</li>
+  <li><strong>Structured data standards (llms.txt, sitemaps, APIs) will grow.</strong> The long-term answer isn't better scrapers &mdash; it's publishers providing machine-readable access. We're in the messy transition period.</li>
+</ol>
+
+<h2>Downloads tell the real story</h2>
+
+<p>Star counts measure developer interest. Downloads measure production adoption. They tell very different stories.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Stars</th><th>Downloads/mo</th><th>What this tells you</th></tr>
+  </thead>
+  <tbody>
+    {% set downloads = [
+      ('lexiforest/curl_cffi', 'Actual production scraping infrastructure'),
+      ('seleniumbase/SeleniumBase', 'Anti-detection automation in CI/CD pipelines'),
+      ('browser-use/browser-use', 'Agentic control reaching real adoption'),
+      ('scrapy/scrapy', 'Legacy crawling still in heavy production use'),
+      ('ChromeDevTools/chrome-devtools-mcp', 'MCP browser bridge scaling fast')
+    ] %}
+    {% for name, insight in downloads %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma if r.downloads_monthly else '&mdash;' }}</td>
+      <td>{{ insight }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>curl_cffi at {{ '{:,}'.format(21237975) }} monthly downloads is the quiet giant. It has 7% of the stars that Firecrawl has, but 97x the monthly package downloads. This is the tool that production scraping teams actually install. Firecrawl's downloads (218K/mo) are respectable for a SaaS SDK, but the raw HTTP layer &mdash; where curl_cffi lives &mdash; is where the real volume sits.</p>
+
+<p>The Patchright ecosystem (2.8M combined) outdownloads every agentic browser tool except browser-use. Undetected Playwright is, quietly, one of the most-deployed browser automation approaches in existence.</p>
+
+<h2>The decision framework</h2>
+
+<p>Here's how to choose:</p>
+
+<ul>
+  <li><strong>You need to extract data from web pages</strong> &rarr; Start with <a href="{{ domain_path('perception') }}/servers/firecrawl/firecrawl/">Firecrawl</a> (managed) or <a href="{{ domain_path('perception') }}/servers/scrapy/scrapy/">Scrapy</a> (self-hosted). At scale, you'll end up using <a href="{{ domain_path('perception') }}/servers/lexiforest/curl_cffi/">curl_cffi</a>.</li>
+  <li><strong>You need an LLM to complete web tasks</strong> &rarr; <a href="{{ domain_path('perception') }}/servers/browser-use/browser-use/">browser-use</a> is the default. For specific business workflows, look at <a href="{{ domain_path('perception') }}/servers/Skyvern-AI/skyvern/">Skyvern</a>.</li>
+  <li><strong>You need to evade bot detection</strong> &rarr; <a href="{{ domain_path('perception') }}/servers/Kaliiiiiiiiii-Vinyzu/patchright/">Patchright</a> (drop-in Playwright replacement) or <a href="{{ domain_path('perception') }}/servers/seleniumbase/SeleniumBase/">SeleniumBase</a> (broader toolkit). Accept that this is an ongoing arms race.</li>
+  <li><strong>You're building an AI agent that needs web access via MCP</strong> &rarr; <a href="{{ domain_path('mcp') }}/servers/ChromeDevTools/chrome-devtools-mcp/">chrome-devtools-mcp</a> for IDE-integrated browsing, <a href="{{ domain_path('mcp') }}/servers/firecrawl/firecrawl-mcp-server/">firecrawl-mcp-server</a> for data extraction.</li>
+  <li><strong>You want to bet on the future</strong> &rarr; Watch <a href="{{ domain_path('perception') }}/servers/lightpanda-io/browser/">Lightpanda</a>. A purpose-built browser for AI, written from scratch, with the highest commit velocity in the space. If it delivers on its performance claims, it changes the economics of everything above.</li>
+</ul>
+
+<h2>How to use this data</h2>
+
+<p>Every project mentioned in this guide has a quality-scored page in our directory, updated daily. You can:</p>
+
+<ul>
+  <li>Browse <a href="{{ domain_path('perception') }}/categories/">perception categories</a> across {{ '{:,}'.format(340) }}+ repos covering scrapers, browser automation, and frameworks</li>
+  <li>Explore <a href="{{ domain_path('mcp') }}/categories/browser-automation-mcp/">browser-automation-mcp</a> to see the {{ '{:,}'.format(200) }} repos building MCP browser bridges</li>
+  <li>Check <a href="{{ domain_path('agents') }}/categories/browser-agent-automation/">browser-agent-automation</a> for the {{ '{:,}'.format(196) }} agentic browser projects</li>
+  <li>Compare any two projects side by side on maintenance, adoption, maturity, and community scores</li>
+</ul>
+
+<p>Quality scores update daily from live GitHub, PyPI, and npm data. If a project stops being maintained, the score drops. If a stealth tool gets detected and abandoned, you'll see it in the numbers before you see it on Twitter. The data does the work so you don't have to manually check each repo's pulse before making a dependency decision.</p>
