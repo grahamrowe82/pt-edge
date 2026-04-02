@@ -10,6 +10,7 @@ from app.models import SyncLog
 logger = logging.getLogger(__name__)
 
 VIEWS_IN_ORDER = [
+    "mv_dep_resolution",       # base: maps dep_name → repo_id (needed before quality views)
     "mv_momentum",             # base: no dependencies
     "mv_hype_ratio",           # base: no dependencies
     "mv_lab_velocity",         # base: no dependencies

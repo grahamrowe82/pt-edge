@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from app.db import engine, SessionLocal
 from app.embeddings import build_ai_repo_text, embed_batch, is_enabled
-from app.ingest.ai_repo_domains import DOMAINS, DOMAIN_ORDER, DOMAIN_OVERRIDES
+from app.ingest.ai_repo_domains import DOMAINS, DOMAIN_ORDER, DOMAIN_OVERRIDES, FOUNDATIONAL_SEEDS
 from app.ingest.github_search import (
     adaptive_search, BudgetExhausted, CallCounter,
 )
@@ -59,6 +59,11 @@ async def ingest_ai_repos(
         force_full: if True, skip incremental mode and crawl everything.
     """
     started_at = datetime.now(timezone.utc)
+
+    # Ensure foundational seed repos are present with package names
+    seeds_updated = await _ensure_seeds()
+    if seeds_updated:
+        logger.info(f"Foundational seeds: {seeds_updated} package names set")
 
     # Determine incremental vs full crawl
     pushed_after: str | None = None
@@ -170,6 +175,92 @@ async def ingest_ai_repos(
         "domains": domain_results,
         "api_calls": counter.count,
     }
+
+
+async def _ensure_seeds() -> int:
+    """Ensure FOUNDATIONAL_SEEDS repos exist in ai_repos with package names set.
+
+    Fetches metadata from GitHub API for any seeds not already in the database,
+    upserts them, then sets pypi_package/npm_package for all seeds.
+    """
+    if not FOUNDATIONAL_SEEDS:
+        return 0
+
+    headers = {"User-Agent": "pt-edge/1.0", "Accept": "application/vnd.github+json"}
+    if settings.GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+
+    # Check which seeds are missing from the DB
+    with engine.connect() as conn:
+        existing = conn.execute(text(
+            "SELECT LOWER(full_name) FROM ai_repos"
+        )).fetchall()
+    existing_set = {r[0] for r in existing}
+
+    missing = [
+        s for s in FOUNDATIONAL_SEEDS
+        if f"{s[0]}/{s[1]}".lower() not in existing_set
+    ]
+
+    # Fetch missing repos from GitHub API and upsert
+    if missing:
+        logger.info(f"Seeding {len(missing)} foundational repos from GitHub API...")
+        async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
+            repos_to_upsert = []
+            for owner, repo, domain, _, _ in missing:
+                try:
+                    resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}")
+                    if resp.status_code != 200:
+                        logger.warning(f"Seed {owner}/{repo}: GitHub API returned {resp.status_code}")
+                        continue
+                    data = resp.json()
+                    repos_to_upsert.append({
+                        "github_owner": data["owner"]["login"],
+                        "github_repo": data["name"],
+                        "full_name": data["full_name"],
+                        "name": data["name"],
+                        "description": data.get("description") or "",
+                        "stars": data.get("stargazers_count", 0),
+                        "forks": data.get("forks_count", 0),
+                        "language": data.get("language"),
+                        "topics": data.get("topics"),
+                        "license": (data.get("license") or {}).get("spdx_id"),
+                        "last_pushed_at": data.get("pushed_at"),
+                        "created_at": data.get("created_at"),
+                        "archived": data.get("archived", False),
+                        "domain": domain,
+                    })
+                    await asyncio.sleep(0.3)
+                except Exception as e:
+                    logger.warning(f"Seed {owner}/{repo}: {e}")
+
+            if repos_to_upsert:
+                upserted = _batch_upsert(repos_to_upsert)
+                logger.info(f"Upserted {upserted} seed repos")
+
+    # Set package names for all seeds (including already-existing ones)
+    updated = 0
+    with engine.connect() as conn:
+        for owner, repo, domain, pypi_pkg, npm_pkg in FOUNDATIONAL_SEEDS:
+            sets = []
+            params: dict = {"owner": owner, "repo": repo}
+            if pypi_pkg:
+                sets.append("pypi_package = :pypi")
+                params["pypi"] = pypi_pkg
+            if npm_pkg:
+                sets.append("npm_package = :npm")
+                params["npm"] = npm_pkg
+            if not sets:
+                continue
+            result = conn.execute(text(f"""
+                UPDATE ai_repos SET {', '.join(sets)}, updated_at = NOW()
+                WHERE github_owner = :owner AND github_repo = :repo
+            """), params)
+            updated += result.rowcount
+        conn.commit()
+
+    logger.info(f"Seed package names set for {updated} repos")
+    return updated
 
 
 def _apply_domain_overrides() -> int:
