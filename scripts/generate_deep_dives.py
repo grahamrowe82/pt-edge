@@ -223,7 +223,30 @@ def domain_path(domain):
     return DOMAIN_PATHS.get(domain, "")
 
 
-def render_deep_dive(dd, env, out_dir, global_total):
+def build_related_deep_dives(deep_dives):
+    """For each deep dive, find others sharing domains or featured_categories."""
+    related = {}
+    for dd in deep_dives:
+        dd_domains = set(dd.get("domains") or [])
+        dd_cats = set(dd.get("featured_categories") or [])
+        matches = []
+        for other in deep_dives:
+            if other["slug"] == dd["slug"]:
+                continue
+            other_domains = set(other.get("domains") or [])
+            other_cats = set(other.get("featured_categories") or [])
+            shared_cats = dd_cats & other_cats
+            shared_domains = dd_domains & other_domains
+            if shared_cats or shared_domains:
+                score = len(shared_cats) * 3 + len(shared_domains)
+                matches.append({"slug": other["slug"], "title": other["title"],
+                                "subtitle": other.get("subtitle"), "score": score})
+        matches.sort(key=lambda x: -x["score"])
+        related[dd["slug"]] = matches[:4]
+    return related
+
+
+def render_deep_dive(dd, env, out_dir, global_total, related_lookup=None):
     """Render a single deep dive to static HTML."""
     slug = dd["slug"]
     print(f"  Rendering {slug}...")
@@ -255,6 +278,7 @@ def render_deep_dive(dd, env, out_dir, global_total):
         rendered_body=rendered_body,
         global_total=f"{global_total:,}",
         directories=DIRECTORIES,
+        related_deep_dives=(related_lookup or {}).get(dd["slug"], []),
     )
 
     path = os.path.join(out_dir, "insights", slug, "index.html")
@@ -315,10 +339,12 @@ def main():
         return
 
     global_total = fetch_global_total()
+    related_lookup = build_related_deep_dives(deep_dives)
+    print(f"  Built cross-links for {len(deep_dives)} deep dives")
     rendered = []
 
     for dd in deep_dives:
-        slug = render_deep_dive(dd, env, out_dir, global_total)
+        slug = render_deep_dive(dd, env, out_dir, global_total, related_lookup)
         if slug:
             rendered.append(dd)
 
