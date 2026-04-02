@@ -14,33 +14,38 @@ Everything on this roadmap either feeds the flywheel or is deferred until the fl
 
 ## What's done
 
-- [x] 165,000+ page directory across 17 domains
+- [x] 220K+ repo directory across 18 domains (MCP, agents, perception, RAG, AI coding, voice AI, diffusion, vector DB, embeddings, prompt engineering, ML frameworks, LLM tools, NLP, transformers, generative AI, computer vision, data engineering, MLOps)
 - [x] Quality scoring (0-100) with 4 sub-dimensions, daily refresh
-- [x] 2,400 embedding-discovered categories via UMAP + HDBSCAN + Haiku labelling
+- [x] 2,267 embedding-discovered categories via UMAP + HDBSCAN + Haiku labelling
 - [x] Decision paragraphs on every category page
-- [x] AI summaries from READMEs (Haiku-generated, 2K/day backfill)
+- [x] AI summaries from READMEs (Haiku-generated, 4K/day via LLM_BUDGET_MULTIPLIER=2.0)
 - [x] Template-generated metrics paragraphs on all detail pages
-- [x] Daily metric snapshots for all 220K repos (stars, forks, downloads, commits)
-- [x] 1536d embeddings for 220K+ repos (analytics/clustering)
+- [x] Daily metric snapshots for all 226K repos (stars, forks, downloads, commits)
+- [x] 1536d embeddings for 219K+ repos (~97% coverage)
 - [x] JSON-LD structured data, sitemaps, cross-domain navigation
-- [x] MCP server (47 tools) + REST API with keyed access
+- [x] MCP server (50+ tools) + REST API with keyed access
 - [x] Comparison pages: embedding-similarity pairs within categories, decision sentences via Haiku
 - [x] Domain reassignment via centroid similarity (10K/day in daily ingest)
 - [x] Allocation engine: dual-score (EHS + ES) with Bayesian surprise, position strength, CTR vs benchmark, barbell strategy, daily snapshots, deep dive priority queue
 - [x] Umami self-hosted analytics at a.phasetransitions.ai
 - [x] CTR-optimised title tags and meta descriptions across all 6 page types
-- [x] Deep dive infrastructure: reverse links from server detail pages, Substack companion workflow, process documented
-- [x] Voice AI deep dive (first data-driven deep dive, validated by GSC signals)
+- [x] Deep dive infrastructure: reverse links from server detail pages, Substack companion workflow, process documented ([docs/briefs/deep-dive-process.md](briefs/deep-dive-process.md))
+- [x] 9 published deep dives: OpenClaw ecosystem, voice AI landscape, voice app stack, embeddings shortcut, agent governance, agent memory, agent skills architecture, Obsidian PKM agents, perception/browser automation
 - [x] Google Search Console pipeline wired into daily ingest
+- [x] Coverage audit infrastructure: weekly awesome-list reconciliation ([scripts/audit_coverage.py](../scripts/audit_coverage.py))
+- [x] LLM throughput ramp: ANTHROPIC_RPM 40→120 (Tier 2), LLM_BUDGET_MULTIPLIER 1.0→2.0
+- [x] Commercial plan documented ([docs/commercial-plan.md](commercial-plan.md))
+- [x] Strategy docs updated: "Where we win" section in strategy.md, Bayesian framework in allocation engine brief
+- [x] Open Graph tags implemented on index, server detail, and comparison pages
 
 ## Immediate: make the flywheel turn
 
 These are the things blocking the flywheel from running properly.
 
-- [ ] **GSC data flowing:** The pipeline is wired (`app/ingest/gsc.py`) but `gsc_search_data` is empty. Verify GSC credentials are set on Render and the daily cron is successfully pulling data. Without this, the allocation engine has no demand signal.
-- [ ] **Sitemap/generation alignment:** The sitemap includes URLs for repos that don't have generated pages (below quality threshold, no description), producing 404s that waste crawl budget and erode Google's trust. Fix: build the sitemap from the list of pages actually written during generation, not from a separate DB query. One source of truth — if a page wasn't generated, it doesn't go in the sitemap.
-- [ ] **Domain reassignment redirects:** When a repo is reassigned to a different domain (e.g., k8sgpt moved from transformers to mlops), the old URL becomes a 404 while Google still has it indexed. Fix: track reassignment history in a `domain_reassignment_log` table (full_name, old_domain, new_domain, reassigned_at). During site generation, read the log and generate redirect HTML stubs at old paths (`<meta http-equiv="refresh">` + canonical link to new path). Handles multiple reassignments over time. The log is permanent infrastructure, not a one-off fix.
-- [ ] **Subcategory classifier quality:** High-quality repos land in wrong solo categories (ElevenLabs in `ai-workflow-automation`). This isolates them from comparisons and related servers. Investigate the LLM classifier prompt/context and fix the process — not individual repos.
+- [ ] **GSC data volume:** The pipeline runs and gsc_search_data has some rows (~48), but volume is minimal. Investigate whether GSC credentials are fully configured on Render and whether the API lag is still the bottleneck, or if there's a bug limiting the data pull.
+- [ ] **Sitemap/generation alignment:** Confirmed bug — the sitemap includes repos below MIN_QUALITY_SCORE that don't have generated pages, producing 404s (e.g., roshan7783/Sentiment-Analyzer scores 8/100, no page exists, but URL is in sitemap). Fix: build the sitemap from the list of pages actually written during generation. One source of truth.
+- [ ] **Domain reassignment redirects:** Confirmed bug — when a repo is reassigned to a different domain (e.g., k8sgpt moved from transformers to mlops), the old URL becomes a 404 while Google still has it indexed. Fix: track reassignment history in a `domain_reassignment_log` table (full_name, old_domain, new_domain, reassigned_at). During site generation, read the log and generate redirect HTML stubs at old paths. Permanent infrastructure.
+- [ ] **Subcategory classifier quality:** High-quality repos land in wrong solo categories (ElevenLabs still in `ai-workflow-automation`). This isolates them from comparisons and related servers. Investigate the LLM classifier prompt/context and fix the process — not individual repos.
 - [ ] **Cross-category comparison discovery:** Embedding similarity only runs within subcategories. The most valuable matchups (WhisperX vs whisper.cpp, ElevenLabs vs edge-tts) cross subcategory boundaries. Add a domain-level pass across top N projects.
 
 ## Data-driven: build when GSC/allocation signals justify
@@ -49,8 +54,8 @@ These are high-value features, but we build them when the data says to — not o
 
 ### Deep dives (allocation-driven)
 
-The allocation engine's `v_deep_dive_queue` ranks topics. Next deep dive should be whatever scores highest once GSC data is flowing. Likely candidates based on early signals:
-- Embeddings landscape (probably thin content supply, like voice-ai)
+The allocation engine's `v_deep_dive_queue` ranks topics. Next candidates based on traffic data:
+- ML frameworks landscape (now our largest indexed domain at 180+ pages, driving multi-page evaluation sessions from France, US, Hong Kong)
 - Data engineering tools (unsexy, high practitioner demand)
 - Computer vision (overshadowed by LLM narrative)
 - MLOps (same dynamic as data engineering)
@@ -63,7 +68,7 @@ Process: [docs/briefs/deep-dive-process.md](briefs/deep-dive-process.md)
 
 ### Temporal layer
 
-30+ days of snapshots accumulate late April 2026. Unlocks:
+30+ days of snapshots accumulate late April 2026 (~Apr 27). Unlocks:
 - Sparklines on detail pages (30-day star/download trends)
 - "Gained X stars this week" on detail pages
 - Star velocity-based trending (replace currently empty trending pages)
@@ -73,14 +78,14 @@ This is a freshness signal that compounds — Google sees content that changes m
 
 ### Cross-vertical stack pages
 
-"Build a document Q&A pipeline" → embeddings + vector DB + RAG framework. Highest-value page type because it requires quality-scored data across multiple domains — nobody else can produce it. But speculative until GSC data shows cross-vertical search intent. Defer until allocation engine validates demand.
+Architecture guides that link across multiple domains: "Build a document Q&A pipeline" → embeddings + vector DB + RAG framework. Validated by the voice-app-stack deep dive (cross-domain linking, 5x voice overrepresentation in Umami data across domains). Next candidates driven by allocation engine signals.
 
 ## Infrastructure quality
 
 Lower priority but contributes to long-term health.
 
 - [ ] Cross-vertical links for projects that appear in multiple domains
-- [ ] Open Graph tag verification (Twitter/LinkedIn card rendering)
+- [ ] OG tag visual verification on Twitter/LinkedIn (implementation done, needs testing)
 - [ ] RSS feeds per domain (distribution channel for freshness signals)
 
 ## Commercial progression
