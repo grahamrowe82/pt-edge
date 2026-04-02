@@ -15,6 +15,8 @@ See `docs/strategy.md` for the full strategic reasoning and `docs/roadmap.md` fo
 
 ## Database Access
 
+**Read `docs/development.md` before running ANY database query.** It contains critical safety rules for the 1GB production instance. There is no staging database. Every query hits real data, and bad queries can take down deploys.
+
 When querying the PT-Edge production database, ALWAYS use psql via Bash:
 
     psql $DATABASE_URL -c "SELECT ..."

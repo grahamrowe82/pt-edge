@@ -1512,7 +1512,7 @@ def test_verify_sitemap_catches_missing_pages(tmp_path):
     (tmp_path / "servers" / "a" / "b").mkdir(parents=True)
     (tmp_path / "servers" / "a" / "b" / "index.html").write_text("<html></html>")
 
-    mismatches = verify_sitemap(str(sitemap), str(tmp_path), "https://example.com")
+    mismatches = verify_sitemap(str(sitemap), str(tmp_path), "https://example.com", "")
     assert len(mismatches) == 1
     assert "c/d" in mismatches[0]
 
@@ -1530,5 +1530,5 @@ def test_verify_sitemap_passes_when_aligned(tmp_path):
     (tmp_path / "servers" / "a" / "b").mkdir(parents=True)
     (tmp_path / "servers" / "a" / "b" / "index.html").write_text("<html></html>")
 
-    mismatches = verify_sitemap(str(sitemap), str(tmp_path), "https://example.com")
+    mismatches = verify_sitemap(str(sitemap), str(tmp_path), "https://example.com", "")
     assert len(mismatches) == 0
