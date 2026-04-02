@@ -52,6 +52,10 @@ HTML_PAGE = """\
     <h1 class="text-3xl font-bold tracking-tight">PT-Edge API</h1>
     <p class="mt-2 text-lg text-gray-600">AI Project Intelligence API</p>
     <p class="mt-1 text-sm text-gray-500">Track 220,000+ AI repos across GitHub, PyPI, npm, Docker Hub, HuggingFace &amp; Hacker News.</p>
+    <div class="mt-4 inline-flex items-center gap-4">
+      <a href="/api/signup" class="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">Get your free API key</a>
+      <span class="text-sm text-gray-500">100 requests/day &middot; No credit card</span>
+    </div>
   </div>
 </header>
 
@@ -61,7 +65,7 @@ HTML_PAGE = """\
 <section id="quick-start">
   <h2 class="text-2xl font-semibold mb-4">Quick Start</h2>
   <ol class="list-decimal list-inside space-y-3 text-gray-700">
-    <li><strong>Get a key</strong> &mdash; Email <a href="mailto:graham@phasetransitions.ai" class="text-blue-600 underline">graham@phasetransitions.ai</a> for a trial API key.</li>
+    <li><strong>Get a key</strong> &mdash; <a href="/api/signup" class="text-blue-600 underline font-medium">Generate a free API key</a> instantly (100 requests/day, no credit card).</li>
     <li><strong>Make a request:</strong></li>
   </ol>
   <pre class="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl -H "Authorization: Bearer pte_YOUR_KEY_HERE" \\
