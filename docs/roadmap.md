@@ -100,16 +100,29 @@ The full journey from anonymous traffic to enterprise revenue is documented in [
 
 Once the flywheel is generating consistent organic traffic and temporal data reaches 90+ days:
 
+### kairn: Strategic Dependency Intelligence
+
+Strategic dependency auditing for AI projects — "is this the right library?" not just "is it safe?" Full plan: [docs/briefs/kairn-product-plan.md](briefs/kairn-product-plan.md)
+
+Build sequence:
+1. **Manual audit deep dive** — audit crewAI's AI dependencies by hand, publish as a deep dive. Validates the concept and reveals which metrics matter.
+2. **`mv_strategic_fitness` materialised view** — formalise category rank, momentum direction, top alternative, dependency exposure per repo.
+3. **Server detail page enrichment** — add "Strategic Fitness" section showing category rank, momentum, and top alternative.
+4. **`POST /api/v1/audit` endpoint** — accept package lists, return strategic fitness data. Free tier (scores + lifecycle) and paid tier (rankings + alternatives + trends).
+5. **Open-source scanner CLI** — reads lock files, calls the API, renders a report. Distribution channel for the proprietary data.
+
+First audit candidate: crewAI (45.9K stars) — focused deps (litellm, lancedb, tokenizers, qdrant-client), large audience, genuinely debatable dependency choices. Alternatives: gpt-researcher (broader surface), camel-ai (maximum depth).
+
 ### Quantitative analytics layer
 
 - Moving averages and crossover signals on star velocity
 - Factor analysis: quality, momentum, size, value (hype ratio), volatility
-- Dependency risk indicators
+- Dependency risk indicators (feeds into kairn)
 - Ecosystem-level analytics: sector rotation, concentration risk
 
 ### Enterprise data API
 
-The directory proves data quality for free. The analytics layer is the product. Pricing: $12K-36K/year for API access to the signal layer. The free directory is both the marketing surface and the trust-building mechanism. The full commercial funnel — from anonymous visit to enterprise contract in 8 steps — is in [docs/commercial-plan.md](commercial-plan.md).
+The directory proves data quality for free. The analytics layer is the product. Pricing: $12K-36K/year for API access to the signal layer. The free directory is both the marketing surface and the trust-building mechanism. The full commercial funnel — from anonymous visit to enterprise contract in 8 steps — is in [docs/commercial-plan.md](commercial-plan.md). kairn is the first concrete product on this API.
 
 ### Community features
 
