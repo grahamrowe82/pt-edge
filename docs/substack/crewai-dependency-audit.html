@@ -10,9 +10,11 @@
 
 <p><strong><a href="https://mcp.phasetransitions.ai/transformers/servers/huggingface/tokenizers/">tokenizers</a></strong> (90/100, #1 of 26). <strong><a href="https://mcp.phasetransitions.ai/vector-db/servers/qdrant/qdrant-client/">qdrant-client</a></strong> (86/100, #2 of 51). <strong><a href="https://mcp.phasetransitions.ai/llm-tools/servers/mangiucugna/json_repair/">json_repair</a></strong> (75/100, #1 of 54) — the dependency nobody mentions that fixes broken JSON from LLM outputs. Quietly essential.</p>
 
-<h2>The one weak link: mem0</h2>
+<h2>The one category that hasn't settled: agent memory</h2>
 
-<p><strong><a href="https://mcp.phasetransitions.ai/rag/servers/mem0ai/mem0/">mem0</a></strong> (72/100, #6 of 977 in agent memory). It has the most stars but three alternatives score significantly higher. <strong><a href="https://mcp.phasetransitions.ai/vector-db/servers/topoteretes/cognee/">cognee</a></strong> leads the category at 90/100. If you're starting a new crewAI project and choosing a memory layer, the data says evaluate cognee alongside mem0.</p>
+<p><strong><a href="https://mcp.phasetransitions.ai/rag/servers/mem0ai/mem0/">mem0</a></strong> (72/100, 49K stars) is a strong project — the most adopted agent memory tool in the ecosystem. But it sits in a category of 977 repos where approaches range from knowledge graphs (<strong><a href="https://mcp.phasetransitions.ai/vector-db/servers/topoteretes/cognee/">cognee</a></strong>, 90/100) to episodic memory to video-based retrieval. These aren't direct competitors — cognee builds structured knowledge from documents, mem0 handles conversational memory. They're more complementary than interchangeable.</p>
+
+<p>The real observation: agent memory is the most volatile part of the AI stack. LiteLLM's position as LLM gateway is secure. Chroma and LanceDB are established. But memory hasn't settled — expect crewAI's memory integrations to evolve as the category matures.</p>
 
 <h2>The ecosystem importance gap</h2>
 

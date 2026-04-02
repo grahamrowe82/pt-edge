@@ -58,9 +58,13 @@ The five most depended-on packages in crewAI's stack are all untracked. pydantic
 
 The baseline said "crewAI uses well-known libraries, LiteLLM is a good choice." The data says something much stronger: **6 of 7 scored deps are #1 in their category.** litellm is #1 of 285. chroma is #1 of 27. lancedb is #1 of 36. tokenizers is #1 of 26. json_repair is #1 of 54. This isn't just "good choices" — it's best-in-class across the board. Someone made very deliberate decisions here.
 
-### Surprise 2: mem0 is the weak link, and the alternative is much stronger
+### Surprise 2: Agent memory is the one category that hasn't settled
 
-The baseline mentioned memory capabilities vaguely ("some vector store, maybe ChromaDB"). The data reveals mem0 is the only dependency that's *not* a category leader — it's **#6 of 977** in agent-memory-systems with a 72/100 score. The category leader is cognee (90/100, 13.2K stars). Three other alternatives score higher: OpenViking (83), Memori (83), and several others in the 63-68 range. If you're building on crewAI and using mem0 for memory, the data suggests evaluating cognee.
+The baseline mentioned memory capabilities vaguely ("some vector store, maybe ChromaDB"). The data reveals mem0 (72/100, 49.6K stars) is a strong project — the most adopted agent memory tool — but it sits in a category of **977 repos** where the top 10 spans from 90 to 63 in quality and approaches range from knowledge graphs (cognee, 90/100) to episodic memory to video-based retrieval.
+
+Critically, cognee and mem0 aren't direct competitors — they solve different shapes of the memory problem. mem0 is a conversational memory service (what the user said, what the agent learned). cognee is a knowledge engine (process documents into structured knowledge). A production deployment might use both.
+
+The real insight: agent memory is the most volatile part of crewAI's dependency tree. Every other category in their stack has settled around clear leaders. Memory hasn't — and we should expect crewAI's memory integrations to evolve as the category matures.
 
 ### Surprise 3: crewAI chose LanceDB, not Chroma, as its primary vector store
 
