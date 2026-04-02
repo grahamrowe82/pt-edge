@@ -41,6 +41,7 @@ VIEWS_IN_ORDER = [
     "mv_computer_vision_quality",# standalone: quality scores for computer-vision-domain repos
     "mv_data_engineering_quality",# standalone: quality scores for data-engineering-domain repos
     "mv_mlops_quality",          # standalone: quality scores for mlops-domain repos
+    "mv_perception_quality",     # standalone: quality scores for perception-domain repos
     "mv_allocation_scores",      # depends on: all quality views + ai_repo_snapshots + gsc + umami
 ]
 
@@ -122,6 +123,7 @@ def refresh_all_views():
         ("nlp", "mv_nlp_quality"), ("transformers", "mv_transformers_quality"),
         ("generative-ai", "mv_generative_ai_quality"), ("computer-vision", "mv_computer_vision_quality"),
         ("data-engineering", "mv_data_engineering_quality"), ("mlops", "mv_mlops_quality"),
+        ("perception", "mv_perception_quality"),
     ]:
         try:
             with engine.connect() as conn:

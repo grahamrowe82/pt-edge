@@ -1,0 +1,43 @@
+<p>Your AI agent forgets everything between sessions. You search GitHub for "agent memory" and find 977 repos across five different domains, using ten different subcategory names for roughly the same concept. Nobody's agreed on what to call this yet. PT-Edge tracks all of them and scores them daily. Here's what the data says about what actually works.</p>
+
+<h2>The context window paradox</h2>
+
+<p>Start with the assumption most builders make: "I have a 1M token context window, so I don't need a memory system." The data says otherwise. GPT-5.4 accuracy degrades to 36% at 512K-1M tokens. Context windows have plateaued at 1M for two years, constrained by hardware limits. Even within that 1M, practical performance drops off a cliff above 256K tokens.</p>
+
+<p>This is why 18 newsletter articles from Latent Space, Zvi, Simon Willison, and One Useful Thing all covered memory and context in the last 90 days. The consensus: persistent memory systems are becoming the way to give agents long-term state, because context windows alone can't do it reliably.</p>
+
+<h2>Four projects defining the category</h2>
+
+<p><a href="https://mcp.phasetransitions.ai/rag/servers/mem0ai/mem0/">mem0</a> (49,600+ stars, Apache-2.0) is the category definer. Multi-level memory covering user, session, and agent state, with Python and JavaScript SDKs plus LangGraph and CrewAI integrations. Claims 26% higher accuracy with 90% lower token usage versus full-context approaches. If you're starting from zero, this is where you begin.</p>
+
+<p><a href="https://mcp.phasetransitions.ai/agents/servers/thedotmack/claude-mem/">claude-mem</a> (34,400+ stars) is the Claude Code ecosystem play. Captures everything Claude does, compresses it with AI, and provides progressive disclosure — surfacing relevant memories without flooding the context window. Eight releases in the last 30 days.</p>
+
+<p><a href="https://mcp.phasetransitions.ai/vector-db/servers/topoteretes/cognee/">Cognee</a> (13,200+ stars, 393 commits in 30 days) takes a different approach: graph plus vector hybrid retrieval with ontology grounding. If your use case requires understanding relationships between memories — not just retrieving similar ones — this is the most mature option. Highest development velocity in the entire category.</p>
+
+<p><a href="https://mcp.phasetransitions.ai/vector-db/servers/memvid/memvid/">Memvid</a> (13,400+ stars) is the radical simplicity play. Stores memories in a single <code>.mv2</code> file with sub-5ms retrieval. No database server, no network calls, no infrastructure. Written in Rust.</p>
+
+<h2>The storage decision</h2>
+
+<p>The most fundamental architectural choice. Four approaches, each with real trade-offs:</p>
+
+<p><strong>Vector DB</strong> (Qdrant, Chroma, Milvus, LanceDB) — best for semantic similarity retrieval. The established approach, well-tooled, but struggles with relationships between memories and temporal reasoning.</p>
+
+<p><strong>Graph DB</strong> (Cognee, <a href="https://mcp.phasetransitions.ai/rag/servers/getzep/graphiti/">Graphiti</a> at 23K+ stars) — best when memories have structure and relationships matter. Knowledge graphs capture "A depends on B" in ways vectors can't. More complex to operate.</p>
+
+<p><strong>SQL-native</strong> (<a href="https://mcp.phasetransitions.ai/rag/servers/MemoriLabs/Memori/">Memori</a> at 12,300+ stars) — the pragmatic middle ground. Intercepts LLM conversations automatically, stores in SQL, achieves 81.95% accuracy at roughly 5% of the token cost of full context. Use what you already know.</p>
+
+<p><strong>File-based</strong> (Memvid, <a href="https://mcp.phasetransitions.ai/rag/servers/agentscope-ai/ReMe/">ReMe</a>) — the "you don't need a vector database" counter-narrative gaining traction on Hacker News. Human-readable Markdown persistence, zero infrastructure dependencies. Best for coding agents and single-user scenarios.</p>
+
+<h2>55 new repos per week — and nobody's talking about it</h2>
+
+<p>PT-Edge's nucleation signals show 55 new MCP memory repos appearing per week, all flagged as "creation without buzz" — builders shipping infrastructure before the narrative catches up. Session-context-memory shows 12x week-over-week acceleration. This is the fastest-growing infrastructure category we track, and it's happening almost entirely below the media radar.</p>
+
+<h2>Where this is heading</h2>
+
+<p>The big question: will platform-native memory features (Claude Memory Export, Microsoft Copilot Tasks persistent memory) absorb this entire category? History suggests they'll serve the common case but leave room for specialized systems. Platforms provide simple key-value memory. Production agents need episodic recall, semantic compression, procedural learning, and temporal reasoning. That gap is where these 977 repos live.</p>
+
+<h2>Explore the data</h2>
+
+<p>Every project mentioned here has a quality-scored page in our directories, updated daily. Browse the <a href="https://mcp.phasetransitions.ai/rag/categories/">RAG categories</a>, <a href="https://mcp.phasetransitions.ai/agents/categories/">agent categories</a>, or <a href="https://mcp.phasetransitions.ai/vector-db/categories/">vector DB categories</a> to explore the full landscape.</p>
+
+<p>The full deep dive with architecture decision tables and quality scores is at <a href="https://mcp.phasetransitions.ai/insights/agent-memory-landscape/">mcp.phasetransitions.ai/insights/agent-memory-landscape</a>.</p>

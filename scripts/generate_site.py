@@ -220,6 +220,17 @@ DOMAIN_CONFIG = {
         "description": "Quality-scored directory of MLOps tools for model deployment, monitoring, and lifecycle management.",
         "explainer": "MLOps tools for model deployment, monitoring, experiment tracking, and ML lifecycle management.",
     },
+    "perception": {
+        "view": "mv_perception_quality",
+        "snapshot_table": "quality_snapshots",
+        "snapshot_domain_filter": "perception",
+        "label": "Perception",
+        "label_plural": "Perception Tools",
+        "noun": "tool",
+        "noun_plural": "tools",
+        "description": "Quality-scored directory of web scraping, browser automation, and data extraction tools for AI agents.",
+        "explainer": "Perception tools give AI agents eyes and hands on the web — browser automation, web scraping, data extraction, and anti-detection infrastructure.",
+    },
 }
 
 TIER_CLASSES = {
@@ -261,6 +272,7 @@ DIRECTORIES = [
     {"path": "/computer-vision/", "label": "CV", "domain": "computer-vision"},
     {"path": "/data-engineering/", "label": "Data Eng", "domain": "data-engineering"},
     {"path": "/mlops/", "label": "MLOps", "domain": "mlops"},
+    {"path": "/perception/", "label": "Perception", "domain": "perception"},
 ]
 
 # ---------------------------------------------------------------------------
