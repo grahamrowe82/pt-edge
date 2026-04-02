@@ -220,3 +220,40 @@ Running log of insights from the crewAI dependency audit. Each finding updates t
 **Impact on plan:** This blocks Step 4 (API endpoint) entirely. Without a reliable mapping, the audit endpoint can't match package names to scored repos. Added `package_registry_map` table and bidirectional validation to the plan.
 
 **Broader insight:** The bidirectional mapping also enables a dependency graph crawl — walk from any node (repo or package), discover new nodes at each edge, expand coverage organically. This is the mechanism behind the second flywheel (dependency discovery).
+
+### Finding 2: PyPI metadata resolves most mappings, but coverage gaps are significant
+
+**Date:** 2026-04-02
+
+**What happened:** Running Direction A (PyPI → GitHub) on crewAI's 47 deps:
+- **30 resolved** to a GitHub repo via `project_urls` or `homepage`
+- **17 had no GitHub URL** in PyPI metadata (including major packages: lancedb, mem0ai, instructor, tiktoken, voyageai, docling, pandas)
+- Of the 30 resolved, **8 are tracked in ai_repos** with quality scores
+- **24 are not tracked** — including critical AI infrastructure: `anthropics/anthropic-sdk-python`, `openai/openai-python`, `modelcontextprotocol/python-sdk`, `pydantic/pydantic`
+
+**The coverage picture for crewAI:**
+
+| Category | Count | Examples |
+|---|---|---|
+| **Tracked + scored** | 8 | litellm (98), chroma (94), lancedb (94), tokenizers (90), qdrant-client (86), json_repair (75), mem0 (72) |
+| **PyPI resolved but not tracked** | 22 | anthropic SDK, openai SDK, pydantic, MCP python-sdk, httpx, opentelemetry, uv, boto3 |
+| **No PyPI GitHub URL** | 17 | instructor, tiktoken, lancedb*, mem0ai*, voyageai, docling, pandas |
+
+*lancedb and mem0ai are tracked in ai_repos but PyPI didn't resolve to GitHub — we know them from our own ingestion, not from PyPI metadata.
+
+**Key insight:** PT-Edge tracks AI-specific repos (220K+) but doesn't track foundational Python infrastructure (pydantic, httpx, click) or LLM provider SDKs (openai-python, anthropic-sdk-python). This is correct for the directory but creates a gap for kairn: a dependency audit needs to score *all* AI-relevant deps, including the provider SDKs.
+
+**Decision for the manual audit:** For the 8 tracked deps, use full quality scoring. For the untracked AI-relevant deps (anthropic SDK, openai SDK, MCP SDK, pydantic), note them as "outside current scoring but strategically important." For general infrastructure (click, httpx, tomli), classify as "out of scope — not AI-specific." This mirrors what a real kairn report would look like.
+
+### Finding 3: The "AI dependency" boundary is blurry
+
+**Date:** 2026-04-02
+
+**What happened:** crewAI's 47 deps include a spectrum from clearly-AI (litellm, chromadb) to clearly-not-AI (tomli, click, regex) to ambiguous (pydantic — foundational but critical for AI structured outputs; opentelemetry — general but increasingly AI-agent-specific; httpx — general but the standard for async LLM API calls).
+
+**Impact:** The kairn report needs a clear framework for what counts as "AI dependency" vs "general infrastructure." Three tiers:
+1. **AI-specific** — repos in PT-Edge's AI taxonomy (litellm, chromadb, tokenizers, etc.). Full scoring.
+2. **AI-adjacent** — provider SDKs (openai, anthropic), AI-heavy general tools (pydantic for structured outputs, opentelemetry for agent tracing). Strategic commentary without quality scoring.
+3. **General infrastructure** — (click, httpx, tomli, regex). Out of scope, noted as such.
+
+This tiering should be documented in the kairn output so users understand why 35 of 47 deps aren't scored.
