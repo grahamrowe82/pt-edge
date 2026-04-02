@@ -1,0 +1,37 @@
+<p>There are 2,400 repos in the Claude Code ecosystem. 370 new ones appeared last week. Most are garbage. Here's what's actually worth installing.</p>
+
+<h2>1. Give it memory</h2>
+
+<p>Claude Code forgets everything between sessions. <a href="https://mcp.phasetransitions.ai/agents/servers/thedotmack/claude-mem/">claude-mem</a> (34,000+ stars) fixes this — it captures everything Claude does, compresses it, and resurfaces relevant context in future sessions. It's the single highest-impact thing you can add. If you want something simpler, a hooks-and-markdown approach like <a href="https://mcp.phasetransitions.ai/agents/servers/davegoldblatt/total-recall/">total-recall</a> gives you persistent memory with zero dependencies.</p>
+
+<p>The full architecture decision (vector DB vs graph vs file-based memory) is covered in our <a href="https://mcp.phasetransitions.ai/insights/agent-memory-landscape/">agent memory deep dive</a>.</p>
+
+<h2>2. Connect it to your browser</h2>
+
+<p><a href="https://mcp.phasetransitions.ai/mcp/servers/ChromeDevTools/chrome-devtools-mcp/">Chrome DevTools MCP</a> (28,500+ stars, 2.6 million downloads/month) bridges Claude Code to Chrome's DevTools Protocol — performance tracing, network inspection, automated browser actions. It's the most-downloaded MCP server in the entire ecosystem and the one that makes Claude Code actually useful for frontend work.</p>
+
+<p>For web scraping, add <a href="https://mcp.phasetransitions.ai/mcp/servers/firecrawl/firecrawl-mcp-server/">Firecrawl MCP</a> (5,700+ stars). For the full browser automation landscape, see our <a href="https://mcp.phasetransitions.ai/insights/perception-browser-automation/">perception deep dive</a>.</p>
+
+<h2>3. Give it workflow power</h2>
+
+<p><a href="https://mcp.phasetransitions.ai/mcp/servers/czlonkowski/n8n-mcp/">n8n-mcp</a> (15,000+ stars, 257K downloads/month) lets Claude Code build and manage n8n workflows. <a href="https://mcp.phasetransitions.ai/mcp/servers/oraios/serena/">Serena</a> (21,000+ stars) gives it semantic code understanding — not just text search but structural awareness of your codebase. <a href="https://mcp.phasetransitions.ai/mcp/servers/zilliztech/claude-context/">claude-context</a> (5,600+ stars) makes your entire codebase the context window.</p>
+
+<h2>4. Run multiple sessions</h2>
+
+<p>The session management space has consolidated around two patterns: tmux + git worktrees, or a dedicated TUI app. <a href="https://mcp.phasetransitions.ai/agents/servers/kbwo/ccmanager/">ccmanager</a> is the only one with real package downloads (3,800/month) — it manages sessions across Claude Code, Gemini CLI, Codex, Cursor Agent, and Copilot CLI from one interface. For teams, <a href="https://mcp.phasetransitions.ai/agents/servers/Yeachan-Heo/oh-my-claudecode/">oh-my-claudecode</a> (9,500+ stars, 667 commits in 30 days) is the most actively developed multi-agent orchestration system.</p>
+
+<h2>5. Configure it properly</h2>
+
+<p>Your CLAUDE.md file is the single most important configuration surface. <a href="https://mcp.phasetransitions.ai/agents/servers/zebbern/claude-code-guide/">claude-code-guide</a> (3,600+ stars) is the best reference for setup, commands, and workflows. <a href="https://mcp.phasetransitions.ai/ai-coding/servers/alinaqi/claude-bootstrap/">claude-bootstrap</a> gives you a security-first, spec-driven project initialisation. And <a href="https://mcp.phasetransitions.ai/agents/servers/marckrenn/claude-code-changelog/">claude-code-changelog</a> tracks every release, prompt change, and feature flag — essential for understanding when Claude Code's behaviour shifts under you.</p>
+
+<p>For governance in team settings, see our <a href="https://mcp.phasetransitions.ai/insights/agent-governance-landscape/">agent governance deep dive</a>.</p>
+
+<h2>The noise problem</h2>
+
+<p>A warning: 300 repos are tagged "claude-skill-orchestration" with an average of 15 stars. The long tail is enormous. PT-Edge quality scores exist precisely for this — we score every one of these 2,400 repos daily so you don't have to evaluate them manually. If the quality score is below 30, it's probably not worth your time.</p>
+
+<h2>The full picture</h2>
+
+<p>The comprehensive deep dive — with quality-scored tables, release velocity data, subcategory analysis, and the full HN/newsletter signal — is at <a href="https://mcp.phasetransitions.ai/insights/claude-code-ecosystem/">mcp.phasetransitions.ai/insights/claude-code-ecosystem</a>.</p>
+
+<p>Browse all <a href="https://mcp.phasetransitions.ai/agents/categories/">agent categories</a> or check what's <a href="https://mcp.phasetransitions.ai/agents/trending/">trending this week</a>.</p>

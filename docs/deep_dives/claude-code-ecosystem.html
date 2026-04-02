@@ -1,0 +1,323 @@
+<p>You use Claude Code every day. So do roughly 370 new developers each week, judging by the repos they create. PT-Edge tracks {{ '{:,}'.format(2400) }}+ repositories in the Claude Code ecosystem, scored daily on quality, maintenance, and adoption. Most of them are noise &mdash; the average repo in claude-skill-orchestration has 15 stars and zero releases. This guide cuts through it. If you already live in the terminal with Claude Code, here is what is actually worth installing, what to watch, and what to ignore.</p>
+
+<h2>The ecosystem at a glance: 2,400 repos, 90% noise</h2>
+
+<p>Before you install anything, understand the scale and the signal-to-noise problem. The Claude Code ecosystem is growing at roughly 370 new repos per week. Most of them are forks, clones of clones, or weekend experiments that never ship a second commit.</p>
+
+<table>
+  <thead>
+    <tr><th>Subcategory</th><th>Repos</th><th>Avg Stars</th><th>Max Stars</th><th>Signal Level</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><a href="{{ domain_path('agents') }}/categories/claude-code-team-systems/">Team Systems</a></td><td>241</td><td>433</td><td>{{ repos.get('affaan-m/everything-claude-code', {}).stars | intcomma }}</td><td>Strong</td></tr>
+    <tr><td><a href="{{ domain_path('agents') }}/categories/claude-code-skills/">Skills</a></td><td>161</td><td>339</td><td>{{ repos.get('ComposioHQ/awesome-claude-skills', {}).stars | intcomma }}</td><td>Strong</td></tr>
+    <tr><td><a href="{{ domain_path('agents') }}/categories/claude-code-development-templates/">Development Templates</a></td><td>299</td><td>85</td><td>{{ repos.get('frankbria/ralph-claude-code', {}).stars | intcomma }}</td><td>Moderate</td></tr>
+    <tr><td><a href="{{ domain_path('agents') }}/categories/claude-code-configuration/">Configuration</a></td><td>225</td><td>176</td><td>{{ repos.get('zebbern/claude-code-guide', {}).stars | intcomma }}</td><td>Moderate</td></tr>
+    <tr><td><a href="{{ domain_path('agents') }}/categories/claude-code-platforms/">Platforms</a></td><td>187</td><td>241</td><td>{{ repos.get('CherryHQ/cherry-studio', {}).stars | intcomma }}</td><td>Moderate</td></tr>
+    <tr><td><a href="{{ domain_path('agents') }}/categories/claude-code-workspaces/">Workspaces</a></td><td>162</td><td>135</td><td>{{ repos.get('superset-sh/superset', {}).stars | intcomma }}</td><td>Moderate</td></tr>
+    <tr><td><a href="{{ domain_path('llm-tools') }}/categories/claude-skill-orchestration/">Skill Orchestration</a></td><td>300</td><td>15</td><td>899</td><td>Mostly noise</td></tr>
+    <tr><td><a href="{{ domain_path('agents') }}/categories/claude-code-plugins/">Plugins</a></td><td>113</td><td>30</td><td>{{ '{:,}'.format(1602) }}</td><td>Mostly noise</td></tr>
+  </tbody>
+</table>
+
+<p>The first column that matters is "Avg Stars." Anything below 100 is a category full of abandoned experiments. claude-code-team-systems (241 repos, avg 433 stars) and claude-code-skills (161 repos, avg 339 stars) are where the actual tools with traction live. The skill-orchestration subcategory with 300 repos and a 15-star average is the noise floor personified.</p>
+
+<p>The hottest category right now is claude-code-team-systems with a 2.21x acceleration rate and {{ '{:,}'.format(2667) }} new stars in the last 7 days alone. Multi-agent orchestration is where the energy is. Memory (1.90x acceleration) is close behind.</p>
+
+<h2>Memory and persistence: the first problem to solve</h2>
+
+<p>Claude forgets between sessions. Every power user hits this within their first week, and it is the most common complaint on Hacker News threads. The ecosystem has responded with at least six distinct approaches to solving it. None has become a standard, but one has clear momentum.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/thedotmack/claude-mem/">claude-mem</a> ({{ repos.get('thedotmack/claude-mem', {}).quality_score }}/100, {{ repos.get('thedotmack/claude-mem', {}).stars | intcomma }} stars, {{ repos.get('thedotmack/claude-mem', {}).downloads_monthly | default(0) | intcomma }} downloads/month) dominates. It automatically captures everything Claude does during sessions and compresses it using Claude's own agent-sdk. With 8 releases in the last 30 days and {{ repos.get('thedotmack/claude-mem', {}).commits_30d | default(0) }} commits, it is the memory solution with the most sustained investment. Install this first.</p>
+
+<p>But claude-mem is not the only approach worth knowing about:</p>
+
+<table>
+  <thead>
+    <tr><th>Approach</th><th>Project</th><th>Score</th><th>Stars</th><th>How it works</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Agent-SDK compression</td>
+      <td><a href="{{ domain_path('agents') }}/servers/thedotmack/claude-mem/">claude-mem</a></td>
+      <td>{{ repos.get('thedotmack/claude-mem', {}).quality_score }}/100</td>
+      <td>{{ repos.get('thedotmack/claude-mem', {}).stars | intcomma }}</td>
+      <td>Auto-captures session data, AI-compresses it, persists across sessions</td>
+    </tr>
+    <tr>
+      <td>Hooks + Markdown</td>
+      <td><a href="{{ domain_path('agents') }}/servers/HelloRuru/claude-memory-engine/">claude-memory-engine</a></td>
+      <td>&mdash;</td>
+      <td>59</td>
+      <td>Zero dependencies. Git hooks write to markdown files. Simplest possible approach</td>
+    </tr>
+    <tr>
+      <td>Knowledge graph</td>
+      <td><a href="{{ domain_path('agents') }}/servers/tirth8205/code-review-graph/">code-review-graph</a></td>
+      <td>&mdash;</td>
+      <td>{{ '{:,}'.format(1144) }}</td>
+      <td>Local knowledge graph of your codebase. Claims 6.8x fewer tokens on reviews</td>
+    </tr>
+    <tr>
+      <td>Portable .mv2 files</td>
+      <td><a href="{{ domain_path('agents') }}/servers/memvid/claude-brain/">claude-brain</a></td>
+      <td>&mdash;</td>
+      <td>322</td>
+      <td>Single portable file. No database, no SQLite, no ChromaDB</td>
+    </tr>
+    <tr>
+      <td>MCP-based</td>
+      <td><a href="{{ domain_path('mcp') }}/servers/campfirein/cipher/">cipher</a></td>
+      <td>{{ repos.get('campfirein/cipher', {}).quality_score }}/100</td>
+      <td>{{ repos.get('campfirein/cipher', {}).stars | intcomma }}</td>
+      <td>Open-source memory layer designed specifically for coding agents</td>
+    </tr>
+    <tr>
+      <td>Tiered write-gate</td>
+      <td><a href="{{ domain_path('agents') }}/servers/davegoldblatt/total-recall/">total-recall</a></td>
+      <td>&mdash;</td>
+      <td>185</td>
+      <td>Correction propagation and write gates to prevent memory pollution</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Anthropic also shipped AutoDream memory consolidation in late March &mdash; a background process modeled on REM sleep that manages memory without explicit user intervention. This is the first-party answer, and it may make some of these third-party solutions redundant over time. But today, claude-mem is the most practical choice. For a deeper breakdown of memory architectures and how they compare across agent frameworks, see our <a href="https://mcp.phasetransitions.ai/insights/agent-memory-landscape/">agent memory landscape deep dive</a>.</p>
+
+<h2>Skills that actually matter</h2>
+
+<p>The curated lists are the entry point. <a href="{{ domain_path('agents') }}/servers/ComposioHQ/awesome-claude-skills/">awesome-claude-skills</a> ({{ repos.get('ComposioHQ/awesome-claude-skills', {}).quality_score }}/100, {{ repos.get('ComposioHQ/awesome-claude-skills', {}).stars | intcomma }} stars) from Composio is the most popular. <a href="{{ domain_path('agents') }}/servers/hesreallyhim/awesome-claude-code/">awesome-claude-code</a> ({{ repos.get('hesreallyhim/awesome-claude-code', {}).stars | intcomma }} stars) is the broadest, covering skills, hooks, slash-commands, and agent orchestrators. <a href="{{ domain_path('agents') }}/servers/Jeffallan/claude-skills/">claude-skills</a> ({{ repos.get('Jeffallan/claude-skills', {}).quality_score }}/100, {{ repos.get('Jeffallan/claude-skills', {}).stars | intcomma }} stars) offers 66 specialized skills for full-stack developers &mdash; the most opinionated and immediately useful of the three.</p>
+
+<p>But there is a crucial distinction most people miss: <strong>skills, hooks, and slash commands are not the same thing.</strong></p>
+
+<ul>
+  <li><strong>Skills</strong> are markdown instruction files that live in <code>.claude/skills/</code>. They shape how Claude approaches specific tasks &mdash; "when asked to write tests, use this pattern." They are passive context, not executable code.</li>
+  <li><strong>Hooks</strong> are shell scripts triggered by lifecycle events (pre-tool, post-tool, notification). They execute real code: linting before commits, logging after tool calls, auto-formatting on save. This is where memory plugins like claude-memory-engine operate.</li>
+  <li><strong>Slash commands</strong> are user-invokable shortcuts defined in <code>.claude/commands/</code>. They bundle a prompt template you trigger with <code>/command-name</code>.</li>
+</ul>
+
+<p>Most "skill collections" mix all three without distinguishing them, which is why installing a random skills repo often does nothing useful. The 300-repo claude-skill-orchestration subcategory (average 15 stars) is full of this confusion.</p>
+
+<h3>Top picks by use case</h3>
+
+<table>
+  <thead>
+    <tr><th>Use case</th><th>Install this</th><th>Stars</th><th>Why</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Full-stack dev</td>
+      <td><a href="{{ domain_path('agents') }}/servers/Jeffallan/claude-skills/">claude-skills</a></td>
+      <td>{{ repos.get('Jeffallan/claude-skills', {}).stars | intcomma }}</td>
+      <td>66 focused skills for React, Node, databases, testing, deployment</td>
+    </tr>
+    <tr>
+      <td>Team orchestration</td>
+      <td><a href="{{ domain_path('agents') }}/servers/affaan-m/everything-claude-code/">everything-claude-code</a></td>
+      <td>{{ repos.get('affaan-m/everything-claude-code', {}).stars | intcomma }}</td>
+      <td>The complete harness: skills, instincts, memory, security. {{ repos.get('affaan-m/everything-claude-code', {}).commits_30d | default(0) }} commits/30d</td>
+    </tr>
+    <tr>
+      <td>Research / academic</td>
+      <td><a href="{{ domain_path('agents') }}/servers/Galaxy-Dawn/claude-scholar/">claude-scholar</a></td>
+      <td>{{ '{:,}'.format(1341) }}</td>
+      <td>Personal CLI config for academic research and software development</td>
+    </tr>
+    <tr>
+      <td>DevOps / automation</td>
+      <td><a href="{{ domain_path('agents') }}/servers/pchalasani/claude-code-tools/">claude-code-tools</a></td>
+      <td>{{ repos.get('pchalasani/claude-code-tools', {}).stars | intcomma }}</td>
+      <td>Practical productivity tools for CLI coding agents</td>
+    </tr>
+    <tr>
+      <td>Game dev (Godot)</td>
+      <td><a href="{{ domain_path('ai-coding') }}/servers/htdt/godogen/">godogen</a></td>
+      <td>{{ '{:,}'.format(1070) }}</td>
+      <td>Builds complete Godot 4 projects from a game description</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>For the broader architecture of how skills compose into agent workflows, see our <a href="https://mcp.phasetransitions.ai/insights/agent-skills-architecture/">agent skills architecture deep dive</a>.</p>
+
+<h2>The MCP stack: your shopping list</h2>
+
+<p>MCP servers extend what Claude Code can perceive and act on. The ecosystem has hundreds, but the practical stack for daily use comes down to five.</p>
+
+<table>
+  <thead>
+    <tr><th>Server</th><th>Score</th><th>Stars</th><th>Downloads/mo</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set mcp_stack = ['ChromeDevTools/chrome-devtools-mcp', 'oraios/serena', 'czlonkowski/n8n-mcp', 'firecrawl/firecrawl-mcp-server', 'zilliztech/claude-context'] %}
+    {% set mcp_desc = {
+      'ChromeDevTools/chrome-devtools-mcp': 'Browser debugging and automation from the terminal',
+      'oraios/serena': 'Semantic code retrieval and editing across your codebase',
+      'czlonkowski/n8n-mcp': 'Build and trigger n8n automation workflows',
+      'firecrawl/firecrawl-mcp-server': 'Web scraping and content extraction',
+      'zilliztech/claude-context': 'Full codebase search with semantic understanding'
+    } %}
+    {% for name in mcp_stack %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | default(0) | intcomma }}</td>
+      <td>{{ mcp_desc.get(name, '&mdash;') }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('mcp') }}/servers/ChromeDevTools/chrome-devtools-mcp/">Chrome DevTools MCP</a> is the essential. At {{ repos.get('ChromeDevTools/chrome-devtools-mcp', {}).stars | intcomma }} stars and {{ '{:,}'.format(2626019) }} downloads per month, it is the most-installed MCP server in the Claude Code orbit by a factor of 10. It gives Claude Code eyes into the browser &mdash; inspect elements, read console logs, debug rendering issues, all without leaving the terminal. If you install one MCP server, make it this one.</p>
+
+<p><a href="{{ domain_path('mcp') }}/servers/oraios/serena/">Serena</a> ({{ repos.get('oraios/serena', {}).quality_score }}/100, {{ repos.get('oraios/serena', {}).stars | intcomma }} stars) is the second priority. It gives Claude Code semantic understanding of your codebase &mdash; not just text search but structural retrieval that understands functions, classes, and relationships. With {{ repos.get('oraios/serena', {}).commits_30d | default(0) }} commits in the last 30 days, it is actively maintained and improving.</p>
+
+<p><a href="{{ domain_path('mcp') }}/servers/czlonkowski/n8n-mcp/">n8n-mcp</a> ({{ repos.get('czlonkowski/n8n-mcp', {}).stars | intcomma }} stars, {{ '{:,}'.format(257296) }} downloads/month) bridges Claude Code to workflow automation. If you use n8n for CI/CD, data pipelines, or operational workflows, this lets Claude build and trigger them directly. It had 26 releases in the last 30 days &mdash; the most actively shipped MCP server in the ecosystem.</p>
+
+<p>For deeper coverage of browser automation and perception tools, see our <a href="https://mcp.phasetransitions.ai/insights/perception-browser-automation/">browser automation deep dive</a>.</p>
+
+<h2>Multi-session orchestration: running a fleet of Claudes</h2>
+
+<p>Once you are productive with a single Claude Code session, the next question is: can I run five in parallel? The answer is yes, and two patterns have emerged.</p>
+
+<h3>Pattern 1: tmux + git worktrees</h3>
+
+<p>The lightweight approach. You spin up multiple Claude Code instances in tmux panes, each in its own git worktree, each working on a different branch or task. <a href="{{ domain_path('agents') }}/servers/automazeio/ccpm/">ccpm</a> ({{ repos.get('automazeio/ccpm', {}).quality_score }}/100, {{ repos.get('automazeio/ccpm', {}).stars | intcomma }} stars) is the most structured version &mdash; it uses GitHub Issues as a task queue and git worktrees for isolation. <a href="{{ domain_path('agents') }}/servers/njbrake/agent-of-empires/">agent-of-empires</a> ({{ '{:,}'.format(1103) }} stars, {{ repos.get('njbrake/agent-of-empires', {}).commits_30d | default(0) }} commits/30d) manages sessions across 8+ agent CLIs via tmux.</p>
+
+<h3>Pattern 2: dedicated TUI</h3>
+
+<p>Purpose-built terminal UIs for managing multiple agent sessions.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Downloads/mo</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set session_mgrs = ['kbwo/ccmanager', 'tw93/Kaku', 'batrachianai/toad', 'stravu/crystal'] %}
+    {% set session_desc = {
+      'kbwo/ccmanager': 'Session manager for 8+ agent CLIs. The only one with real downloads',
+      'tw93/Kaku': 'Fast Rust terminal built for AI coding. 350 commits/30d',
+      'batrachianai/toad': 'Unified terminal interface. Clean Python implementation',
+      'stravu/crystal': 'Now Nimbalyst. Parallel sessions in git worktrees'
+    } %}
+    {% for name in session_mgrs %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | default(0) | intcomma }}</td>
+      <td>{{ session_desc.get(name, '&mdash;') }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/kbwo/ccmanager/">ccmanager</a> is the practical choice here. At {{ '{:,}'.format(3779) }} downloads per month, it is the only session manager with meaningful adoption beyond GitHub stars. It supports Claude Code, Gemini CLI, Codex CLI, Cursor Agent, and Copilot CLI from a single interface.</p>
+
+<p>For teams, the picture is different. <a href="{{ domain_path('agents') }}/servers/affaan-m/everything-claude-code/">everything-claude-code</a> ({{ repos.get('affaan-m/everything-claude-code', {}).stars | intcomma }} stars, {{ repos.get('affaan-m/everything-claude-code', {}).commits_30d | default(0) }} commits/30d) is the full performance optimization harness. <a href="{{ domain_path('agents') }}/servers/VoltAgent/awesome-claude-code-subagents/">awesome-claude-code-subagents</a> ({{ repos.get('VoltAgent/awesome-claude-code-subagents', {}).stars | intcomma }} stars) provides 100+ pre-built specialist subagents you can delegate to. <a href="{{ domain_path('agents') }}/servers/Yeachan-Heo/oh-my-claudecode/">oh-my-claudecode</a> ({{ repos.get('Yeachan-Heo/oh-my-claudecode', {}).quality_score }}/100, {{ repos.get('Yeachan-Heo/oh-my-claudecode', {}).stars | intcomma }} stars) is the most actively developed multi-agent tool, with {{ repos.get('Yeachan-Heo/oh-my-claudecode', {}).commits_30d | default(0) }} commits in 30 days &mdash; teams-first orchestration designed for dividing work across coordinated Claude Code instances.</p>
+
+<h2>Workspaces and platforms: wrapping Claude Code in a GUI</h2>
+
+<p>Not everyone wants a terminal-only experience. Several projects wrap Claude Code (and other agent CLIs) in a graphical interface.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/CherryHQ/cherry-studio/">Cherry Studio</a> ({{ repos.get('CherryHQ/cherry-studio', {}).quality_score }}/100, {{ repos.get('CherryHQ/cherry-studio', {}).stars | intcomma }} stars) is the leader &mdash; a full AI productivity studio with smart chat, autonomous agents, and 300+ assistants. It provides unified access to frontier LLMs including Claude, and with {{ repos.get('CherryHQ/cherry-studio', {}).commits_30d | default(0) }} commits in 30 days, it is a mature and actively maintained platform.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/winfunc/opcode/">opcode</a> ({{ repos.get('winfunc/opcode', {}).quality_score }}/100, {{ repos.get('winfunc/opcode', {}).stars | intcomma }} stars) is the GUI toolkit specifically for Claude Code &mdash; create custom agents, manage interactive sessions, run secure background agents. <a href="{{ domain_path('agents') }}/servers/superset-sh/superset/">superset</a> ({{ repos.get('superset-sh/superset', {}).quality_score }}/100, {{ repos.get('superset-sh/superset', {}).stars | intcomma }} stars, {{ repos.get('superset-sh/superset', {}).commits_30d | default(0) }} commits/30d) bills itself as "IDE for the AI Agents Era" &mdash; run a fleet of Claude Code, Codex, and other agents from one interface. For containerised setups, <a href="{{ domain_path('agents') }}/servers/CoderLuii/HolyClaude/">HolyClaude</a> ({{ '{:,}'.format(1061) }} stars) packages Claude Code with a web UI, five AI CLIs, a headless browser, and 50+ tools in a single Dockerfile.</p>
+
+<h2>Configuration and governance: CLAUDE.md patterns</h2>
+
+<p>Your <code>CLAUDE.md</code> file is arguably the single most important file in your project when working with Claude Code. It shapes every response, every tool call, every refactor. Getting it right matters more than which skills you install.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/zebbern/claude-code-guide/">claude-code-guide</a> ({{ repos.get('zebbern/claude-code-guide', {}).quality_score }}/100, {{ repos.get('zebbern/claude-code-guide', {}).stars | intcomma }} stars) is the best starting reference &mdash; setup, commands, workflows, agents, skills, and tips from beginner to power user. <a href="{{ domain_path('ai-coding') }}/servers/alinaqi/claude-bootstrap/">claude-bootstrap</a> ({{ repos.get('alinaqi/claude-bootstrap', {}).quality_score }}/100, {{ repos.get('alinaqi/claude-bootstrap', {}).stars | intcomma }} stars) takes a security-first, spec-driven approach to project initialization &mdash; opinionated defaults that prevent Claude from running dangerous commands or accessing files it should not touch.</p>
+
+<p>For tracking what Claude Code itself is doing under the hood, <a href="{{ domain_path('agents') }}/servers/marckrenn/claude-code-changelog/">claude-code-changelog</a> ({{ repos.get('marckrenn/claude-code-changelog', {}).stars | intcomma }} stars) is invaluable. With {{ '{:,}'.format(5791) }} commits, it tracks every release's prompts, feature flags, and metadata. When Claude Code's behavior changes overnight &mdash; and the "Claude Code is being dumbed down?" thread (1,085 HN points) shows how common this feeling is &mdash; this repo tells you exactly what changed.</p>
+
+<p>For the broader picture of how teams govern AI coding agents in production, see our <a href="https://mcp.phasetransitions.ai/insights/agent-governance-landscape/">agent governance deep dive</a>.</p>
+
+<h2>Computer Use: agents that can click</h2>
+
+<p>Anthropic shipped Computer Use integration for Claude Code on March 31, 2026. Agents can now open applications, click UI elements, test the apps they build, and interact with browsers &mdash; all from the CLI. This is the newest capability and the one most likely to reshape the MCP stack over the next few months.</p>
+
+<p>The ecosystem was already building toward this. <a href="{{ domain_path('agents') }}/servers/browserwing/browserwing/">BrowserWing</a> ({{ '{:,}'.format(1065) }} stars) turns browser actions into MCP commands or Claude Skills. <a href="{{ domain_path('agents') }}/servers/CoderLuii/HolyClaude/">HolyClaude</a> bundles a headless browser into the Claude Code workstation. But the first-party computer use integration changes the calculus: if Claude Code can natively control a browser, the third-party wrappers need to offer something beyond basic page interaction to survive.</p>
+
+<p>What to watch: the intersection of Computer Use and MCP. When Claude Code can both build a web app and test it by clicking through the UI, the feedback loop tightens dramatically. The 7-day autonomous loops that Anthropic recently shipped become more practical when the agent can verify its own work visually. For the full picture on perception and browser automation, see our <a href="https://mcp.phasetransitions.ai/insights/perception-browser-automation/">browser automation deep dive</a>.</p>
+
+<h2>What is shipping versus what is vaporware</h2>
+
+<p>The hardest signal to fake is release velocity. Of the 2,400+ repos in the Claude Code ecosystem, only 9 had formal releases in the last 30 days. Here is who is actually shipping:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Releases (30d)</th><th>Commits (30d)</th><th>Latest Release</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><a href="{{ domain_path('agents') }}/servers/maxritter/pilot-shell/">pilot-shell</a></td><td>42</td><td>131</td><td>2026-04-01</td></tr>
+    <tr><td><a href="{{ domain_path('mcp') }}/servers/czlonkowski/n8n-mcp/">n8n-mcp</a></td><td>26</td><td>{{ repos.get('czlonkowski/n8n-mcp', {}).commits_30d | default(0) }}</td><td>2026-03-31</td></tr>
+    <tr><td><a href="{{ domain_path('agents') }}/servers/iOfficeAI/AionUi/">AionUi</a></td><td>19</td><td>{{ '{:,}'.format(1330) }}</td><td>2026-04-01</td></tr>
+    <tr><td><a href="{{ domain_path('agents') }}/servers/thedotmack/claude-mem/">claude-mem</a></td><td>8</td><td>{{ repos.get('thedotmack/claude-mem', {}).commits_30d | default(0) }}</td><td>2026-03-29</td></tr>
+    <tr><td><a href="{{ domain_path('agents') }}/servers/CherryHQ/cherry-studio/">Cherry Studio</a></td><td>8</td><td>{{ repos.get('CherryHQ/cherry-studio', {}).commits_30d | default(0) }}</td><td>2026-03-27</td></tr>
+    <tr><td><a href="{{ domain_path('agents') }}/servers/affaan-m/everything-claude-code/">everything-claude-code</a></td><td>2</td><td>{{ repos.get('affaan-m/everything-claude-code', {}).commits_30d | default(0) }}</td><td>2026-03-21</td></tr>
+  </tbody>
+</table>
+
+<p>pilot-shell at 42 releases in 30 days is shipping at a furious pace &mdash; roughly one release per day. n8n-mcp at 26 releases is the most actively maintained MCP server. After that, there is a steep drop. The vast majority of the 2,400 repos have zero formal releases, zero downloads, and minimal commit activity. Stars without releases is hype. Releases without downloads is a hobby project. Only a handful of projects in this ecosystem pass both filters.</p>
+
+<h3>The download reality check</h3>
+
+<p>Downloads tell the bluntest truth about adoption:</p>
+
+<ul>
+  <li><strong>Chrome DevTools MCP:</strong> {{ '{:,}'.format(2626019) }}/month &mdash; genuine mass adoption</li>
+  <li><strong>n8n-mcp:</strong> {{ '{:,}'.format(257296) }}/month &mdash; strong workflow automation niche</li>
+  <li><strong>zcf:</strong> {{ '{:,}'.format(13170) }}/month &mdash; zero-config code flow finding its audience</li>
+  <li><strong>claude-mem:</strong> {{ '{:,}'.format(6486) }}/month &mdash; the memory standard, growing</li>
+  <li><strong>ccmanager:</strong> {{ '{:,}'.format(3779) }}/month &mdash; the session manager that people actually install</li>
+  <li><strong>Then a cliff.</strong> Most repos in this ecosystem have exactly zero downloads.</li>
+</ul>
+
+<h2>The Hacker News temperature check</h2>
+
+<p>Claude Code generated 25 Hacker News posts exceeding 300 points in the last 90 days. The top post (1,957 points) was the source code leak via a map file in the npm registry. The themes reveal what the community is feeling:</p>
+
+<ul>
+  <li><strong>Anxiety about quality:</strong> "Claude Code is being dumbed down?" (1,085 points, 702 comments) &mdash; the most engaged thread after the leak. Developers are worried about degradation and want objective benchmarks.</li>
+  <li><strong>Vendor lock-in fears:</strong> "Anthropic blocks third-party use" (625 points), "I was banned for scaffolding a CLAUDE.md file" (749 points), "Developing a competitor using Claude Code is banned" (321 points) &mdash; a persistent undercurrent of concern about Anthropic's control.</li>
+  <li><strong>Excitement about new capabilities:</strong> "Claude Code's new hidden feature: Swarms" (521 points), "Claude Code Remote Control" (544 points), multi-session orchestration (396 points) &mdash; the community is building faster than Anthropic can ship features.</li>
+  <li><strong>Cultural adoption:</strong> "Tell HN: I'm 60 years old. Claude Code has re-ignited a passion" (344 points), "Claude Code is suddenly everywhere inside Microsoft" (409 points) &mdash; this has crossed the chasm from early adopters to mainstream engineering teams.</li>
+</ul>
+
+<p>Every major AI newsletter &mdash; Latent Space, Simon Willison, Zvi, Pragmatic Engineer, One Useful Thing &mdash; covers Claude Code multiple times per month. The source code leak on March 31 revealed auto-dream memory, frustration regexes, and undercover mode. The coverage is overwhelming and shows no sign of slowing.</p>
+
+<h2>What to install right now</h2>
+
+<p>If you have been reading this far and want a concrete starting point, here is the minimum viable Claude Code stack:</p>
+
+<ol>
+  <li><strong>Memory:</strong> <a href="{{ domain_path('agents') }}/servers/thedotmack/claude-mem/">claude-mem</a> &mdash; install this first. Session persistence is the single biggest quality-of-life improvement.</li>
+  <li><strong>MCP - browser:</strong> <a href="{{ domain_path('mcp') }}/servers/ChromeDevTools/chrome-devtools-mcp/">Chrome DevTools MCP</a> &mdash; gives Claude Code eyes into the browser. Essential for web development.</li>
+  <li><strong>MCP - code search:</strong> <a href="{{ domain_path('mcp') }}/servers/zilliztech/claude-context/">claude-context</a> or <a href="{{ domain_path('mcp') }}/servers/oraios/serena/">Serena</a> &mdash; semantic codebase understanding. Pick one based on whether you want search (claude-context) or editing (Serena).</li>
+  <li><strong>Skills:</strong> <a href="{{ domain_path('agents') }}/servers/Jeffallan/claude-skills/">claude-skills</a> &mdash; 66 focused skills for full-stack development. More useful than the mega-lists.</li>
+  <li><strong>Configuration:</strong> <a href="{{ domain_path('agents') }}/servers/zebbern/claude-code-guide/">claude-code-guide</a> &mdash; read it, steal the CLAUDE.md patterns, adapt them to your project.</li>
+</ol>
+
+<p>Skip the orchestration tools until you have maxed out a single session. Skip the platforms unless you genuinely need a GUI. And ignore anything in the claude-skill-orchestration subcategory with fewer than 500 stars &mdash; 90% of it is noise.</p>
+
+<h2>How to use this data</h2>
+
+<p>Every project mentioned in this guide has a quality-scored page in our directory, updated daily. You can:</p>
+
+<ul>
+  <li>Browse all <a href="{{ domain_path('agents') }}/categories/">Claude Code categories</a> to find projects in your specific niche</li>
+  <li>Check <a href="{{ domain_path('agents') }}/trending/">trending Claude Code projects</a> to see what is gaining momentum this week</li>
+  <li>Explore the <a href="{{ domain_path('mcp') }}/categories/">MCP server directory</a> for tools that extend Claude Code's capabilities</li>
+  <li>Compare any two projects side by side on maintenance, adoption, maturity, and community scores</li>
+</ul>
+
+<p>Quality scores update daily from live GitHub, PyPI, and npm data. When a project stops shipping releases, the score drops. When a project starts gaining real downloads, the score rises. In an ecosystem adding 370 repos per week, the data does the curation work so you do not have to manually audit each repo's commit history before trusting it with your codebase.</p>
