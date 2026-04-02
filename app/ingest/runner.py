@@ -45,6 +45,34 @@ logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RETRY_DELAYS = [10, 30, 60]  # seconds — exponential-ish backoff
+INGEST_LOCK_ID = 8675309  # Postgres advisory lock ID
+
+# Held open for the duration of run_all() to keep the advisory lock alive.
+_lock_conn = None
+
+
+def acquire_ingest_lock() -> bool:
+    """Try to acquire a Postgres advisory lock. Returns True if acquired."""
+    global _lock_conn
+    from sqlalchemy import text
+    from app.db import engine
+
+    _lock_conn = engine.connect()
+    acquired = _lock_conn.execute(
+        text("SELECT pg_try_advisory_lock(:id)"), {"id": INGEST_LOCK_ID}
+    ).scalar()
+    if not acquired:
+        _lock_conn.close()
+        _lock_conn = None
+    return acquired
+
+
+def release_ingest_lock():
+    """Release the advisory lock by closing the dedicated connection."""
+    global _lock_conn
+    if _lock_conn is not None:
+        _lock_conn.close()
+        _lock_conn = None
 
 
 def _reset_pool():
