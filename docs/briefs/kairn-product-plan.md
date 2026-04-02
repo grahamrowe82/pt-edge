@@ -287,3 +287,23 @@ The argument for a distinct domain rather than distributing into existing domain
 **Impact:** This is a core product coverage issue, not just a kairn prerequisite. Should be addressed in the roadmap independently of kairn. However, kairn makes it urgent — you can't audit AI dependencies if you don't track the most fundamental ones.
 
 **Not solving now.** Recording for proper follow-up. The manual audit continues with the 8 tracked deps and strategic commentary on the untracked AI-relevant ones.
+
+### Finding 5: Subcategory classification makes "top alternative" unreliable
+
+**Date:** 2026-04-02
+
+**What happened:** The "top alternative" for each crewAI dep was computed as the highest-quality repo in the same subcategory. Results were often useless: Chroma's top alternative was `chroma-go` (a Go client, not a competing database). LanceDB's was `VectorDBBench` (a benchmarking tool). Qdrant-client's was `qdrant` (the server itself).
+
+**Root cause:** Subcategories are too narrow and sometimes group by ecosystem rather than function. "chroma-database-tools" (27 repos) contains Chroma ecosystem projects, not competing vector databases. A real alternative to Chroma is Qdrant or LanceDB — but those are in different subcategories.
+
+**Impact on plan:** The `mv_strategic_fitness` view's "top alternative" field (Step 2) can't just use subcategory peers. It needs either domain-level comparison (all vector-db repos) or embedding-similarity to find functionally equivalent repos. This is the same cross-category comparison problem already flagged in the roadmap for the directory.
+
+### Finding 6: Reverse dependency count is the most novel metric
+
+**Date:** 2026-04-02
+
+**What happened:** Querying `package_deps` for how many tracked repos depend on each crewAI dep produced the most differentiated data in the entire audit. No existing tool provides "how many AI projects depend on this?"
+
+Key numbers: pydantic (1,029 repos), openai (866), httpx (579), mcp (421), anthropic (229), litellm (155), chromadb (126). These tell you systemic importance — how much of the ecosystem breaks if this library has a problem.
+
+**Impact on plan:** Reverse dependency count should be a headline metric in kairn reports, not just a secondary signal. It's the metric no other tool can provide and it answers the question "how important is this dependency to the broader ecosystem, not just to my project?"
