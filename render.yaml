@@ -56,12 +56,12 @@ services:
       - key: DISABLE_TELEMETRY
         value: "1"
 
-  - type: cron
-    name: pt-edge-ingest
+  - type: worker
+    name: pt-edge-daily-ingest-worker
     runtime: docker
     region: oregon
-    schedule: "0 6 * * *"
-    dockerCommand: python scripts/ingest_all.py
+    plan: starter
+    dockerCommand: python scripts/ingest_worker.py
     envVars:
       - key: DATABASE_URL
         fromDatabase:
