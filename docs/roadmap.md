@@ -48,6 +48,16 @@ These are the things blocking the flywheel from running properly.
 - [ ] **Subcategory classifier quality:** High-quality repos land in wrong solo categories (ElevenLabs still in `ai-workflow-automation`). This isolates them from comparisons and related servers. Investigate the LLM classifier prompt/context and fix the process — not individual repos.
 - [ ] **Cross-category comparison discovery:** Embedding similarity only runs within subcategories. The most valuable matchups (WhisperX vs whisper.cpp, ElevenLabs vs edge-tts) cross subcategory boundaries. Add a domain-level pass across top N projects.
 
+## Foundational coverage gap (discovered via kairn audit)
+
+The crewAI dependency audit exposed that PT-Edge's 18 domains are all application-level (what people build with AI). The foundational layer — what AI applications are built on — is not tracked: LLM provider SDKs (openai-python, anthropic-sdk-python), structural tools (pydantic), protocol SDKs (MCP python-sdk), and observability instrumentation (opentelemetry). These are some of the most depended-on packages in the AI ecosystem.
+
+This is a core product gap, not just a kairn prerequisite. Someone searching "anthropic SDK quality" should find a scored answer on PT-Edge. Full analysis: [docs/briefs/kairn-product-plan.md — Finding 4](briefs/kairn-product-plan.md).
+
+- [ ] **Decide: new domain vs distributed into existing domains.** A `foundations` or `ai-infrastructure` domain would cover provider SDKs, structured output, transport, observability, protocol SDKs. The alternative is distributing into existing domains (openai-python into llm-tools, pydantic into ml-frameworks). Needs architectural decision.
+- [ ] **Seed the foundational repos.** Once the domain decision is made, ingest the ~50-100 foundational repos. These are high-star, high-quality repos that will immediately improve the site's credibility.
+- [ ] **Build the package-to-repo mapping table** (`package_registry_map`). Bidirectional: PyPI→GitHub and GitHub→PyPI. Required for kairn and useful for dependency graph analysis generally. See [kairn plan — Finding 1](briefs/kairn-product-plan.md).
+
 ## Data-driven: build when GSC/allocation signals justify
 
 These are high-value features, but we build them when the data says to — not on a fixed schedule.

@@ -257,3 +257,33 @@ Running log of insights from the crewAI dependency audit. Each finding updates t
 3. **General infrastructure** — (click, httpx, tomli, regex). Out of scope, noted as such.
 
 This tiering should be documented in the kairn output so users understand why 35 of 47 deps aren't scored.
+
+### Finding 4: PT-Edge has a foundational coverage gap — not just a kairn problem
+
+**Date:** 2026-04-02
+
+**What happened:** The crewAI audit revealed that PT-Edge's 18 domains are all *application-level* categories (what people build with AI). The *foundation-level* — what AI applications are built on top of — is not tracked at all. This includes some of the most critical infrastructure in the AI ecosystem:
+
+**Not tracked:**
+- `openai/openai-python` (~20K stars) — the most depended-on AI SDK in existence
+- `anthropics/anthropic-sdk-python` — Claude's official SDK
+- `modelcontextprotocol/python-sdk` — the MCP protocol SDK (we track 12K MCP *servers* but not the protocol SDK itself)
+- `pydantic/pydantic` (~22K stars) — structural backbone of every LLM application
+- `googleapis/python-genai` — Google's GenAI SDK
+- `open-telemetry/opentelemetry-python` — the observability standard, increasingly critical for agent tracing
+
+**Why this matters beyond kairn:** This isn't just a data gap for dependency auditing. It's a gap in the core directory product. Someone searching "best Python SDK for Claude" or "anthropic SDK quality" should find a scored, ranked answer on PT-Edge. They won't, because these repos aren't in the index. The site claims to track AI infrastructure but misses the foundational layer everything else depends on.
+
+**Potential fix:** A new domain (e.g., `foundations` or `ai-infrastructure`) covering:
+- LLM provider SDKs (openai, anthropic, google-genai, cohere, mistral)
+- Structured output / validation (pydantic, instructor, outlines, marvin)
+- Async HTTP / transport (httpx, aiohttp — the plumbing every LLM call flows through)
+- Observability instrumentation (opentelemetry, datadog — the tracing layer agents need)
+- Protocol SDKs (MCP python-sdk, MCP typescript-sdk, A2A SDKs)
+- Tokenisation (tiktoken — already partially tracked in transformers but conceptually foundational)
+
+The argument for a distinct domain rather than distributing into existing domains: these aren't tools you choose between in the same way as agent frameworks. They're layers you build on. The decision framework is different ("which provider SDK is best maintained?" not "which agent framework should I use?") and the audience is different (every AI developer, not just developers in one vertical).
+
+**Impact:** This is a core product coverage issue, not just a kairn prerequisite. Should be addressed in the roadmap independently of kairn. However, kairn makes it urgent — you can't audit AI dependencies if you don't track the most fundamental ones.
+
+**Not solving now.** Recording for proper follow-up. The manual audit continues with the 8 tracked deps and strategic commentary on the untracked AI-relevant ones.
