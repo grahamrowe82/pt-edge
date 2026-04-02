@@ -1,5 +1,6 @@
 """Smoke tests — catch import errors and basic endpoint issues before deploy."""
 import json
+import re
 import pytest
 
 
@@ -1347,3 +1348,128 @@ class TestAntiPatterns:
                     f"looks like a homebrew rate limiter. Use RateLimiter "
                     f"class instead. Line: {line}"
                 )
+
+
+# ── Domain consistency ──────────────────────────────────────────────────
+
+def test_domain_config_matches_start_sh():
+    """Every domain in generate_site.py DOMAIN_CONFIG has a line in start.sh.
+
+    Catches the exact bug where a domain is added to the config/MV/navigation
+    but not to start.sh, so pages never get generated at container startup.
+    """
+    from pathlib import Path
+    root = Path(__file__).parent.parent
+
+    # Parse DOMAIN_CONFIG keys from generate_site.py
+    site_script = (root / "scripts" / "generate_site.py").read_text()
+    # DOMAIN_CONFIG is a dict — extract the keys
+    import ast
+    tree = ast.parse(site_script)
+    domain_config_keys = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "DOMAIN_CONFIG":
+                    if isinstance(node.value, ast.Dict):
+                        for key in node.value.keys:
+                            if isinstance(key, ast.Constant):
+                                domain_config_keys.add(key.value)
+
+    assert domain_config_keys, "Could not parse DOMAIN_CONFIG from generate_site.py"
+
+    # Parse domains from start.sh (lines like: python scripts/generate_site.py --domain X ...)
+    start_sh = (root / "scripts" / "start.sh").read_text()
+    start_domains = set(re.findall(r"--domain\s+(\S+)", start_sh))
+
+    assert start_domains, "Could not parse any --domain flags from start.sh"
+
+    # Every domain in DOMAIN_CONFIG must appear in start.sh
+    missing = domain_config_keys - start_domains
+    assert not missing, (
+        f"Domains in DOMAIN_CONFIG but missing from start.sh: {missing}. "
+        f"Pages for these domains won't be generated at container startup."
+    )
+
+
+def test_domain_config_matches_directories():
+    """Every domain in DOMAIN_CONFIG has an entry in the DIRECTORIES nav list."""
+    from pathlib import Path
+    import ast
+    root = Path(__file__).parent.parent
+    site_script = (root / "scripts" / "generate_site.py").read_text()
+    tree = ast.parse(site_script)
+
+    domain_config_keys = set()
+    directory_domains = set()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "DOMAIN_CONFIG":
+                    if isinstance(node.value, ast.Dict):
+                        for key in node.value.keys:
+                            if isinstance(key, ast.Constant):
+                                domain_config_keys.add(key.value)
+                if isinstance(target, ast.Name) and target.id == "DIRECTORIES":
+                    if isinstance(node.value, ast.List):
+                        for elt in node.value.elts:
+                            if isinstance(elt, ast.Dict):
+                                for k, v in zip(elt.keys, elt.values):
+                                    if isinstance(k, ast.Constant) and k.value == "domain":
+                                        if isinstance(v, ast.Constant):
+                                            directory_domains.add(v.value)
+
+    assert domain_config_keys, "Could not parse DOMAIN_CONFIG"
+    assert directory_domains, "Could not parse DIRECTORIES"
+
+    missing = domain_config_keys - directory_domains
+    assert not missing, (
+        f"Domains in DOMAIN_CONFIG but missing from DIRECTORIES: {missing}. "
+        f"These domains won't appear in site navigation."
+    )
+
+
+def test_domain_quality_views_in_refresh():
+    """Every domain in DOMAIN_CONFIG has a quality MV in the refresh cycle."""
+    from pathlib import Path
+    import ast
+    root = Path(__file__).parent.parent
+
+    # Get DOMAIN_CONFIG view names
+    site_script = (root / "scripts" / "generate_site.py").read_text()
+    tree = ast.parse(site_script)
+    config_views = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "DOMAIN_CONFIG":
+                    if isinstance(node.value, ast.Dict):
+                        for val in node.value.values:
+                            if isinstance(val, ast.Dict):
+                                for k, v in zip(val.keys, val.values):
+                                    if isinstance(k, ast.Constant) and k.value == "view":
+                                        if isinstance(v, ast.Constant):
+                                            config_views.add(v.value)
+
+    # Get VIEWS_IN_ORDER from refresh.py
+    refresh_script = (root / "app" / "views" / "refresh.py").read_text()
+    tree2 = ast.parse(refresh_script)
+    refresh_views = set()
+    for node in ast.walk(tree2):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "VIEWS_IN_ORDER":
+                    if isinstance(node.value, ast.List):
+                        for elt in node.value.elts:
+                            if isinstance(elt, ast.Constant):
+                                refresh_views.add(elt.value)
+
+    assert config_views, "Could not parse quality views from DOMAIN_CONFIG"
+    assert refresh_views, "Could not parse VIEWS_IN_ORDER from refresh.py"
+
+    missing = config_views - refresh_views
+    assert not missing, (
+        f"Quality views in DOMAIN_CONFIG but missing from VIEWS_IN_ORDER: {missing}. "
+        f"These views won't be refreshed during the daily cycle."
+    )
