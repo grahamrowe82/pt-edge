@@ -1473,3 +1473,62 @@ def test_domain_quality_views_in_refresh():
         f"Quality views in DOMAIN_CONFIG but missing from VIEWS_IN_ORDER: {missing}. "
         f"These views won't be refreshed during the daily cycle."
     )
+
+
+# ── Sitemap alignment ─────────────────────────────────────────────────
+
+
+def test_sitemap_takes_generated_urls():
+    """generate_sitemap must receive pre-validated URLs, not raw server objects.
+
+    This prevents the sitemap from including URLs for pages that weren't
+    actually generated (e.g. repos below quality threshold).
+    """
+    import inspect
+    from scripts.generate_site import generate_sitemap
+    sig = inspect.signature(generate_sitemap)
+    params = list(sig.parameters.keys())
+    assert "generated_urls" in params, (
+        "generate_sitemap should accept generated_urls parameter"
+    )
+    assert "servers" not in params, (
+        "generate_sitemap should not accept raw servers list — "
+        "use generated_urls for single source of truth"
+    )
+
+
+def test_verify_sitemap_catches_missing_pages(tmp_path):
+    """verify_sitemap should flag URLs without corresponding files."""
+    from scripts.generate_site import verify_sitemap
+
+    sitemap = tmp_path / "sitemap.xml"
+    sitemap.write_text(
+        '<?xml version="1.0"?>\n<urlset>\n'
+        '  <url><loc>https://example.com/servers/a/b/</loc></url>\n'
+        '  <url><loc>https://example.com/servers/c/d/</loc></url>\n'
+        '</urlset>'
+    )
+    # Create only one page
+    (tmp_path / "servers" / "a" / "b").mkdir(parents=True)
+    (tmp_path / "servers" / "a" / "b" / "index.html").write_text("<html></html>")
+
+    mismatches = verify_sitemap(str(sitemap), str(tmp_path), "https://example.com")
+    assert len(mismatches) == 1
+    assert "c/d" in mismatches[0]
+
+
+def test_verify_sitemap_passes_when_aligned(tmp_path):
+    """verify_sitemap should return empty when all URLs have pages."""
+    from scripts.generate_site import verify_sitemap
+
+    sitemap = tmp_path / "sitemap.xml"
+    sitemap.write_text(
+        '<?xml version="1.0"?>\n<urlset>\n'
+        '  <url><loc>https://example.com/servers/a/b/</loc></url>\n'
+        '</urlset>'
+    )
+    (tmp_path / "servers" / "a" / "b").mkdir(parents=True)
+    (tmp_path / "servers" / "a" / "b" / "index.html").write_text("<html></html>")
+
+    mismatches = verify_sitemap(str(sitemap), str(tmp_path), "https://example.com")
+    assert len(mismatches) == 0
