@@ -1,0 +1,159 @@
+<p>You want to deploy a coding agent at your company. You evaluate a few options, pick one, set it up. It works. Then someone asks: "what happens when the agent runs <code>rm -rf /</code>?" And you realise you have no sandboxing. Then legal asks about audit trails. Then your CISO asks about authorization policies. Then you discover you need three agents to cooperate on a task and there's no orchestration layer.</p>
+
+<p>Deploying agents in production is four problems, not one. And right now, only one of those layers is genuinely mature.</p>
+
+<h2>Layer 1: Sandboxing — the only mature layer</h2>
+
+<p>This is the good news. Agent code execution sandboxing is a solved problem with real, production-grade options. If you only get one layer right, get this one — everything else is recoverable, but an unsandboxed agent with shell access is not.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set sandbox = [
+      ('e2b-dev/E2B', 'Cloud sandboxes via SDK, containerized, self-hostable'),
+      ('alibaba/OpenSandbox', 'gVisor/Kata/Firecracker runtimes, Kubernetes-native'),
+      ('boxlite-ai/boxlite', 'Micro-VM sandboxes with OCI support, no daemon'),
+      ('zerobootdev/zeroboot', 'Firecracker snapshots, ~0.8ms restore, KVM isolation'),
+      ('always-further/nono', 'Kernel-enforced Landlock/Seatbelt, credential proxy'),
+      ('eugene1g/agent-safehouse', 'macOS sandbox-exec profiles for Claude/Codex'),
+      ('multikernel/sandlock', 'Landlock + seccomp-bpf, Python SDK, pipeline composition')
+    ] %}
+    {% for name, approach in sandbox %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ approach }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/e2b-dev/E2B/">E2B</a> ({{ repos.get('e2b-dev/E2B', {}).quality_score }}/100, {{ repos.get('e2b-dev/E2B', {}).stars | intcomma }} stars) is the market leader &mdash; cloud sandboxes you control via Python or JavaScript SDK, self-hostable on AWS/GCP. <a href="{{ domain_path('agents') }}/servers/alibaba/OpenSandbox/">Alibaba's OpenSandbox</a> ({{ repos.get('alibaba/OpenSandbox', {}).quality_score }}/100) is the Kubernetes-native alternative with multiple isolation runtimes. Both are production-grade.</p>
+
+<p>For local development, <a href="{{ domain_path('agents') }}/servers/always-further/nono/">nono</a> ({{ repos.get('always-further/nono', {}).quality_score }}/100) is notable &mdash; it uses kernel-level enforcement (Landlock on Linux, Seatbelt on macOS) with a clever credential proxy that keeps your API keys entirely outside the sandbox. <a href="{{ domain_path('agents') }}/servers/eugene1g/agent-safehouse/">agent-safehouse</a> provides macOS-specific profiles for Claude Code and Codex.</p>
+
+<p>The emerging contenders &mdash; <a href="{{ domain_path('agents') }}/servers/boxlite-ai/boxlite/">boxlite</a>, <a href="{{ domain_path('agents') }}/servers/zerobootdev/zeroboot/">zeroboot</a>, <a href="{{ domain_path('agents') }}/servers/multikernel/sandlock/">sandlock</a> &mdash; are Rust-based with different isolation strategies. Boxlite provides micro-VMs without a daemon. Zeroboot achieves sub-millisecond restore times via Firecracker snapshots. Sandlock combines Landlock, seccomp-bpf, and syscall filtering with a Python SDK.</p>
+
+<p>The sandboxing layer is where you'll find the most choice, the highest quality scores, and the most active development. This is the layer the community has decided matters most &mdash; and they're right.</p>
+
+<h2>Layer 2: Governance — the critical gap</h2>
+
+<p>Sandboxing prevents agents from doing damage accidentally. Governance prevents them from doing things they shouldn't, intentionally or otherwise. What actions is this agent authorized to perform? What data can it access? Who approved this workflow? Where's the audit trail?</p>
+
+<p>This layer is alarmingly immature.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set governance = ['microsoft/agent-governance-toolkit', 'ucsandman/DashClaw', 'mattijsmoens/sovereign-shield', 'mattijsmoens/intentshield', '23blocks-OS/ai-maestro'] %}
+    {% for name in governance %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/microsoft/agent-governance-toolkit/">Microsoft's agent-governance-toolkit</a> ({{ repos.get('microsoft/agent-governance-toolkit', {}).quality_score }}/100) is the most credible entry &mdash; it's Microsoft, they have enterprise customers who need this. But at {{ repos.get('microsoft/agent-governance-toolkit', {}).stars | intcomma }} stars, it's still early. <a href="{{ domain_path('agents') }}/servers/mattijsmoens/sovereign-shield/">sovereign-shield</a> and <a href="{{ domain_path('agents') }}/servers/mattijsmoens/intentshield/">intentshield</a> from the same author tackle policy enforcement and intent validation respectively &mdash; the right ideas, but single-maintainer projects.</p>
+
+<p>The honest assessment: if you need agent governance today, you're building it yourself. There's no "install this and you have guardrails." The sandboxing layer took a year to mature from experiments to production tools. Governance is where sandboxing was a year ago &mdash; early projects, right ideas, no clear winner.</p>
+
+<h2>Layer 3: Orchestration — mature but fragmented</h2>
+
+<p>If you're running a single agent, you don't need this. If you need multiple agents to cooperate &mdash; one agent researches, another writes code, a third reviews it &mdash; you need orchestration.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Best for</th></tr>
+  </thead>
+  <tbody>
+    {% set orch = [
+      ('openai/openai-agents-python', 'OpenAI ecosystem, simple agent patterns'),
+      ('crewAIInc/crewAI', 'Multi-agent teams with role-based collaboration'),
+      ('elizaOS/eliza', 'Autonomous agents with personality and memory'),
+      ('ComposioHQ/composio', 'Tool integration layer, 250+ integrations'),
+      ('triggerdotdev/trigger.dev', 'Background jobs and durable workflows'),
+      ('microsoft/agent-framework', 'Lightweight, Microsoft ecosystem')
+    ] %}
+    {% for name, best_for in orch %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ best_for }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>Orchestration is the most crowded layer. <a href="{{ domain_path('agents') }}/servers/openai/openai-agents-python/">OpenAI's agents SDK</a> ({{ repos.get('openai/openai-agents-python', {}).quality_score }}/100) is the simplest entry point. <a href="{{ domain_path('agents') }}/servers/crewAIInc/crewAI/">CrewAI</a> ({{ repos.get('crewAIInc/crewAI', {}).quality_score }}/100, {{ repos.get('crewAIInc/crewAI', {}).stars | intcomma }} stars) is the most popular for multi-agent teams. <a href="{{ domain_path('agents') }}/servers/ComposioHQ/composio/">Composio</a> focuses on tool integrations &mdash; connecting agents to external services.</p>
+
+<p>The quality scores here are high (84-98) because these are well-maintained, well-adopted projects with active communities. But "mature" doesn't mean "settled" &mdash; the ecosystem is still fragmenting as new frameworks launch weekly. Picking an orchestration framework today means accepting that the landscape will look different in six months.</p>
+
+<h2>Layer 4: The agent itself — what are you actually deploying?</h2>
+
+<p>After sandboxing, governance, and orchestration, you still need to choose the agent that does the actual work. For coding agents specifically:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set coding = ['Aider-AI/aider', 'SynkraAI/aiox-core', 'ruvnet/ruflo', 'BloopAI/vibe-kanban'] %}
+    {% for name in coding %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/Aider-AI/aider/">Aider</a> ({{ repos.get('Aider-AI/aider', {}).quality_score }}/100, {{ repos.get('Aider-AI/aider', {}).stars | intcomma }} stars) is the established leader in terminal-based AI coding. The "vibe coding" category &mdash; agents that take high-level descriptions and produce full implementations &mdash; is emerging rapidly with projects like <a href="{{ domain_path('agents') }}/servers/ruvnet/ruflo/">ruflo</a> and <a href="{{ domain_path('agents') }}/servers/BloopAI/vibe-kanban/">vibe-kanban</a>.</p>
+
+<p>But here's the thing nobody mentions: the agent itself is the <em>least</em> important architectural decision. Any competent coding agent will produce reasonable code. The sandboxing, governance, and orchestration around it determine whether your deployment is safe, auditable, and scalable. An excellent agent without sandboxing is a liability. A mediocre agent with proper sandboxing and governance is enterprise-ready.</p>
+
+<h2>The maturity gap</h2>
+
+<p>Here's the reality of agent platform infrastructure in 2026:</p>
+
+<ul>
+  <li><strong>Sandboxing:</strong> Production-ready. Multiple options scoring 55-92/100. Real competition driving quality up. Pick E2B or OpenSandbox and move on.</li>
+  <li><strong>Orchestration:</strong> Mature but fragmenting. Scores of 84-98 across major frameworks. The choice is real but the options are all viable.</li>
+  <li><strong>The agent:</strong> Also mature. Aider, Claude Code, Codex &mdash; the tools work. The differentiation is narrowing.</li>
+  <li><strong>Governance:</strong> Early. Scores of 15-61. No clear winner. If your compliance team asks about agent authorization policies, you don't have a good answer yet.</li>
+</ul>
+
+<p>If you're building an agent platform for your company, start with sandboxing &mdash; it's the layer where getting it wrong is unrecoverable. Then choose an orchestration framework based on your stack. Then pick your agents. And for governance &mdash; watch the space, build what you need internally, and expect the tooling to mature over the next 12 months.</p>
+
+<h2>Go deeper</h2>
+
+<ul>
+  <li><a href="{{ domain_path('agents') }}/categories/agent-code-sandboxing/">All sandboxing projects</a> &mdash; browse every option with quality scores</li>
+  <li><a href="{{ domain_path('agents') }}/categories/agent-authorization-guardrails/">Authorization and guardrails</a> &mdash; the governance landscape</li>
+  <li><a href="{{ domain_path('agents') }}/categories/agent-orchestration-platforms/">Orchestration platforms</a> &mdash; frameworks for multi-agent systems</li>
+  <li><a href="{{ domain_path('agents') }}/categories/vibe-coding-agents/">Vibe coding agents</a> &mdash; the emerging coding agent category</li>
+  <li><a href="{{ domain_path('agents') }}/trending/">Trending agent projects</a> &mdash; what's moving this week</li>
+</ul>
