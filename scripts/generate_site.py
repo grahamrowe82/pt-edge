@@ -666,9 +666,9 @@ def verify_sitemap(sitemap_path, out_dir, base_url):
         if not os.path.exists(file_path):
             mismatches.append(url)
     if mismatches:
-        logger.warning(f"Sitemap has {len(mismatches)} URLs without pages on disk")
+        print(f"  WARNING: Sitemap has {len(mismatches)} URLs without pages on disk")
         for m in mismatches[:10]:
-            logger.warning(f"  Missing: {m}")
+            print(f"    Missing: {m}")
     return mismatches
 
 
