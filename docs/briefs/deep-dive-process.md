@@ -194,6 +194,7 @@ grep -oP 'href="https://mcp\.phasetransitions\.ai[^"]*"' docs/substack/{slug}.ht
   2. **Subcategory-level links** via `featured_categories`: every repo in a relevant subcategory gets a "Featured in" link. This means a deep dive about agent governance automatically links from all 1,263 governance repos, not just the 25 you featured. Users browsing any part of the landscape can discover the zoomed-out analysis. When `generate_site.py` runs, it builds both lookups and deduplicates them per repo.
 - **Live data** in deep dive templates: `repos.get()` pulls current stars, commits, quality scores at build time. Numbers stay fresh on every deploy.
 - **Insights index**: automatically lists all published deep dives from the database.
+- **Cross-linking between deep dives**: automatic via shared `domains` and `featured_categories` in the manifest. Each deep dive shows up to 4 related deep dives in a "Related analysis" section at the bottom. Ensure your manifest's domains and categories accurately reflect the deep dive's scope — this drives the cross-links. Shared categories are weighted higher than shared domains.
 
 The subcategory-level linking was added after observing real visitor behaviour: an Indian developer browsed three agent-governance repos in 90 seconds, but none were in the deep dive's `featured_repos`. With category-level linking, every repo in the relevant subcategories gets a path to the analysis page.
 
