@@ -19,6 +19,7 @@ python scripts/generate_site.py --domain generative-ai --output-dir site/generat
 python scripts/generate_site.py --domain computer-vision --output-dir site/computer-vision
 python scripts/generate_site.py --domain data-engineering --output-dir site/data-engineering
 python scripts/generate_site.py --domain mlops --output-dir site/mlops
+python scripts/generate_site.py --domain perception --output-dir site/perception
 
 echo "Generating deep dive pages..."
 python scripts/generate_deep_dives.py --output-dir site
