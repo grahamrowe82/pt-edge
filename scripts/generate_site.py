@@ -645,12 +645,13 @@ def generate_sitemap(base_url, generated_urls, out_dir):
     write_file(os.path.join(out_dir, "sitemap.xml"), "\n".join(lines))
 
 
-def verify_sitemap(sitemap_path, out_dir, base_url):
+def verify_sitemap(sitemap_path, out_dir, base_url, base_path):
     """Verify every URL in the sitemap has a corresponding file on disk.
 
     Returns list of URLs without matching files.
     """
     import re
+    prefix = f"{base_url}{base_path}"
     mismatches = []
     try:
         content = Path(sitemap_path).read_text()
@@ -658,8 +659,8 @@ def verify_sitemap(sitemap_path, out_dir, base_url):
         return []
     for match in re.finditer(r'<loc>([^<]+)</loc>', content):
         url = match.group(1)
-        # Strip base URL to get path
-        path = url.replace(base_url, "").rstrip("/")
+        # Strip base URL + base path to get the path relative to out_dir
+        path = url.replace(prefix, "").rstrip("/")
         if not path:
             path = "/"
         file_path = os.path.join(out_dir, path.lstrip("/"), "index.html")
@@ -675,7 +676,7 @@ def verify_sitemap(sitemap_path, out_dir, base_url):
 def generate_robots(base_url, base_path, out_dir):
     content = (
         f"User-agent: *\nAllow: /\n\n"
-        f"Sitemap: {base_url}{base_path}sitemap.xml\n"
+        f"Sitemap: {base_url}{base_path}/sitemap.xml\n"
         f"Sitemap: {base_url}/insights/sitemap.xml\n"
     )
     write_file(os.path.join(out_dir, "robots.txt"), content)
@@ -697,7 +698,7 @@ def main():
     out_dir = args.output_dir
     base_url = args.base_url.rstrip("/")
     # MCP is at root, others get a path prefix
-    base_path = "/" if domain == "mcp" else f"/{domain}/"
+    base_path = "" if domain == "mcp" else f"/{domain}"
     t0 = time.time()
 
     print(f"Generating {cfg['label']} directory (domain={domain})...")
@@ -982,7 +983,7 @@ def main():
     generate_robots(base_url, base_path, out_dir)
 
     # Verify sitemap/page alignment
-    mismatches = verify_sitemap(sitemap_path, out_dir, base_url)
+    mismatches = verify_sitemap(sitemap_path, out_dir, base_url, base_path)
     if mismatches:
         print(f"  WARNING: {len(mismatches)} sitemap URLs have no page on disk")
 
