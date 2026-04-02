@@ -1,0 +1,153 @@
+<p>Ask an AI assistant about crewAI's dependencies and you'll get: "LiteLLM is a good choice, Pydantic is standard, the vector store options are reasonable." That's recognition, not insight. It tells you what the dependencies <em>are</em> but not whether they're the <em>right</em> ones.</p>
+
+<p>We ran crewAI's 47 dependencies against PT-Edge's dataset of {{ '{:,}'.format(220000) }}+ AI repositories, scored daily on maintenance, adoption, maturity, and community. Here's what the data reveals that general knowledge can't &mdash; and where our own data has gaps we're working to close.</p>
+
+<h2>What we can score: 8 of 47 dependencies</h2>
+
+<p>Of crewAI's 47 direct dependencies, 8 match repos in PT-Edge's AI taxonomy with quality scores. That's 17% coverage &mdash; and we'll be transparent about why the other 83% aren't scored. But the 8 we can score tell a remarkably clear story.</p>
+
+<table>
+  <thead>
+    <tr><th>Dependency</th><th>Score</th><th>Category Rank</th><th>Category Size</th><th>Commits/30d</th><th>Assessment</th></tr>
+  </thead>
+  <tbody>
+    {% set dep_data = {
+      'BerriAI/litellm': {'dep': 'litellm', 'rank': '#1', 'size': 285, 'assessment': 'Category leader'},
+      'chroma-core/chroma': {'dep': 'chromadb', 'rank': '#1', 'size': 27, 'assessment': 'Category leader'},
+      'lancedb/lancedb': {'dep': 'lancedb', 'rank': '#1', 'size': 36, 'assessment': 'Category leader'},
+      'huggingface/tokenizers': {'dep': 'tokenizers', 'rank': '#1', 'size': 26, 'assessment': 'Category leader'},
+      'qdrant/qdrant-client': {'dep': 'qdrant-client', 'rank': '#2', 'size': 51, 'assessment': 'Strong'},
+      'mangiucugna/json_repair': {'dep': 'json-repair', 'rank': '#1', 'size': 54, 'assessment': 'Category leader'},
+      'mem0ai/mem0': {'dep': 'mem0ai', 'rank': '#6', 'size': 977, 'assessment': 'Watch'}
+    } %}
+    {% for name in ['BerriAI/litellm', 'chroma-core/chroma', 'lancedb/lancedb', 'huggingface/tokenizers', 'qdrant/qdrant-client', 'mangiucugna/json_repair', 'mem0ai/mem0'] %}
+    {% set r = repos.get(name, {}) %}
+    {% set d = dep_data.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ d.dep }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ d.rank }} of {{ d.size }}</td>
+      <td>{{ r.commits_30d | default(0) }}</td>
+      <td>{{ d.assessment }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><strong>Six of seven scored dependencies are #1 in their category.</strong> This isn't "good choices" &mdash; it's best-in-class across the board. Someone on the crewAI team made very deliberate dependency decisions, and the data confirms they picked well.</p>
+
+<h2>LiteLLM: the best dependency choice, with a caveat</h2>
+
+<p><a href="{{ domain_path('llm-tools') }}/servers/BerriAI/litellm/">litellm</a> ({{ repos.get('BerriAI/litellm', {}).quality_score }}/100, {{ repos.get('BerriAI/litellm', {}).stars | intcomma }} stars) is #1 of 285 in <a href="{{ domain_path('llm-tools') }}/categories/llm-api-gateways/">llm-api-gateways</a>. It's the dependency 155 other tracked AI projects also chose. By every metric, it's the right abstraction layer for multi-provider LLM access.</p>
+
+<p>The caveat: {{ repos.get('BerriAI/litellm', {}).commits_30d | default(0) }} commits in the last 30 days. That's roughly 80 commits per day. An AI assistant would say "well-maintained." The data says something more nuanced: this project is evolving at a pace where breaking changes are a real operational concern. If you're pinning versions (and you should be), expect to evaluate upgrades frequently. The velocity is a sign of health <em>and</em> a maintenance burden.</p>
+
+<h2>The vector store decision: LanceDB, Chroma, and Qdrant</h2>
+
+<p>An AI assistant would guess "probably ChromaDB." The actual picture is more interesting: crewAI has three vector store dependencies.</p>
+
+<ul>
+  <li><a href="{{ domain_path('vector-db') }}/servers/lancedb/lancedb/">lancedb</a> ({{ repos.get('lancedb/lancedb', {}).quality_score }}/100, {{ repos.get('lancedb/lancedb', {}).stars | intcomma }} stars) &mdash; core dependency, embedded/local-first</li>
+  <li><a href="{{ domain_path('vector-db') }}/servers/chroma-core/chroma/">chromadb</a> ({{ repos.get('chroma-core/chroma', {}).quality_score }}/100, {{ repos.get('chroma-core/chroma', {}).stars | intcomma }} stars) &mdash; core dependency, client-server model</li>
+  <li><a href="{{ domain_path('vector-db') }}/servers/qdrant/qdrant-client/">qdrant-client</a> ({{ repos.get('qdrant/qdrant-client', {}).quality_score }}/100, {{ repos.get('qdrant/qdrant-client', {}).stars | intcomma }} stars) &mdash; dev/optional dependency</li>
+</ul>
+
+<p>Both LanceDB and Chroma score 94/100 and are #1 in their respective subcategories. The strategic choice is that LanceDB is in core dependencies while Qdrant is optional &mdash; crewAI defaults to embedded/local vector storage rather than requiring a separate database server. For teams that want zero-infrastructure agent memory, this is the right default. For teams running at scale, the Qdrant and Chroma options are there.</p>
+
+<h2>mem0: the one dependency worth evaluating</h2>
+
+<p>Every other scored dependency is a category leader. <a href="{{ domain_path('rag') }}/servers/mem0ai/mem0/">mem0</a> is the exception: {{ repos.get('mem0ai/mem0', {}).quality_score }}/100, ranked #6 of 977 in <a href="{{ domain_path('rag') }}/categories/agent-memory-systems/">agent-memory-systems</a>. With {{ repos.get('mem0ai/mem0', {}).stars | intcomma }} stars it has the most adoption of any agent memory tool, but three alternatives score significantly higher:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set memory_projects = ['topoteretes/cognee', 'volcengine/OpenViking', 'MemoriLabs/Memori', 'mem0ai/mem0'] %}
+    {% for name in memory_projects %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('vector-db') }}/servers/topoteretes/cognee/">cognee</a> ({{ repos.get('topoteretes/cognee', {}).quality_score }}/100, {{ repos.get('topoteretes/cognee', {}).stars | intcomma }} stars) is the category quality leader. This doesn't mean crewAI should switch &mdash; mem0's integration may be deeper and the migration cost may not justify the quality delta. But if you're starting a new project on crewAI and choosing a memory layer, cognee is worth evaluating alongside mem0. This is exactly the kind of finding a quality score reveals that a star count hides: mem0 has 4x the stars but scores 18 points lower on maintenance and community signals.</p>
+
+<h2>json_repair: the dependency nobody mentions</h2>
+
+<p>Ask anyone about crewAI's stack and they'll mention LiteLLM, Chroma, maybe Pydantic. Nobody mentions <a href="{{ domain_path('llm-tools') }}/servers/mangiucugna/json_repair/">json_repair</a> ({{ repos.get('mangiucugna/json_repair', {}).quality_score }}/100, {{ repos.get('mangiucugna/json_repair', {}).stars | intcomma }} stars). It fixes malformed JSON from LLM outputs &mdash; a problem every agent framework hits when models return truncated or invalid structured data.</p>
+
+<p>It's #1 of 54 in <a href="{{ domain_path('llm-tools') }}/categories/llm-json-streaming/">llm-json-streaming</a>, depended on by 31 tracked projects, and quietly essential. A strategic dependency audit should surface these hidden load-bearing libraries, not just confirm what everyone already knows.</p>
+
+<h2>The ecosystem importance picture</h2>
+
+<p>Quality scores tell you how good a dependency is. Reverse dependency counts tell you how <em>important</em> it is &mdash; how much of the AI ecosystem is built on top of it. For crewAI's dependencies:</p>
+
+<table>
+  <thead>
+    <tr><th>Package</th><th>AI Projects That Depend On It</th><th>PT-Edge Score</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>pydantic</td><td><strong>1,029</strong></td><td>Not yet tracked</td></tr>
+    <tr><td>openai</td><td><strong>866</strong></td><td>Not yet tracked</td></tr>
+    <tr><td>httpx</td><td><strong>579</strong></td><td>Not yet tracked</td></tr>
+    <tr><td>mcp</td><td><strong>421</strong></td><td>Not yet tracked</td></tr>
+    <tr><td>anthropic</td><td><strong>229</strong></td><td>Not yet tracked</td></tr>
+    <tr><td>litellm</td><td>155</td><td>{{ repos.get('BerriAI/litellm', {}).quality_score }}/100</td></tr>
+    <tr><td>chromadb</td><td>126</td><td>{{ repos.get('chroma-core/chroma', {}).quality_score }}/100</td></tr>
+    <tr><td>tokenizers</td><td>119</td><td>{{ repos.get('huggingface/tokenizers', {}).quality_score }}/100</td></tr>
+    <tr><td>qdrant-client</td><td>84</td><td>{{ repos.get('qdrant/qdrant-client', {}).quality_score }}/100</td></tr>
+    <tr><td>lancedb</td><td>30</td><td>{{ repos.get('lancedb/lancedb', {}).quality_score }}/100</td></tr>
+    <tr><td>mem0ai</td><td>15</td><td>{{ repos.get('mem0ai/mem0', {}).quality_score }}/100</td></tr>
+  </tbody>
+</table>
+
+<p>The five most systemically important packages in crewAI's stack &mdash; the ones that would affect the most projects if they had a problem &mdash; are all ones we don't yet score. pydantic alone underpins 1,029 AI projects in our index. This is a gap we're actively closing (more below).</p>
+
+<h2>What we can't score yet, and why it matters</h2>
+
+<p>39 of crewAI's 47 dependencies aren't scored. They fall into three categories:</p>
+
+<p><strong>AI-adjacent infrastructure we should be tracking (and will be):</strong> The LLM provider SDKs (openai-python, anthropic-sdk-python, google-genai), the MCP protocol SDK, pydantic, instructor, and opentelemetry. These are the foundational layer that every AI application depends on. PT-Edge tracks 220K+ AI tools but not yet the plumbing underneath them. We're adding a foundational infrastructure layer to close this gap &mdash; it's the most important coverage improvement on our roadmap.</p>
+
+<p><strong>AI-specific tools not yet in our index:</strong> docling (document parsing), voyageai (embedding API), tiktoken (OpenAI's tokeniser). These should be tracked and will be ingested as we expand coverage.</p>
+
+<p><strong>General Python infrastructure (out of scope):</strong> click, tomli, regex, portalocker, openpyxl. These aren't AI-specific and aren't where strategic risk lives in an AI stack. A dependency audit focused on AI should acknowledge them and move on.</p>
+
+<p>This transparency is deliberate. We'd rather show you what we can and can't measure than pretend the picture is complete. The value is in what the scored dependencies reveal &mdash; and in knowing exactly where the blind spots are.</p>
+
+<h2>What a strategic dependency audit looks like</h2>
+
+<p>This analysis is a prototype for something we're building: automated strategic fitness reports for AI projects. Not vulnerability scanning (Snyk does that well). Not version bumping (Dependabot handles that). The question these tools don't answer: <strong>is this the right library to be using at all?</strong></p>
+
+<p>A strategic dependency audit tells you:</p>
+<ul>
+  <li>Whether each AI dependency is the quality leader in its category, or whether better alternatives exist</li>
+  <li>How systemically important each dependency is to the broader ecosystem</li>
+  <li>Whether development velocity signals healthy maintenance or risky churn</li>
+  <li>Which dependencies nobody talks about but that are quietly load-bearing</li>
+</ul>
+
+<p>If you're interested in this for your own AI projects, or if you'd like to be notified when we ship the automated version, check the <a href="/api/docs">PT-Edge API</a>.</p>
+
+<h2>How to use this data</h2>
+
+<p>Every project mentioned in this audit has a quality-scored page in our directory, updated daily:</p>
+
+<ul>
+  <li>Explore <a href="{{ domain_path('agents') }}/servers/crewAIInc/crewAI/">crewAI's own page</a> ({{ repos.get('crewAIInc/crewAI', {}).quality_score }}/100)</li>
+  <li>Browse <a href="{{ domain_path('rag') }}/categories/agent-memory-systems/">977 agent memory tools</a> to evaluate alternatives to mem0</li>
+  <li>Compare <a href="{{ domain_path('llm-tools') }}/categories/llm-api-gateways/">285 LLM API gateways</a> to understand LiteLLM's competitive position</li>
+  <li>Check <a href="{{ domain_path('agents') }}/trending/">trending agent projects</a> this week</li>
+</ul>
+
+<p>Quality scores update daily. If a dependency starts losing momentum or a new alternative emerges, the data moves before the blog posts catch up.</p>

@@ -48,6 +48,16 @@ These are the things blocking the flywheel from running properly.
 - [ ] **Subcategory classifier quality:** High-quality repos land in wrong solo categories (ElevenLabs still in `ai-workflow-automation`). This isolates them from comparisons and related servers. Investigate the LLM classifier prompt/context and fix the process — not individual repos.
 - [ ] **Cross-category comparison discovery:** Embedding similarity only runs within subcategories. The most valuable matchups (WhisperX vs whisper.cpp, ElevenLabs vs edge-tts) cross subcategory boundaries. Add a domain-level pass across top N projects.
 
+## Foundational coverage gap (discovered via kairn audit)
+
+The crewAI dependency audit exposed that PT-Edge's 18 domains are all application-level (what people build with AI). The foundational layer — what AI applications are built on — is not tracked: LLM provider SDKs (openai-python, anthropic-sdk-python), structural tools (pydantic), protocol SDKs (MCP python-sdk), and observability instrumentation (opentelemetry). These are some of the most depended-on packages in the AI ecosystem.
+
+This is a core product gap, not just a kairn prerequisite. Someone searching "anthropic SDK quality" should find a scored answer on PT-Edge. Full analysis: [docs/briefs/kairn-product-plan.md — Finding 4](briefs/kairn-product-plan.md).
+
+- [ ] **Decide: new domain vs distributed into existing domains.** A `foundations` or `ai-infrastructure` domain would cover provider SDKs, structured output, transport, observability, protocol SDKs. The alternative is distributing into existing domains (openai-python into llm-tools, pydantic into ml-frameworks). Needs architectural decision.
+- [ ] **Seed the foundational repos.** Once the domain decision is made, ingest the ~50-100 foundational repos. These are high-star, high-quality repos that will immediately improve the site's credibility.
+- [ ] **Build the package-to-repo mapping table** (`package_registry_map`). Bidirectional: PyPI→GitHub and GitHub→PyPI. Required for kairn and useful for dependency graph analysis generally. See [kairn plan — Finding 1](briefs/kairn-product-plan.md).
+
 ## Data-driven: build when GSC/allocation signals justify
 
 These are high-value features, but we build them when the data says to — not on a fixed schedule.
@@ -104,14 +114,16 @@ Once the flywheel is generating consistent organic traffic and temporal data rea
 
 Strategic dependency auditing for AI projects — "is this the right library?" not just "is it safe?" Full plan: [docs/briefs/kairn-product-plan.md](briefs/kairn-product-plan.md)
 
-Build sequence:
-1. **Manual audit deep dive** — audit crewAI's AI dependencies by hand, publish as a deep dive. Validates the concept and reveals which metrics matter.
-2. **`mv_strategic_fitness` materialised view** — formalise category rank, momentum direction, top alternative, dependency exposure per repo.
-3. **Server detail page enrichment** — add "Strategic Fitness" section showing category rank, momentum, and top alternative.
-4. **`POST /api/v1/audit` endpoint** — accept package lists, return strategic fitness data. Free tier (scores + lifecycle) and paid tier (rankings + alternatives + trends).
-5. **Open-source scanner CLI** — reads lock files, calls the API, renders a report. Distribution channel for the proprietary data.
+The manual crewAI audit ([docs/briefs/kairn-crewai-audit.md](briefs/kairn-crewai-audit.md)) surfaced 7 findings that reshaped the build plan. Revised 9-step sequence (dependency-ordered):
 
-First audit candidate: crewAI (45.9K stars) — focused deps (litellm, lancedb, tokenizers, qdrant-client), large audience, genuinely debatable dependency choices. Alternatives: gpt-researcher (broader surface), camel-ai (maximum depth).
+1. **Reverse dependency counts** [quick win, no deps] — "used by X AI projects." Most novel metric, ships immediately.
+2. **Unified quality score** (`mv_unified_quality`) [foundational] — domain-agnostic scoring for all 220K repos. Enables cross-domain comparison. The 18 domain MVs stay for browsing, unified MV powers all analytics.
+3. **AI dependency boundary + foundational repo ingestion** — codify three-tier classification, ingest ~50-100 missing foundational repos (openai-python, anthropic SDK, pydantic, MCP SDK, opentelemetry).
+4. **Package-to-repo mapping table** (`package_registry_map`) — bidirectional PyPI↔GitHub mapping with continuous validation.
+5. **Embedding-based alternatives** — replace subcategory-peer alternatives with nearest-neighbour by embedding + unified score.
+6. **Server detail page enrichment** — "Strategic Fitness" section (rank, momentum, alternatives, dependents).
+7. **`POST /api/v1/audit` endpoint** — accept package lists, return strategic fitness via verified mapping + unified scoring.
+8. **Open-source scanner CLI** (`kairn`) — reads lock files, calls API, renders report. Distribution channel.
 
 ### Quantitative analytics layer
 

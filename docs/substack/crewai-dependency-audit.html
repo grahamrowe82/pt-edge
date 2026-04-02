@@ -1,0 +1,31 @@
+<p>Ask an AI about crewAI's dependencies and you'll get: "LiteLLM is a good choice, Pydantic is standard." That's recognition, not insight. We ran crewAI's 47 dependencies against 220K+ AI repos scored daily. Here's what the data reveals.</p>
+
+<h2>The headline: 6 of 7 scored deps are #1 in their category</h2>
+
+<p>Of 47 dependencies, 8 matched our AI taxonomy. The story they tell is striking: crewAI's team didn't just pick popular libraries. They picked the quality leaders.</p>
+
+<p><strong><a href="https://mcp.phasetransitions.ai/llm-tools/servers/BerriAI/litellm/">LiteLLM</a></strong> (98/100, #1 of 285 LLM API gateways). The caveat: 2,399 commits last month — roughly 80/day. That's not just "well-maintained." It's evolving fast enough that breaking changes are a real concern. Pin your versions.</p>
+
+<p><strong><a href="https://mcp.phasetransitions.ai/vector-db/servers/chroma-core/chroma/">ChromaDB</a></strong> (94/100) and <strong><a href="https://mcp.phasetransitions.ai/vector-db/servers/lancedb/lancedb/">LanceDB</a></strong> (94/100) — both #1 in their categories. crewAI defaults to LanceDB (embedded, local-first) rather than requiring a database server. Smart default for zero-infrastructure agent memory.</p>
+
+<p><strong><a href="https://mcp.phasetransitions.ai/transformers/servers/huggingface/tokenizers/">tokenizers</a></strong> (90/100, #1 of 26). <strong><a href="https://mcp.phasetransitions.ai/vector-db/servers/qdrant/qdrant-client/">qdrant-client</a></strong> (86/100, #2 of 51). <strong><a href="https://mcp.phasetransitions.ai/llm-tools/servers/mangiucugna/json_repair/">json_repair</a></strong> (75/100, #1 of 54) — the dependency nobody mentions that fixes broken JSON from LLM outputs. Quietly essential.</p>
+
+<h2>The one weak link: mem0</h2>
+
+<p><strong><a href="https://mcp.phasetransitions.ai/rag/servers/mem0ai/mem0/">mem0</a></strong> (72/100, #6 of 977 in agent memory). It has the most stars but three alternatives score significantly higher. <strong><a href="https://mcp.phasetransitions.ai/vector-db/servers/topoteretes/cognee/">cognee</a></strong> leads the category at 90/100. If you're starting a new crewAI project and choosing a memory layer, the data says evaluate cognee alongside mem0.</p>
+
+<h2>The ecosystem importance gap</h2>
+
+<p>The five most systemically important packages in crewAI's stack — the ones depended on by the most AI projects — are all ones we don't yet score:</p>
+
+<p>pydantic (<strong>1,029</strong> AI projects depend on it), openai (<strong>866</strong>), httpx (<strong>579</strong>), mcp (<strong>421</strong>), anthropic (<strong>229</strong>).</p>
+
+<p>PT-Edge tracks 220K+ AI tools but not yet the foundational plumbing underneath them. We're adding this layer — it's the most important coverage improvement on our roadmap.</p>
+
+<h2>What this means</h2>
+
+<p>This analysis is a prototype for something we're building: automated strategic dependency audits for AI projects. Not vulnerability scanning. Not version bumping. The question those tools don't answer: <strong>is this the right library to be using at all?</strong></p>
+
+<p>The full deep dive with data tables and methodology is at <a href="https://mcp.phasetransitions.ai/insights/crewai-dependency-audit/">mcp.phasetransitions.ai/insights/crewai-dependency-audit</a>.</p>
+
+<p>Every project mentioned is quality-scored daily in our <a href="https://mcp.phasetransitions.ai/agents/">agents directory</a>. Browse <a href="https://mcp.phasetransitions.ai/rag/categories/agent-memory-systems/">977 agent memory tools</a> or <a href="https://mcp.phasetransitions.ai/llm-tools/categories/llm-api-gateways/">285 LLM API gateways</a> to explore the data yourself.</p>
