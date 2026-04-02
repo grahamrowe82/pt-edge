@@ -625,43 +625,51 @@ def write_file(path, content):
     Path(path).write_text(content)
 
 
-def generate_sitemap(base_url, base_path, servers, categories, out_dir, comparisons=None):
-    prefix = f"{base_url}{base_path}"
+def generate_sitemap(base_url, generated_urls, out_dir):
+    """Write sitemap from the list of URLs that were actually generated.
+
+    generated_urls is a list of dicts: {"path": "/servers/owner/repo/", "priority": "0.6", ...}
+    This is the single source of truth — if a page wasn't generated, it's not in this list.
+    """
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-        f'  <url><loc>{prefix}</loc><changefreq>daily</changefreq><priority>1.0</priority></url>',
-        f'  <url><loc>{prefix}servers/</loc><changefreq>daily</changefreq><priority>0.9</priority></url>',
-        f'  <url><loc>{prefix}categories/</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>',
-        f'  <url><loc>{prefix}trending/</loc><changefreq>daily</changefreq><priority>0.7</priority></url>',
     ]
-
-    for cat in categories:
-        lines.append(
-            f'  <url><loc>{prefix}categories/{xml_escape(cat["subcategory"])}/</loc>'
-            f'<changefreq>weekly</changefreq><priority>0.8</priority></url>'
-        )
-
-    for s in servers:
-        lastmod = ""
-        if s.get("last_pushed_at"):
-            if isinstance(s["last_pushed_at"], datetime):
-                lastmod = f"<lastmod>{s['last_pushed_at'].strftime('%Y-%m-%d')}</lastmod>"
-            elif isinstance(s["last_pushed_at"], date):
-                lastmod = f"<lastmod>{s['last_pushed_at'].isoformat()}</lastmod>"
-        lines.append(
-            f'  <url><loc>{prefix}servers/{xml_escape(s["full_name"])}/</loc>'
-            f'{lastmod}<changefreq>weekly</changefreq><priority>0.6</priority></url>'
-        )
-
-    for pair in (comparisons or []):
-        lines.append(
-            f'  <url><loc>{prefix}compare/{xml_escape(pair["slug"])}/</loc>'
-            f'<changefreq>weekly</changefreq><priority>0.7</priority></url>'
-        )
-
+    for entry in generated_urls:
+        loc = f"{base_url}{xml_escape(entry['path'])}"
+        lastmod = f"<lastmod>{entry['lastmod']}</lastmod>" if entry.get("lastmod") else ""
+        freq = entry.get("changefreq", "weekly")
+        pri = entry.get("priority", "0.6")
+        lines.append(f'  <url><loc>{loc}</loc>{lastmod}<changefreq>{freq}</changefreq><priority>{pri}</priority></url>')
     lines.append('</urlset>')
     write_file(os.path.join(out_dir, "sitemap.xml"), "\n".join(lines))
+
+
+def verify_sitemap(sitemap_path, out_dir, base_url):
+    """Verify every URL in the sitemap has a corresponding file on disk.
+
+    Returns list of URLs without matching files.
+    """
+    import re
+    mismatches = []
+    try:
+        content = Path(sitemap_path).read_text()
+    except FileNotFoundError:
+        return []
+    for match in re.finditer(r'<loc>([^<]+)</loc>', content):
+        url = match.group(1)
+        # Strip base URL to get path
+        path = url.replace(base_url, "").rstrip("/")
+        if not path:
+            path = "/"
+        file_path = os.path.join(out_dir, path.lstrip("/"), "index.html")
+        if not os.path.exists(file_path):
+            mismatches.append(url)
+    if mismatches:
+        print(f"  WARNING: Sitemap has {len(mismatches)} URLs without pages on disk")
+        for m in mismatches[:10]:
+            print(f"    Missing: {m}")
+    return mismatches
 
 
 def generate_robots(base_url, base_path, out_dir):
@@ -803,7 +811,9 @@ def main():
         )[:6]
         print(f"  {len(cached_pairs)} cached pairs, {len(comparison_lookup)} repos with comparisons")
 
-    # Phase 2: Render pages
+    # Phase 2: Render pages — collect generated URLs for sitemap
+    generated_urls = []
+
     print("  Generating homepage...")
     write_file(
         os.path.join(out_dir, "index.html"),
@@ -815,6 +825,7 @@ def main():
             **ctx,
         ),
     )
+    generated_urls.append({"path": f"{base_path}/", "changefreq": "daily", "priority": "1.0"})
 
     print("  Generating index pages...")
     total_pages = math.ceil(total_count / PER_PAGE)
@@ -828,6 +839,8 @@ def main():
             servers=page_servers, page=page, total_pages=total_pages,
             offset=offset, per_page=PER_PAGE, **ctx,
         ))
+        url_path = f"{base_path}/servers/" if page == 1 else f"{base_path}/servers/page/{page}/"
+        generated_urls.append({"path": url_path, "changefreq": "daily", "priority": "0.9"})
     print(f"  {total_pages} index pages")
 
     print(f"  Generating {cfg['noun']} detail pages...")
@@ -857,6 +870,14 @@ def main():
                                           comparisons=comparison_lookup.get(s["full_name"], [])[:10],
                                           deep_dive_links=dd_links,
                                           **ctx))
+        lastmod = ""
+        if s.get("last_pushed_at"):
+            if isinstance(s["last_pushed_at"], datetime):
+                lastmod = s["last_pushed_at"].strftime("%Y-%m-%d")
+            elif isinstance(s["last_pushed_at"], date):
+                lastmod = s["last_pushed_at"].isoformat()
+        generated_urls.append({"path": f"{base_path}/servers/{s['full_name']}/",
+                               "lastmod": lastmod, "priority": "0.6"})
 
         if (i + 1) % 5000 == 0:
             print(f"  {i + 1}/{total_count} detail pages...")
@@ -871,6 +892,7 @@ def main():
             **ctx,
         ),
     )
+    generated_urls.append({"path": f"{base_path}/categories/", "changefreq": "weekly", "priority": "0.8"})
     for cat in categories:
         write_file(
             os.path.join(out_dir, "categories", cat["subcategory"], "index.html"),
@@ -879,6 +901,8 @@ def main():
                            category_comparisons=cat_comparisons.get(cat["subcategory"], [])[:10],
                            **ctx),
         )
+        generated_urls.append({"path": f"{base_path}/categories/{cat['subcategory']}/",
+                               "changefreq": "weekly", "priority": "0.8"})
     print(f"  {len(categories)} category pages")
 
     print("  Generating trending page...")
@@ -886,6 +910,7 @@ def main():
         os.path.join(out_dir, "trending", "index.html"),
         env.get_template("trending.html").render(trending=trending, trending_days=trending_days, **ctx),
     )
+    generated_urls.append({"path": f"{base_path}/trending/", "changefreq": "daily", "priority": "0.7"})
 
     print("  Generating about + methodology pages...")
     write_file(
@@ -896,6 +921,8 @@ def main():
         os.path.join(out_dir, "methodology", "index.html"),
         env.get_template("methodology.html").render(**ctx),
     )
+    generated_urls.append({"path": f"{base_path}/about/", "changefreq": "monthly", "priority": "0.4"})
+    generated_urls.append({"path": f"{base_path}/methodology/", "changefreq": "monthly", "priority": "0.4"})
 
     # Generate comparison pages (lookups already built earlier)
     comparison_pairs = []
@@ -938,6 +965,8 @@ def main():
                 ),
             )
             comparison_pairs.append(cp)
+            generated_urls.append({"path": f"{base_path}/compare/{slug}/",
+                                   "changefreq": "weekly", "priority": "0.7"})
 
             if len(comparison_pairs) % 1000 == 0:
                 print(f"  {len(comparison_pairs)} comparison pages...")
@@ -947,9 +976,15 @@ def main():
         print("  No cached pairs (run weekly_structural.py to populate)")
 
     # Phase 3: SEO assets
-    print("  Generating sitemap.xml + robots.txt...")
-    generate_sitemap(base_url, base_path, servers, categories, out_dir, comparison_pairs)
+    print(f"  Generating sitemap.xml ({len(generated_urls)} URLs) + robots.txt...")
+    sitemap_path = os.path.join(out_dir, "sitemap.xml")
+    generate_sitemap(base_url, generated_urls, out_dir)
     generate_robots(base_url, base_path, out_dir)
+
+    # Verify sitemap/page alignment
+    mismatches = verify_sitemap(sitemap_path, out_dir, base_url)
+    if mismatches:
+        print(f"  WARNING: {len(mismatches)} sitemap URLs have no page on disk")
 
     elapsed = time.time() - t0
     total_files = total_count + total_pages + len(categories) + len(comparison_pairs) + 5
