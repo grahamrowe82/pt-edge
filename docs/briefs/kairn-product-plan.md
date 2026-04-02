@@ -98,7 +98,32 @@ This turns every server detail page into a mini kairn report — the same strate
 
 ### Step 4: Add the API endpoint
 
-`POST /api/v1/audit` — accept a list of package names (or a raw `requirements.txt`), match against `ai_repos` via package registry mappings, return strategic fitness data from the MV.
+**Prerequisite: package-to-repo mapping table.** The manual crewAI audit (Step 1) immediately exposed a critical infrastructure gap. There is no reliable mapping between PyPI/npm package names and GitHub repos. Our current approach (`lower(ai_repos.name) = lower(dep_name)`) produced wrong matches and missed matches:
+
+- `anthropic` on PyPI → matched to `tryAGI/Anthropic` (a C# wrapper), not `anthropics/anthropic-sdk-python`
+- `openai` on PyPI → matched to `betalgo/openai` (.NET library), not `openai/openai-python`
+- `mcp` on PyPI → matched to `awslabs/mcp` (AWS MCP), not `modelcontextprotocol/python-sdk`
+- `chromadb` on PyPI → no match at all (repo is `chroma-core/chroma`)
+- `mem0ai` on PyPI → no match (repo is `mem0ai/mem0`)
+- `instructor` on PyPI → no match (repo is `jxnl/instructor`)
+
+**Resolution: bidirectional mapping with continuous validation.** Build a `package_registry_map` table:
+
+```
+package_name  | registry | github_repo                      | verified_at
+--------------+----------+----------------------------------+------------
+litellm       | pypi     | BerriAI/litellm                  | 2026-04-02
+anthropic     | pypi     | anthropics/anthropic-sdk-python   | 2026-04-02
+chromadb      | pypi     | chroma-core/chroma                | 2026-04-02
+```
+
+Populated from two directions:
+1. **PyPI/npm → GitHub (Direction A):** Hit `https://pypi.org/pypi/{package}/json`, extract `project_urls.Repository` or `Homepage` containing github.com. This is the direction the audit endpoint needs.
+2. **GitHub → PyPI/npm (Direction B):** For repos in `ai_repos`, check their `pyproject.toml` or `package.json` for the published package name. This is the reverse direction for pre-building the lookup.
+
+Both directions run continuously. If A→B and B→A agree, the mapping is verified. If they disagree, flag for investigation. This also serves as a crawling mechanism: walk the dependency graph from any node, discover new repos and packages at each edge, and expand coverage organically.
+
+`POST /api/v1/audit` — accept a list of package names (or a raw `requirements.txt`), match against `ai_repos` via the verified mapping table, return strategic fitness data from the MV.
 
 **Request:**
 ```json
@@ -179,3 +204,19 @@ Every kairn scan generates two signals:
 The cairn (a stone marker left on trails), a kernel of truth (real signal about your dependencies), and the tech kernel (the foundational layer your stack runs on).
 
 *Know your path.*
+
+## Findings from manual audit (updated as we learn)
+
+Running log of insights from the crewAI dependency audit. Each finding updates the plan above.
+
+### Finding 1: Package-to-repo mapping is a prerequisite, not an afterthought
+
+**Date:** 2026-04-02
+
+**What happened:** First attempt to match crewAI's 47 PyPI dependencies against `ai_repos` by name (`lower(name) = lower(dep_name)`) produced 9 matches. Of those, 3 were wrong (matched to .NET wrappers or unrelated repos with the same name). Major dependencies like chromadb, mem0ai, instructor, anthropic SDK, and openai SDK were missed entirely.
+
+**Root cause:** PyPI package names and GitHub repo names are not the same thing. `chromadb` publishes from `chroma-core/chroma`. `anthropic` publishes from `anthropics/anthropic-sdk-python`. There's no lookup table mapping between them.
+
+**Impact on plan:** This blocks Step 4 (API endpoint) entirely. Without a reliable mapping, the audit endpoint can't match package names to scored repos. Added `package_registry_map` table and bidirectional validation to the plan.
+
+**Broader insight:** The bidirectional mapping also enables a dependency graph crawl — walk from any node (repo or package), discover new nodes at each edge, expand coverage organically. This is the mechanism behind the second flywheel (dependency discovery).
