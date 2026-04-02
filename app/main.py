@@ -3,16 +3,26 @@ import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from fastapi.responses import HTMLResponse
+
 from app.mcp.server import mount_mcp
 from app.api.routes import router as api_router, APIUsageMiddleware
 from app.api.docs_page import router as docs_router
+from app.api.keys import router as keys_router
+from app.api.signup_page import SIGNUP_HTML
 
 app = FastAPI(title="pt-edge", version="0.1.0")
 
 mount_mcp(app)
 app.include_router(api_router)
 app.include_router(docs_router)
+app.include_router(keys_router)
 app.add_middleware(APIUsageMiddleware)
+
+
+@app.get("/api/signup", response_class=HTMLResponse)
+async def api_signup():
+    return HTMLResponse(content=SIGNUP_HTML)
 
 
 @app.get("/healthz")

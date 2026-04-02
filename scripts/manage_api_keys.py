@@ -9,8 +9,6 @@ Usage:
 """
 
 import argparse
-import hashlib
-import secrets
 import sys
 from datetime import datetime, timezone
 
@@ -19,14 +17,11 @@ from sqlalchemy import text
 # Allow running from repo root
 sys.path.insert(0, ".")
 from app.db import engine
+from app.api.keys import generate_key, hash_key
 
-
-def _generate_key() -> str:
-    return "pte_" + secrets.token_hex(16)
-
-
-def _hash_key(raw_key: str) -> str:
-    return hashlib.sha256(raw_key.encode()).hexdigest()
+# Keep old names for backward compat within this script
+_generate_key = generate_key
+_hash_key = hash_key
 
 
 def cmd_create(args):
