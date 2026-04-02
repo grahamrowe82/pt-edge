@@ -19,98 +19,65 @@ This product requires:
 
 No other dataset combines all five. A security scanner knows packages but not categories. A GitHub trending page knows momentum but not quality. PT-Edge knows all of it.
 
-## Five-step build plan
+## Build plan (revised after crewAI audit)
 
-### Step 1: Manual audit deep dive (the proof of concept)
+The manual crewAI audit (see "Findings from manual audit" below) surfaced seven findings that reshape the build plan. The original five product steps remain, but they now depend on infrastructure fixes that the audit revealed. The steps below are ordered by dependency chain — each unblocks the next.
 
-Pick a real, well-known open-source AI project and audit its AI dependencies by hand against PT-Edge data. Publish as a deep dive: "We Audited the AI Dependencies of [Project]: Here's What We Found."
+### Step 0: Manual audit deep dive [DONE]
 
-**Purpose:** Validate the concept with real data. Discover which metrics are load-bearing, where the gaps are, and what a useful strategic fitness report actually looks like — before building any infrastructure.
+Audited crewAI's 47 dependencies by hand against PT-Edge data. Published as a deep dive. Surfaced seven findings that inform everything below. Full results: [docs/briefs/kairn-crewai-audit.md](kairn-crewai-audit.md). Baseline comparison: [docs/briefs/kairn-crewai-baseline.md](kairn-crewai-baseline.md).
 
-**What the audit covers per AI dependency:**
-- Quality score and category rank
-- Momentum direction (gaining or losing stars/downloads)
-- Lifecycle stage
-- Maintenance velocity (commits, releases, issue response)
-- The top-ranked alternative in the same subcategory
-- A strategic assessment: keep, watch, or evaluate alternatives
+### Step 1: Reverse dependency counts (quick win)
 
-**Candidate projects (shortlist):**
+*Addresses: Finding 6*
 
-1. **crewAI** (45.9K stars, agents) — **recommended for first audit**
-   - 47 direct dependencies, clean and focused
-   - Key AI deps already trackable: litellm (38.9K stars), tokenizers (10.5K), lancedb (9.4K), qdrant-client (1.2K)
-   - Massive audience: most-discussed agent framework, developers will care about the findings
-   - The dependency choices are genuinely interesting — CrewAI picked LiteLLM over direct OpenAI/Anthropic clients, LanceDB over Chroma, qdrant-client as a secondary vector store
-   - Clean narrative: "The AI dependency decisions behind the most popular agent framework"
+Add reverse dependency counts to the data layer. This is the most novel metric from the audit — no other tool provides "how many AI projects depend on this?" — and it requires no new infrastructure, just a query on the existing `package_deps` table.
 
-2. **gpt-researcher** (25.7K stars, llm-tools) — strong alternative
-   - 159 dependencies, much broader surface area
-   - Heavy cross-domain: web scraping (Firecrawl, Scrapy), LLM clients (LiteLLM, LangChain, Ollama), RAG tooling (Unstructured, LangGraph)
-   - Narrative: "Building a production research agent — the dependency supply chain"
-   - More complex audit, better for showing breadth of the concept
+```sql
+SELECT dep_name, count(DISTINCT repo_id) as dependents
+FROM package_deps GROUP BY dep_name
+```
 
-3. **camel-ai/camel** (16.3K stars, agents) — maximum depth
-   - 167 dependencies across 17 AI domains
-   - Most diverse AI dependency profile in the database
-   - Includes HF Transformers, Diffusers, Gradio, LiteLLM, Langfuse, AgentOps, Milvus, Qdrant
-   - Narrative: "How a multi-agent framework orchestrates the entire AI stack"
-   - Best for comprehensive audit, but may be too complex for a first attempt
+Add to an MV or lightweight view. Surface on server detail pages as "Used by X tracked AI projects." This can ship immediately and improves the core product regardless of kairn.
 
-**Recommendation:** Start with crewAI. It's the right size (focused enough to be thorough, complex enough to be interesting), the audience is large, and the dependency choices are genuinely debatable. Save camel-ai for a follow-up that shows the concept at scale.
+### Step 2: Unified quality score (architectural foundation)
 
-### Step 2: Formalise the metrics (materialised view)
+*Addresses: Finding 7, Finding 5*
 
-Based on what we learn from the manual audit, build `mv_strategic_fitness` — a pre-computed view that scores each trackable AI repo on:
+Build `mv_unified_quality` — a single quality score computed identically for all 220K+ repos, regardless of domain. Same weights, same methodology. This replaces the 18 domain-specific MVs as the analytical backbone (the domain MVs stay for the directory browsing UI).
 
-- **Category rank** — percentile position within subcategory by quality score
-- **Momentum direction** — classified from `mv_momentum` (accelerating / steady / declining)
-- **Maintenance risk** — derived from commits_30d, last_pushed_at, open issue response time
-- **Top alternative** — the highest-quality-scored repo in the same subcategory (excluding self). **Caveat from audit:** subcategory-level comparison produces poor alternatives (chroma-go for Chroma, VectorDBBench for LanceDB). Needs domain-level or embedding-similarity comparison instead. See Finding 5.
-- **Reverse dependency count** — how many tracked AI projects depend on this repo (from `package_deps`). **From audit:** this was the most novel and differentiated metric. pydantic (1,029), openai (866), litellm (155). No other tool provides this. Should be a headline metric.
-- **Velocity risk flag** — when commits_30d exceeds a threshold (e.g., 500+), flag as "high velocity — fast fixes but potential for breaking changes." LiteLLM at 2,399 commits/30d is healthy but operationally demanding.
+This is the prerequisite for everything analytical: cross-domain comparison, kairn fitness scoring, embedding-based alternatives. Without it, comparing a vector-db repo to a rag repo means mixing scores from different methodologies.
 
-**Existing MVs that feed this (already computed daily):**
-- `mv_*_quality` (18 domain views) — quality scores
-- `mv_lifecycle` — lifecycle stage
-- `mv_velocity` — commit frequency
-- `mv_momentum` — star/download acceleration
-- `mv_hype_ratio` — stars vs actual usage
-- `mv_traction_score` — combined adoption signal
+Also add:
+- **Category rank** — window function over unified scores per subcategory
+- **Velocity risk flag** — flag when commits_30d exceeds threshold (LiteLLM at 2,399/month is the reference data point)
+- **Momentum direction** — classified from existing `mv_momentum`
 
-**New data needed:**
-- Reverse dependency counts (how many tracked repos depend on X) — derivable from existing `package_deps`. Simple: `SELECT dep_name, count(DISTINCT repo_id) FROM package_deps GROUP BY dep_name`
-- Category percentile rank — simple window function over quality scores per subcategory
-- Top alternative lookup — needs rethinking (see Finding 5). Options: domain-level `FIRST_VALUE`, or embedding-similarity across subcategory boundaries
-- `package_registry_map` table (see Finding 1) — prerequisite for Step 4 but useful here for enriching the MV with package names
-- Velocity risk threshold — simple flag on commits_30d, informed by the LiteLLM data point
+Once this exists, the subcategory silo problem (Finding 5) is resolved: "top alternative" uses embedding similarity + unified score instead of subcategory peers.
 
-### Step 3: Integrate into server detail pages
+### Step 3: AI dependency boundary decision + foundational repo ingestion
 
-Add a "Strategic Fitness" section to server detail pages for repos where category context is meaningful. Not a new page — an enrichment of the existing detail page.
+*Addresses: Finding 3, Finding 4*
 
-**What it shows:**
-- Category rank: "Ranked #3 of 47 in lightweight-tts-libraries"
-- Momentum: "Rising — gained 1,200 stars in the last 30 days"
-- Top alternative: "Category leader: edge-tts (69/100)"
-- Lifecycle: "Growth stage — active development, expanding adoption"
+Codify the three-tier classification for what counts as an AI dependency:
+1. **AI-specific** — repos in PT-Edge's AI taxonomy. Full scoring.
+2. **AI-adjacent** — provider SDKs, structural tools (pydantic, instructor), observability (opentelemetry). Full scoring once ingested.
+3. **General infrastructure** — (click, httpx, tomli). Out of scope for scoring.
 
-**Where it appears:** Only on repos with a quality score > 20 and a subcategory with 5+ peers. Below that, the category context isn't meaningful enough to rank.
+Then ingest the foundational repos that Finding 4 identified as missing. These are ~50-100 high-star, high-importance repos:
+- LLM provider SDKs: `openai/openai-python`, `anthropics/anthropic-sdk-python`, `googleapis/python-genai`, `cohere-ai/cohere-python`, `mistralai/client-python`
+- Structural: `pydantic/pydantic`, `jxnl/instructor`
+- Protocol SDKs: `modelcontextprotocol/python-sdk`
+- Observability: `open-telemetry/opentelemetry-python`
+- Tokenisation: `openai/tiktoken`
 
-This turns every server detail page into a mini kairn report — the same strategic intelligence, delivered as a web page.
+Decision: whether these go into a new `foundations` domain or are distributed into existing domains. Finding 7 makes this less critical than it first appeared — domains are a browsing affordance, not an analytical primitive. The unified quality score (Step 2) means they'll be scored correctly regardless of domain assignment. But for browsing, a `foundations` domain likely makes more sense than scattering provider SDKs across llm-tools, agents, etc.
 
-### Step 4: Add the API endpoint
+### Step 4: Package-to-repo mapping table
 
-**Prerequisite: package-to-repo mapping table.** The manual crewAI audit (Step 1) immediately exposed a critical infrastructure gap. There is no reliable mapping between PyPI/npm package names and GitHub repos. Our current approach (`lower(ai_repos.name) = lower(dep_name)`) produced wrong matches and missed matches:
+*Addresses: Finding 1, Finding 2*
 
-- `anthropic` on PyPI → matched to `tryAGI/Anthropic` (a C# wrapper), not `anthropics/anthropic-sdk-python`
-- `openai` on PyPI → matched to `betalgo/openai` (.NET library), not `openai/openai-python`
-- `mcp` on PyPI → matched to `awslabs/mcp` (AWS MCP), not `modelcontextprotocol/python-sdk`
-- `chromadb` on PyPI → no match at all (repo is `chroma-core/chroma`)
-- `mem0ai` on PyPI → no match (repo is `mem0ai/mem0`)
-- `instructor` on PyPI → no match (repo is `jxnl/instructor`)
-
-**Resolution: bidirectional mapping with continuous validation.** Build a `package_registry_map` table:
+Build `package_registry_map` with bidirectional validation:
 
 ```
 package_name  | registry | github_repo                      | verified_at
@@ -121,12 +88,37 @@ chromadb      | pypi     | chroma-core/chroma                | 2026-04-02
 ```
 
 Populated from two directions:
-1. **PyPI/npm → GitHub (Direction A):** Hit `https://pypi.org/pypi/{package}/json`, extract `project_urls.Repository` or `Homepage` containing github.com. This is the direction the audit endpoint needs.
-2. **GitHub → PyPI/npm (Direction B):** For repos in `ai_repos`, check their `pyproject.toml` or `package.json` for the published package name. This is the reverse direction for pre-building the lookup.
+1. **Direction A (PyPI/npm → GitHub):** Hit `https://pypi.org/pypi/{package}/json`, extract `project_urls.Repository`. This is the direction the audit endpoint needs.
+2. **Direction B (GitHub → PyPI/npm):** For repos in `ai_repos`, check `pyproject.toml` or `package.json` for published package name.
 
-Both directions run continuously. If A→B and B→A agree, the mapping is verified. If they disagree, flag for investigation. This also serves as a crawling mechanism: walk the dependency graph from any node, discover new repos and packages at each edge, and expand coverage organically.
+Both directions run continuously. Agreement = verified. Disagreement = flagged. This also enables the dependency graph crawl: walk from any node, discover new repos and packages at each edge, expand coverage toward what developers actually use.
 
-`POST /api/v1/audit` — accept a list of package names (or a raw `requirements.txt`), match against `ai_repos` via the verified mapping table, return strategic fitness data from the MV.
+Depends on Step 3 (foundational repos must be ingested before they can be mapped).
+
+### Step 5: Embedding-based alternatives
+
+*Addresses: Finding 5, Finding 7*
+
+Replace subcategory-peer alternatives with embedding-similarity alternatives. For any repo, "top alternative" = nearest neighbour by 1536d embedding that has a unified quality score above threshold, regardless of domain or subcategory.
+
+This fixes the broken alternatives from the audit (chroma-go for Chroma, VectorDBBench for LanceDB) and also improves the directory's cross-category comparison feature.
+
+Depends on Step 2 (needs unified scores) and the existing embedding infrastructure (already in place — 97% of repos have 1536d embeddings).
+
+### Step 6: Server detail page enrichment
+
+Add "Strategic Fitness" section to server detail pages:
+- Category rank (from Step 2): "Ranked #3 of 47 in lightweight-tts-libraries"
+- Momentum direction (from Step 2): "Rising — gained 1,200 stars in 30 days"
+- Top alternative (from Step 5): "Category leader: edge-tts (69/100)" — now via embedding similarity
+- Reverse dependency count (from Step 1): "Used by 155 tracked AI projects"
+- Velocity risk flag (from Step 2): "High velocity — 2,399 commits/month"
+
+Where it appears: repos with unified quality > 20 and at least 5 embedding-similar peers.
+
+### Step 7: Audit API endpoint
+
+`POST /api/v1/audit` — accept package names or raw `requirements.txt`, match via `package_registry_map` (Step 4), return strategic fitness data from unified MV (Step 2) with embedding-based alternatives (Step 5) and reverse dependency counts (Step 1).
 
 **Request:**
 ```json
@@ -142,37 +134,56 @@ Both directions run continuously. If A→B and B→A agree, the mapping is verif
   "package": "litellm",
   "matched_repo": "BerriAI/litellm",
   "quality_score": 85,
-  "category": "llm-proxy-routers",
   "category_rank": 1,
   "category_size": 34,
+  "dependents": 155,
   "momentum": "accelerating",
+  "velocity_risk": false,
   "lifecycle": "growth",
-  "top_alternative": {"repo": "portkey-ai/gateway", "score": 72},
+  "top_alternative": {"repo": "portkey-ai/gateway", "score": 72, "similarity": 0.91},
   "assessment": "category_leader"
 }
 ```
 
-**Free tier:** Quality score, lifecycle stage, category rank.
-**Paid tier:** Momentum data, alternative recommendations, historical comparisons, batch audits.
+**Free tier:** Quality score, lifecycle stage, category rank, dependents count.
+**Paid tier:** Momentum, velocity risk, alternative recommendations, historical trends, batch audits.
 
-### Step 5: Open-source scanner (distribution layer)
+### Step 8: Open-source scanner CLI (distribution layer)
 
-A CLI tool (`kairn`) that reads `requirements.txt` / `pyproject.toml` / `package.json`, calls the audit endpoint, and renders a strategic dependency health report.
+A CLI tool (`kairn`) that reads `requirements.txt` / `pyproject.toml` / `package.json`, calls the audit endpoint (Step 7), renders a strategic dependency health report.
 
 ```bash
 $ kairn scan requirements.txt
-Scanning 47 dependencies... 12 matched PT-Edge AI records.
+Scanning 47 dependencies... 23 matched PT-Edge AI records.
 
-  litellm        85/100  #1 of 34  ↑ accelerating  ✓ category leader
-  lancedb        72/100  #2 of 19  ↑ accelerating  ✓ strong
-  tokenizers     68/100  #1 of 8   → steady         ✓ category leader
-  qdrant-client  61/100  #3 of 19  → steady         ⚠ watch: lancedb gaining
+  litellm        98/100  #1 of 285  ↑ accelerating  155 dependents  ✓ leader
+  chromadb       94/100  #1 of 27   → steady         126 dependents  ✓ leader
+  lancedb        94/100  #1 of 36   → steady          30 dependents  ✓ leader
+  tokenizers     90/100  #1 of 26   → steady         119 dependents  ✓ leader
+  anthropic      --/100  (scoring)  → steady         229 dependents  — new
+  openai         --/100  (scoring)  → steady         866 dependents  — new
+  mem0ai         72/100  #6 of 977  → steady          15 dependents  ⚠ evaluate cognee
   ...
 
-35 dependencies outside AI tooling scope (not scored).
+24 dependencies outside AI tooling scope (not scored).
 ```
 
 Open source (MIT). Every scan is an API call. The scanner is the distribution channel; the data stays proprietary.
+
+### Dependency chain summary
+
+```
+Step 1 (reverse deps)     — no dependencies, ship immediately
+Step 2 (unified scoring)  — no dependencies, foundational
+Step 3 (boundary + ingest) — benefits from Step 2 for scoring
+Step 4 (package mapping)  — depends on Step 3 (repos must exist to map)
+Step 5 (embedding alts)   — depends on Step 2 (needs unified scores)
+Step 6 (detail pages)     — depends on Steps 1, 2, 5
+Step 7 (audit API)        — depends on Steps 1, 2, 4, 5
+Step 8 (CLI scanner)      — depends on Step 7
+```
+
+Steps 1 and 2 can run in parallel. Steps 3 and 5 can run in parallel (after Step 2). Steps 6 and 7 can run in parallel (after their deps). Step 8 is last.
 
 ## Buyer personas
 

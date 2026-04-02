@@ -114,14 +114,16 @@ Once the flywheel is generating consistent organic traffic and temporal data rea
 
 Strategic dependency auditing for AI projects — "is this the right library?" not just "is it safe?" Full plan: [docs/briefs/kairn-product-plan.md](briefs/kairn-product-plan.md)
 
-Build sequence:
-1. **Manual audit deep dive** — audit crewAI's AI dependencies by hand, publish as a deep dive. Validates the concept and reveals which metrics matter.
-2. **`mv_strategic_fitness` materialised view** — formalise category rank, momentum direction, top alternative, dependency exposure per repo.
-3. **Server detail page enrichment** — add "Strategic Fitness" section showing category rank, momentum, and top alternative.
-4. **`POST /api/v1/audit` endpoint** — accept package lists, return strategic fitness data. Free tier (scores + lifecycle) and paid tier (rankings + alternatives + trends).
-5. **Open-source scanner CLI** — reads lock files, calls the API, renders a report. Distribution channel for the proprietary data.
+The manual crewAI audit ([docs/briefs/kairn-crewai-audit.md](briefs/kairn-crewai-audit.md)) surfaced 7 findings that reshaped the build plan. Revised 9-step sequence (dependency-ordered):
 
-First audit candidate: crewAI (45.9K stars) — focused deps (litellm, lancedb, tokenizers, qdrant-client), large audience, genuinely debatable dependency choices. Alternatives: gpt-researcher (broader surface), camel-ai (maximum depth).
+1. **Reverse dependency counts** [quick win, no deps] — "used by X AI projects." Most novel metric, ships immediately.
+2. **Unified quality score** (`mv_unified_quality`) [foundational] — domain-agnostic scoring for all 220K repos. Enables cross-domain comparison. The 18 domain MVs stay for browsing, unified MV powers all analytics.
+3. **AI dependency boundary + foundational repo ingestion** — codify three-tier classification, ingest ~50-100 missing foundational repos (openai-python, anthropic SDK, pydantic, MCP SDK, opentelemetry).
+4. **Package-to-repo mapping table** (`package_registry_map`) — bidirectional PyPI↔GitHub mapping with continuous validation.
+5. **Embedding-based alternatives** — replace subcategory-peer alternatives with nearest-neighbour by embedding + unified score.
+6. **Server detail page enrichment** — "Strategic Fitness" section (rank, momentum, alternatives, dependents).
+7. **`POST /api/v1/audit` endpoint** — accept package lists, return strategic fitness via verified mapping + unified scoring.
+8. **Open-source scanner CLI** (`kairn`) — reads lock files, calls API, renders report. Distribution channel.
 
 ### Quantitative analytics layer
 
