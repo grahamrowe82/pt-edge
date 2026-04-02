@@ -1,0 +1,35 @@
+<p>You want to deploy a coding agent at your company. You evaluate a few options, pick one, set it up. It works. Then someone asks: "what happens when the agent runs <code>rm -rf /</code>?" And you realise you have no sandboxing.</p>
+
+<p>Deploying agents in production is four problems, not one. And only one of those layers is genuinely mature.</p>
+
+<h2>Layer 1: Sandboxing — the only mature layer</h2>
+
+<p>The good news. <a href="https://mcp.phasetransitions.ai/agents/servers/e2b-dev/E2B/">E2B</a> (92/100) provides cloud sandboxes via SDK, self-hostable. <a href="https://mcp.phasetransitions.ai/agents/servers/alibaba/OpenSandbox/">Alibaba's OpenSandbox</a> (87/100) is the Kubernetes-native option with gVisor, Kata, and Firecracker runtimes. Both production-grade.</p>
+
+<p>For local development, <a href="https://mcp.phasetransitions.ai/agents/servers/always-further/nono/">nono</a> uses kernel-level enforcement with a credential proxy that keeps API keys entirely outside the sandbox. The Rust-based contenders — <a href="https://mcp.phasetransitions.ai/agents/servers/boxlite-ai/boxlite/">boxlite</a> (micro-VMs without a daemon), <a href="https://mcp.phasetransitions.ai/agents/servers/zerobootdev/zeroboot/">zeroboot</a> (sub-millisecond Firecracker restore), <a href="https://mcp.phasetransitions.ai/agents/servers/multikernel/sandlock/">sandlock</a> (Landlock + seccomp) — are pushing the boundaries.</p>
+
+<p>If you only get one layer right, get this one.</p>
+
+<h2>Layer 2: Governance — the critical gap</h2>
+
+<p>Sandboxing prevents accidental damage. Governance prevents unauthorized actions. What data can this agent access? Who approved this workflow? Where's the audit trail?</p>
+
+<p>This layer is alarmingly immature. <a href="https://mcp.phasetransitions.ai/agents/servers/microsoft/agent-governance-toolkit/">Microsoft's governance toolkit</a> (61/100) is the most credible entry. <a href="https://mcp.phasetransitions.ai/agents/servers/mattijsmoens/sovereign-shield/">sovereign-shield</a> and <a href="https://mcp.phasetransitions.ai/agents/servers/mattijsmoens/intentshield/">intentshield</a> tackle policy enforcement — right ideas, single-maintainer projects. If you need governance today, you're building it yourself.</p>
+
+<h2>Layer 3: Orchestration — mature but fragmented</h2>
+
+<p>Multiple agents cooperating on tasks. <a href="https://mcp.phasetransitions.ai/agents/servers/openai/openai-agents-python/">OpenAI's SDK</a> (98/100) is simplest. <a href="https://mcp.phasetransitions.ai/agents/servers/crewAIInc/crewAI/">CrewAI</a> (97/100, 45K+ stars) for multi-agent teams. <a href="https://mcp.phasetransitions.ai/agents/servers/ComposioHQ/composio/">Composio</a> (94/100) for tool integrations. High quality scores across the board, but the ecosystem fragments weekly.</p>
+
+<h2>Layer 4: The agent itself — least important decision</h2>
+
+<p>Here's the thing nobody mentions: the agent is the <em>least</em> important architectural choice. <a href="https://mcp.phasetransitions.ai/agents/servers/Aider-AI/aider/">Aider</a> (79/100, 41K stars) is established. The "vibe coding" category is emerging fast. But any competent agent produces reasonable code. An excellent agent without sandboxing is a liability. A mediocre agent with proper sandboxing and governance is enterprise-ready.</p>
+
+<h2>The maturity gap</h2>
+
+<p><strong>Sandboxing:</strong> Production-ready. Pick E2B or OpenSandbox. <strong>Orchestration:</strong> Mature but still settling. <strong>The agent:</strong> Works fine. <strong>Governance:</strong> Early. If your compliance team asks about agent authorization, you don't have a good answer yet.</p>
+
+<p>Start with sandboxing. Then orchestration. Then agents. Watch governance — expect tooling to mature over the next 12 months.</p>
+
+<p>Full analysis with quality-scored project tables at every layer: <a href="https://mcp.phasetransitions.ai/insights/agent-platform-architecture/">mcp.phasetransitions.ai/insights/agent-platform-architecture</a>.</p>
+
+<p>Browse <a href="https://mcp.phasetransitions.ai/agents/categories/agent-code-sandboxing/">all sandboxing projects</a>, <a href="https://mcp.phasetransitions.ai/agents/categories/agent-authorization-guardrails/">governance tools</a>, or <a href="https://mcp.phasetransitions.ai/agents/categories/agent-orchestration-platforms/">orchestration platforms</a>.</p>
