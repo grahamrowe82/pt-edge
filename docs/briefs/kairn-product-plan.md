@@ -310,3 +310,21 @@ The argument for a distinct domain rather than distributing into existing domain
 Key numbers: pydantic (1,029 repos), openai (866), httpx (579), mcp (421), anthropic (229), litellm (155), chromadb (126). These tell you systemic importance — how much of the ecosystem breaks if this library has a problem.
 
 **Impact on plan:** Reverse dependency count should be a headline metric in kairn reports, not just a secondary signal. It's the metric no other tool can provide and it answers the question "how important is this dependency to the broader ecosystem, not just to my project?"
+
+### Finding 7: Domain assignment is a browsing affordance, not an analytical primitive
+
+**Date:** 2026-04-02
+
+**What happened:** cognee (`topoteretes/cognee`) is classified as domain `vector-db` but its subcategory is `agent-memory-systems`. When we ranked agent-memory repos, we pulled quality scores from `mv_rag_quality` (where mem0 lives) and `mv_vector_db_quality` (where cognee lives) — two different MVs with potentially different scoring methodologies. The ranking mixed scores that weren't computed the same way.
+
+More broadly, the `agent-memory-systems` subcategory spans 5 domains (mcp: 358, embeddings: 219, vector-db: 146, rag: 132, agents: 122). The same functional category is split across domains because different projects approach agent memory from different architectural angles. This is correct from a browsing perspective but breaks cross-domain comparison.
+
+**Root cause:** The 18 domains carry too much structural weight. Domain assignment determines which quality MV scores a repo, which repos it's compared against, and which deep dives link to it. But domains are fundamentally a *navigational convenience* — aisles in a shop for human browsing. They shouldn't determine which products get compared to each other.
+
+**Resolution direction:** Decouple browsing from analytics:
+- **Domains stay as the browsing layer.** They're good at this — Google indexes them, users understand them, the directory structure works. Don't remove them.
+- **Add a unified quality score** (`mv_unified_quality`) computed identically for all 220K+ repos regardless of domain. Same weights, same methodology. This powers all analytical features: kairn fitness, top alternatives, cross-domain comparison.
+- **Use embedding similarity for alternatives**, not subcategory peers. The 1536d embeddings already capture "this does agent memory" whether the repo is in vector-db or rag. Top alternative = nearest neighbour by embedding with quality above threshold, regardless of domain.
+- **Domains don't impede analytical work.** They're a UI layer, not wired into anything that needs to be correct for comparison or scoring purposes.
+
+**Impact on plan:** This is the most architecturally significant finding. It affects Step 2 (the MV needs unified scoring, not domain-specific), Step 3 (detail page "top alternative" uses embeddings), and Step 4 (the API returns domain-agnostic comparisons). It also affects the directory itself — cross-category comparison (flagged in the roadmap) has the same root cause.
