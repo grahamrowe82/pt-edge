@@ -18,7 +18,7 @@
       'huggingface/tokenizers': {'dep': 'tokenizers', 'rank': '#1', 'size': 26, 'assessment': 'Category leader'},
       'qdrant/qdrant-client': {'dep': 'qdrant-client', 'rank': '#2', 'size': 51, 'assessment': 'Strong'},
       'mangiucugna/json_repair': {'dep': 'json-repair', 'rank': '#1', 'size': 54, 'assessment': 'Category leader'},
-      'mem0ai/mem0': {'dep': 'mem0ai', 'rank': '#6', 'size': 977, 'assessment': 'Watch'}
+      'mem0ai/mem0': {'dep': 'mem0ai', 'rank': '#6', 'size': 977, 'assessment': 'Strong — fast-moving category'}
     } %}
     {% for name in ['BerriAI/litellm', 'chroma-core/chroma', 'lancedb/lancedb', 'huggingface/tokenizers', 'qdrant/qdrant-client', 'mangiucugna/json_repair', 'mem0ai/mem0'] %}
     {% set r = repos.get(name, {}) %}
@@ -36,7 +36,7 @@
   </tbody>
 </table>
 
-<p><strong>Six of seven scored dependencies are #1 in their category.</strong> This isn't "good choices" &mdash; it's best-in-class across the board. Someone on the crewAI team made very deliberate dependency decisions, and the data confirms they picked well.</p>
+<p><strong>Six of seven scored dependencies are #1 in their category.</strong> This isn't "good choices" &mdash; it's best-in-class across the board. Someone on the crewAI team made very deliberate dependency decisions, and the data confirms they picked exceptionally well. The seventh &mdash; mem0 &mdash; isn't weak; it's in the one category that hasn't settled yet.</p>
 
 <h2>LiteLLM: the best dependency choice, with a caveat</h2>
 
@@ -56,16 +56,16 @@
 
 <p>Both LanceDB and Chroma score 94/100 and are #1 in their respective subcategories. The strategic choice is that LanceDB is in core dependencies while Qdrant is optional &mdash; crewAI defaults to embedded/local vector storage rather than requiring a separate database server. For teams that want zero-infrastructure agent memory, this is the right default. For teams running at scale, the Qdrant and Chroma options are there.</p>
 
-<h2>mem0: the one dependency worth evaluating</h2>
+<h2>Agent memory: the one category that hasn't settled</h2>
 
-<p>Every other scored dependency is a category leader. <a href="{{ domain_path('rag') }}/servers/mem0ai/mem0/">mem0</a> is the exception: {{ repos.get('mem0ai/mem0', {}).quality_score }}/100, ranked #6 of 977 in <a href="{{ domain_path('rag') }}/categories/agent-memory-systems/">agent-memory-systems</a>. With {{ repos.get('mem0ai/mem0', {}).stars | intcomma }} stars it has the most adoption of any agent memory tool, but three alternatives score significantly higher:</p>
+<p>Every other scored dependency is a clear category leader in a relatively stable landscape. <a href="{{ domain_path('rag') }}/servers/mem0ai/mem0/">mem0</a> ({{ repos.get('mem0ai/mem0', {}).quality_score }}/100, {{ repos.get('mem0ai/mem0', {}).stars | intcomma }} stars) is a strong project &mdash; the most adopted agent memory tool in the ecosystem. But it sits in a category of 977 repos where the top 10 spans a wide quality range and multiple competing approaches:</p>
 
 <table>
   <thead>
     <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
   </thead>
   <tbody>
-    {% set memory_projects = ['topoteretes/cognee', 'volcengine/OpenViking', 'MemoriLabs/Memori', 'mem0ai/mem0'] %}
+    {% set memory_projects = ['topoteretes/cognee', 'volcengine/OpenViking', 'MemoriLabs/Memori', 'mem0ai/mem0', 'memvid/memvid'] %}
     {% for name in memory_projects %}
     {% set r = repos.get(name, {}) %}
     {% if r %}
@@ -80,7 +80,9 @@
   </tbody>
 </table>
 
-<p><a href="{{ domain_path('vector-db') }}/servers/topoteretes/cognee/">cognee</a> ({{ repos.get('topoteretes/cognee', {}).quality_score }}/100, {{ repos.get('topoteretes/cognee', {}).stars | intcomma }} stars) is the category quality leader. This doesn't mean crewAI should switch &mdash; mem0's integration may be deeper and the migration cost may not justify the quality delta. But if you're starting a new project on crewAI and choosing a memory layer, cognee is worth evaluating alongside mem0. This is exactly the kind of finding a quality score reveals that a star count hides: mem0 has 4x the stars but scores 18 points lower on maintenance and community signals.</p>
+<p><a href="{{ domain_path('vector-db') }}/servers/topoteretes/cognee/">cognee</a> ({{ repos.get('topoteretes/cognee', {}).quality_score }}/100) is a knowledge engine that builds structured knowledge graphs from documents &mdash; architecturally different from mem0's conversational memory service. They're more complementary than competitive: mem0 remembers what the user said and what the agent learned; cognee processes documents into structured knowledge. A production crewAI deployment might use both.</p>
+
+<p>The real observation isn't that mem0 is wrong. It's that agent memory is the most volatile part of the AI stack. With 977 repos and approaches ranging from knowledge graphs to episodic memory to video-based retrieval, this category is moving faster than any other in crewAI's dependency tree. LiteLLM's position as LLM gateway is secure. Chroma and LanceDB are established vector stores. But agent memory hasn't settled &mdash; and we should expect crewAI's memory integrations to evolve as the category matures.</p>
 
 <h2>json_repair: the dependency nobody mentions</h2>
 
