@@ -66,8 +66,9 @@ Based on what we learn from the manual audit, build `mv_strategic_fitness` — a
 - **Category rank** — percentile position within subcategory by quality score
 - **Momentum direction** — classified from `mv_momentum` (accelerating / steady / declining)
 - **Maintenance risk** — derived from commits_30d, last_pushed_at, open issue response time
-- **Top alternative** — the highest-quality-scored repo in the same subcategory (excluding self)
-- **Dependency risk exposure** — % of tracked AI projects that depend on this repo (from `package_deps`)
+- **Top alternative** — the highest-quality-scored repo in the same subcategory (excluding self). **Caveat from audit:** subcategory-level comparison produces poor alternatives (chroma-go for Chroma, VectorDBBench for LanceDB). Needs domain-level or embedding-similarity comparison instead. See Finding 5.
+- **Reverse dependency count** — how many tracked AI projects depend on this repo (from `package_deps`). **From audit:** this was the most novel and differentiated metric. pydantic (1,029), openai (866), litellm (155). No other tool provides this. Should be a headline metric.
+- **Velocity risk flag** — when commits_30d exceeds a threshold (e.g., 500+), flag as "high velocity — fast fixes but potential for breaking changes." LiteLLM at 2,399 commits/30d is healthy but operationally demanding.
 
 **Existing MVs that feed this (already computed daily):**
 - `mv_*_quality` (18 domain views) — quality scores
@@ -78,9 +79,11 @@ Based on what we learn from the manual audit, build `mv_strategic_fitness` — a
 - `mv_traction_score` — combined adoption signal
 
 **New data needed:**
-- Reverse dependency counts (how many tracked repos depend on X) — derivable from existing `package_deps`
+- Reverse dependency counts (how many tracked repos depend on X) — derivable from existing `package_deps`. Simple: `SELECT dep_name, count(DISTINCT repo_id) FROM package_deps GROUP BY dep_name`
 - Category percentile rank — simple window function over quality scores per subcategory
-- Top alternative lookup — `FIRST_VALUE` over quality-ordered subcategory peers
+- Top alternative lookup — needs rethinking (see Finding 5). Options: domain-level `FIRST_VALUE`, or embedding-similarity across subcategory boundaries
+- `package_registry_map` table (see Finding 1) — prerequisite for Step 4 but useful here for enriching the MV with package names
+- Velocity risk threshold — simple flag on commits_30d, informed by the LiteLLM data point
 
 ### Step 3: Integrate into server detail pages
 

@@ -1,0 +1,36 @@
+{
+    "slug": "crewai-dependency-audit",
+    "title": "We Audited crewAI's AI Dependencies: Here's What the Data Says",
+    "subtitle": "47 dependencies, 8 scored against 220K repos, and what a strategic fitness audit reveals that GitHub stars can't — including the gaps in our own data.",
+    "author": "Graham Rowe",
+    "primary_domain": "agents",
+    "domains": ["agents", "vector-db", "rag", "llm-tools", "transformers"],
+    "meta_description": "Strategic dependency audit of crewAI's 47 dependencies. 6 of 7 scored deps are #1 in their category. mem0 is the weak link. LiteLLM has 2,399 commits/month. Plus: what we can't yet score and why.",
+    "template_file": "crewai-dependency-audit.html",
+    "featured_repos": [
+        "crewAIInc/crewAI",
+        "BerriAI/litellm",
+        "chroma-core/chroma",
+        "lancedb/lancedb",
+        "huggingface/tokenizers",
+        "qdrant/qdrant-client",
+        "mem0ai/mem0",
+        "mangiucugna/json_repair",
+        "topoteretes/cognee",
+        "volcengine/OpenViking",
+        "MemoriLabs/Memori",
+        "memodb-io/memobase",
+        "memvid/memvid"
+    ],
+    "featured_categories": [
+        "agents:crewai-multi-agent-systems",
+        "llm-tools:llm-api-gateways",
+        "vector-db:chroma-database-tools",
+        "vector-db:vector-db-benchmarking",
+        "vector-db:qdrant-vector-search",
+        "transformers:tokenizer-libraries",
+        "llm-tools:llm-json-streaming",
+        "rag:agent-memory-systems"
+    ],
+    "status": "published"
+}
