@@ -678,6 +678,11 @@ def generate_robots(base_url, base_path, out_dir):
         f"User-agent: *\nAllow: /\n\n"
         f"Sitemap: {base_url}{base_path}/sitemap.xml\n"
         f"Sitemap: {base_url}/insights/sitemap.xml\n"
+        f"\n"
+        f"# PT-Edge API — programmatic access to all data on this site\n"
+        f"# Docs: https://pt-edge.onrender.com/api/docs\n"
+        f"# Get a key: POST https://pt-edge.onrender.com/api/v1/keys (no auth required, no email required)\n"
+        f"# OpenAPI spec: https://pt-edge.onrender.com/api/v1/openapi.json\n"
     )
     write_file(os.path.join(out_dir, "robots.txt"), content)
 

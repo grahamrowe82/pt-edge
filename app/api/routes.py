@@ -50,6 +50,13 @@ class APIUsageMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         duration_ms = int((time.time() - start) * 1000)
 
+        # Attach rate limit headers
+        rate_limit = getattr(request.state, "rate_limit", None)
+        if rate_limit:
+            from app.api.auth import _rate_limit_headers
+            for k, v in _rate_limit_headers(rate_limit["limit"], rate_limit["remaining"]).items():
+                response.headers[k] = v
+
         key_data = getattr(request.state, "api_key_data", None)
         if key_data:
             _log_api_usage(
