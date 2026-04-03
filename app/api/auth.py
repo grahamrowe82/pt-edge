@@ -20,9 +20,9 @@ _daily_counts: dict[int, tuple[str, int]] = defaultdict(lambda: ("", 0))  # key_
 _ip_daily_counts: dict[str, tuple[str, int]] = defaultdict(lambda: ("", 0))  # ip -> (date, count)
 
 TIER_LIMITS = {
-    "anonymous": 50,
-    "free": 500,
-    "pro": 50_000,
+    "anonymous": 100,
+    "free": 1_000,
+    "pro": 10_000,
 }
 
 

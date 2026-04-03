@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}API &mdash; Quality Scores for 220,000+ AI Projects | PT-Edge{% endblock %}
+
+{% block meta %}
+<meta name="description" content="Open API for AI project intelligence. Quality scores, trends, and metadata for 220,000+ repos across 18 domains. No signup required.">
+<style>
+  code, pre { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  pre { white-space: pre-wrap; word-break: break-word; }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="https://mcp.phasetransitions.ai/api/docs">{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+
+  <!-- Hero: code first, words second -->
+  <pre class="bg-gray-900 text-gray-100 rounded-lg p-5 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/quality?domain=agents&amp;subcategory=autonomous-research-labs&amp;limit=3"</pre>
+
+  <pre class="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-5 text-xs overflow-x-auto max-h-72 overflow-y-auto">{
+  "data": [
+    {
+      "full_name": "alvinunreal/awesome-autoresearch",
+      "name": "awesome-autoresearch",
+      "quality_score": 50,
+      "quality_tier": "established",
+      "maintenance_score": 13,
+      "adoption_score": 12,
+      "maturity_score": 17,
+      "community_score": 8,
+      "stars": 426,
+      "forks": 30,
+      "language": "Python",
+      "subcategory": "autonomous-research-labs"
+    }
+  ],
+  "meta": {
+    "timestamp": "2026-04-03T18:48:00+00:00",
+    "count": 3,
+    "query": { "domain": "agents", "subcategory": "autonomous-research-labs", "limit": 3 }
+  }
+}</pre>
+
+  <p class="mt-4 text-gray-600">No API key. No signup. That just worked.</p>
+  <p class="text-sm text-gray-500 mt-1">220,000+ AI repos scored daily across 18 domains. Quality scores, GitHub metrics, downloads, risk flags, and more.</p>
+
+  <!-- Rate limits -->
+  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">Rate Limits</h2>
+
+  <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+    <thead class="bg-gray-50">
+      <tr>
+        <th class="text-left px-4 py-2.5 font-medium">Tier</th>
+        <th class="text-left px-4 py-2.5 font-medium">Daily Limit</th>
+        <th class="text-left px-4 py-2.5 font-medium">How to get it</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="border-t border-gray-200">
+        <td class="px-4 py-2.5">Anonymous</td>
+        <td class="px-4 py-2.5 font-medium">100/day</td>
+        <td class="px-4 py-2.5 text-gray-500">Just call the API</td>
+      </tr>
+      <tr class="border-t border-gray-200">
+        <td class="px-4 py-2.5">Free key</td>
+        <td class="px-4 py-2.5 font-medium">1,000/day</td>
+        <td class="px-4 py-2.5"><code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">POST /api/v1/keys</code></td>
+      </tr>
+      <tr class="border-t border-gray-200">
+        <td class="px-4 py-2.5">Pro</td>
+        <td class="px-4 py-2.5 font-medium">10,000/day</td>
+        <td class="px-4 py-2.5"><code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">POST /api/v1/keys</code> with email</td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="mt-2 text-xs text-gray-400">All tiers are free. All tiers get the same data. Resets at midnight UTC.</p>
+
+  <!-- Get a key -->
+  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">Get a Key</h2>
+
+  <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto"><span class="text-gray-400"># 1,000 requests/day &mdash; instant, no email</span>
+curl -X POST https://pt-edge.onrender.com/api/v1/keys
+
+<span class="text-gray-400"># 10,000 requests/day &mdash; just add your email</span>
+curl -X POST https://pt-edge.onrender.com/api/v1/keys \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@company.com"}'</pre>
+
+  <p class="mt-3 text-sm text-gray-600">Then pass your key as a Bearer token: <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">Authorization: Bearer pte_...</code></p>
+
+  <!-- Endpoints -->
+  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-6">Endpoints</h2>
+
+  <!-- 1. GET /quality -->
+  <div class="mb-10">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
+      <code class="text-sm font-medium">/api/v1/quality</code>
+    </div>
+    <p class="text-gray-600 text-sm mb-3">Quality scores for AI projects across all 18 domains. The core endpoint.</p>
+    <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden mb-3">
+      <thead class="bg-gray-50">
+        <tr><th class="text-left px-4 py-2 font-medium">Param</th><th class="text-left px-4 py-2 font-medium">Type</th><th class="text-left px-4 py-2 font-medium">Description</th></tr>
+      </thead>
+      <tbody>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>domain</code></td><td class="px-4 py-2">query, required</td><td class="px-4 py-2">mcp, agents, ml-frameworks, rag, embeddings, llm-tools, nlp, transformers, generative-ai, computer-vision, ai-coding, voice-ai, diffusion, vector-db, prompt-engineering, data-engineering, mlops, perception</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>subcategory</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Filter by category within the domain</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>quality_tier</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">verified, established, emerging, experimental</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>min_score</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Minimum quality score (0&ndash;100)</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>limit</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Results per page (1&ndash;500, default 50)</td></tr>
+      </tbody>
+    </table>
+    <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/quality?domain=ml-frameworks&amp;quality_tier=verified&amp;limit=5"</pre>
+  </div>
+
+  <!-- 2. GET /trending -->
+  <div class="mb-10">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
+      <code class="text-sm font-medium">/api/v1/trending</code>
+    </div>
+    <p class="text-gray-600 text-sm mb-3">Star velocity leaderboard &mdash; projects gaining the most GitHub stars.</p>
+    <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden mb-3">
+      <thead class="bg-gray-50">
+        <tr><th class="text-left px-4 py-2 font-medium">Param</th><th class="text-left px-4 py-2 font-medium">Type</th><th class="text-left px-4 py-2 font-medium">Description</th></tr>
+      </thead>
+      <tbody>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>window</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2"><code>7d</code> or <code>30d</code> (default <code>7d</code>)</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>category</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Filter by category</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>limit</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">1&ndash;50 (default 20)</td></tr>
+      </tbody>
+    </table>
+    <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/trending?window=7d&amp;limit=5"</pre>
+  </div>
+
+  <!-- 3. GET /projects/{slug} -->
+  <div class="mb-10">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
+      <code class="text-sm font-medium">/api/v1/projects/{slug}</code>
+    </div>
+    <p class="text-gray-600 text-sm mb-3">Full project detail: GitHub metrics, downloads, tier, lifecycle stage, momentum, hype ratio, releases.</p>
+    <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/projects/langchain"</pre>
+  </div>
+
+  <!-- 4. GET /whats-new -->
+  <div class="mb-10">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
+      <code class="text-sm font-medium">/api/v1/whats-new</code>
+    </div>
+    <p class="text-gray-600 text-sm mb-3">Combined digest: recent releases, trending projects, and top Hacker News posts.</p>
+    <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/whats-new?days=7"</pre>
+  </div>
+
+  <!-- 5. GET /briefings -->
+  <div class="mb-10">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
+      <code class="text-sm font-medium">/api/v1/briefings</code>
+    </div>
+    <p class="text-gray-600 text-sm mb-3">Narrative landscape analyses, optionally filtered by domain.</p>
+    <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/briefings?domain=agents"</pre>
+  </div>
+
+  <!-- More endpoints -->
+  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">More Endpoints</h2>
+
+  <div class="border border-gray-200 rounded-lg overflow-hidden text-sm">
+    <table class="w-full">
+      <tbody>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400 w-12">GET</td><td class="px-4 py-2"><code>/api/v1/projects</code></td><td class="px-4 py-2 text-gray-500">Search by name, category, domain</td></tr>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/projects/bulk</code></td><td class="px-4 py-2 text-gray-500">Batch lookup (up to 20)</td></tr>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/quality/{domain}/{repo}</code></td><td class="px-4 py-2 text-gray-500">Single repo quality lookup</td></tr>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/velocity</code></td><td class="px-4 py-2 text-gray-500">Commit activity leaderboard</td></tr>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/contributors/trending</code></td><td class="px-4 py-2 text-gray-500">Top contributors by stack layer</td></tr>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/transitions</code></td><td class="px-4 py-2 text-gray-500">Lifecycle stage changes</td></tr>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/labs/{slug}</code></td><td class="px-4 py-2 text-gray-500">Lab detail with projects and releases</td></tr>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/hn</code></td><td class="px-4 py-2 text-gray-500">AI-related Hacker News posts</td></tr>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/briefings/{slug}</code></td><td class="px-4 py-2 text-gray-500">Full briefing detail</td></tr>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/dependencies/trending</code></td><td class="px-4 py-2 text-gray-500">PyPI/npm trending packages</td></tr>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/papers</code></td><td class="px-4 py-2 text-gray-500">Research papers</td></tr>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/methodology</code></td><td class="px-4 py-2 text-gray-500">Scoring methodology</td></tr>
+        <tr><td class="px-4 py-2 text-blue-400">POST</td><td class="px-4 py-2"><code>/api/v1/keys</code></td><td class="px-4 py-2 text-gray-500">Create API key (no auth required)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Response format -->
+  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">Response Format</h2>
+
+  <p class="text-sm text-gray-600 mb-3">Every response returns a JSON envelope:</p>
+  <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">{
+  "data": { ... },
+  "meta": {
+    "timestamp": "2026-04-03T12:00:00+00:00",
+    "count": 20,
+    "query": { "domain": "agents", "limit": 20 }
+  }
+}</pre>
+
+  <p class="text-sm text-gray-600 mt-4 mb-3">Every response includes rate limit headers:</p>
+  <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 99
+X-RateLimit-Reset: 2026-04-04T00:00:00+00:00</pre>
+
+  <p class="text-sm text-gray-600 mt-4 mb-3">Errors return structured JSON:</p>
+  <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto"><span class="text-gray-400">// 429 Rate limit</span>
+{ "detail": { "error": { "code": "rate_limit_exceeded", "message": "..." } } }
+
+<span class="text-gray-400">// 422 Invalid parameter</span>
+{ "detail": { "error": { "code": "invalid_domain", "message": "..." } } }</pre>
+
+  <!-- Machine-readable -->
+  <p class="mt-12 text-sm text-gray-400">
+    <a href="/api/v1/openapi.json" class="hover:text-gray-600">OpenAPI spec</a> &middot;
+    <a href="/.well-known/ai-plugin.json" class="hover:text-gray-600">AI plugin manifest</a> &middot;
+    <a href="/insights/feed.atom" class="hover:text-gray-600">Atom feed</a>
+  </p>
+
+</div>
+{% endblock %}
