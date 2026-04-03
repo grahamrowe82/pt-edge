@@ -60,7 +60,8 @@ services:
     name: pt-edge-daily-ingest-worker
     runtime: docker
     region: oregon
-    plan: starter
+    plan: standard
+    autoDeploy: false
     dockerCommand: python scripts/ingest_worker.py
     envVars:
       - key: DATABASE_URL
@@ -74,6 +75,8 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: RENDER_DEPLOY_HOOK_URL
+        sync: false
+      - key: RENDER_API_KEY
         sync: false
 
   - type: cron
