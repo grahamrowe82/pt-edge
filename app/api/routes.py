@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import text
 
-from app.api.auth import require_api_key
+from app.api.auth import optional_api_key
 from app.api import queries
 from app.db import SessionLocal
 
@@ -58,7 +58,7 @@ class APIUsageMiddleware(BaseHTTPMiddleware):
                 response.headers[k] = v
 
         key_data = getattr(request.state, "api_key_data", None)
-        if key_data:
+        if key_data and key_data.get("id"):
             _log_api_usage(
                 api_key_id=key_data["id"],
                 endpoint=request.url.path,
@@ -99,7 +99,7 @@ def _log_api_usage(api_key_id: int, endpoint: str, params: dict, duration_ms: in
 # Auth dependency that stashes key_data on request.state for middleware
 # ---------------------------------------------------------------------------
 
-async def _auth(request: Request, key_data: dict = Depends(require_api_key)):
+async def _auth(request: Request, key_data: dict = Depends(optional_api_key)):
     request.state.api_key_data = key_data
     return key_data
 

@@ -83,12 +83,16 @@ async def create_key(body: KeyRequest = KeyRequest(), request: Request = None):
         key_hash = hash_key(raw_key)
         key_prefix = raw_key[:8]
 
+        tier = "pro" if email else "free"
+        from app.api.auth import TIER_LIMITS
+        daily_limit = TIER_LIMITS.get(tier, 500)
+
         session.execute(
             text("""
                 INSERT INTO api_keys (key_hash, key_prefix, company_name, contact_email, tier)
-                VALUES (:h, :p, :company, :email, 'free')
+                VALUES (:h, :p, :company, :email, :tier)
             """),
-            {"h": key_hash, "p": key_prefix, "company": company or "anonymous", "email": email or ""},
+            {"h": key_hash, "p": key_prefix, "company": company or "anonymous", "email": email or "", "tier": tier},
         )
         session.commit()
 
@@ -96,8 +100,8 @@ async def create_key(body: KeyRequest = KeyRequest(), request: Request = None):
             "data": {
                 "key": raw_key,
                 "prefix": key_prefix,
-                "tier": "free",
-                "daily_limit": 100,
+                "tier": tier,
+                "daily_limit": daily_limit,
             }
         }
     finally:
