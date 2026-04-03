@@ -41,11 +41,10 @@ def seconds_until_next_run() -> float:
 
 
 def today_run_completed() -> bool:
-    """Check sync_log for a successful views refresh today (late-stage phase).
+    """Check sync_log for an explicit 'daily_ingest' entry today.
 
-    Checking 'github' (the first phase) is wrong — a crashed run may have
-    completed early phases before OOM. 'views' only runs near the end,
-    so its presence means the pipeline got most of the way through.
+    ingest_all.py writes this entry only after the full pipeline completes.
+    No ambiguity about which phase counts as 'done'.
     """
     db_url = os.environ.get("DATABASE_URL", "")
     if not db_url:
@@ -58,7 +57,7 @@ def today_run_completed() -> bool:
         cur = conn.cursor()
         cur.execute("""
             SELECT COUNT(*) FROM sync_log
-            WHERE sync_type = 'views'
+            WHERE sync_type = 'daily_ingest'
               AND status IN ('success', 'partial')
               AND started_at::date = CURRENT_DATE
         """)

@@ -11,17 +11,43 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 from app.ingest.runner import run_all, acquire_ingest_lock, release_ingest_lock
 
+
+def log_run_complete(started_at, elapsed, error_count):
+    """Write an explicit 'daily_ingest' sync_log entry marking the full run as done."""
+    from datetime import datetime, timezone
+    from sqlalchemy import text
+    from app.db import engine
+
+    status = "success" if error_count == 0 else "partial"
+    with engine.connect() as conn:
+        conn.execute(text("""
+            INSERT INTO sync_log (sync_type, status, records_written, started_at, finished_at)
+            VALUES ('daily_ingest', :status, :errors, :started, :finished)
+        """), {
+            "status": status,
+            "errors": error_count,
+            "started": started_at,
+            "finished": datetime.now(timezone.utc),
+        })
+        conn.commit()
+
+
 if __name__ == "__main__":
+    from datetime import datetime, timezone
+
     if not acquire_ingest_lock():
         print("Another ingest is already running — exiting")
         sys.exit(0)
 
     try:
+        started_at = datetime.now(timezone.utc)
         start = time.time()
         results = asyncio.run(run_all())
         elapsed = time.time() - start
 
         errors = [k for k, v in results.items() if isinstance(v, dict) and "error" in v]
+        log_run_complete(started_at, elapsed, len(errors))
+
         if errors:
             print(f"\n⚠ Ingest completed with errors in: {', '.join(errors)}")
             for k in errors:
