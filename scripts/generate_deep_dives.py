@@ -313,6 +313,67 @@ def generate_sitemap(deep_dives, out_dir):
     write_file(os.path.join(out_dir, "insights", "sitemap.xml"), "\n".join(lines))
 
 
+def generate_feed(deep_dives, out_dir):
+    """Generate Atom 1.0 feed for insights/deep dives."""
+    base_url = "https://mcp.phasetransitions.ai"
+
+    # Most recent published_at for the feed-level <updated>
+    most_recent = None
+    for dd in deep_dives:
+        ts = dd.get("updated_at") or dd.get("published_at")
+        if ts and (most_recent is None or ts > most_recent):
+            most_recent = ts
+
+    if not most_recent:
+        return
+
+    updated_str = most_recent.strftime("%Y-%m-%dT%H:%M:%SZ") if most_recent else ""
+
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<feed xmlns="http://www.w3.org/2005/Atom">',
+        f'  <title>PT-Edge Insights</title>',
+        f'  <subtitle>Deep dives into the AI open-source ecosystem — quality scores, trends, and analysis across 220,000+ repos.</subtitle>',
+        f'  <link href="{base_url}/insights/feed.atom" rel="self" type="application/atom+xml"/>',
+        f'  <link href="{base_url}/insights/" rel="alternate" type="text/html"/>',
+        f'  <id>{base_url}/insights/</id>',
+        f'  <updated>{updated_str}</updated>',
+        f'  <author><name>Graham Rowe</name></author>',
+    ]
+
+    for dd in deep_dives:
+        slug = xml_escape(dd["slug"])
+        title = xml_escape(dd["title"])
+        summary = xml_escape(dd.get("meta_description") or dd.get("subtitle") or "")
+        author = xml_escape(dd.get("author") or "Graham Rowe")
+        published_at = dd.get("published_at")
+        updated_at = dd.get("updated_at") or published_at
+
+        pub_str = published_at.strftime("%Y-%m-%dT%H:%M:%SZ") if published_at else ""
+        upd_str = updated_at.strftime("%Y-%m-%dT%H:%M:%SZ") if updated_at else pub_str
+
+        lines.append('  <entry>')
+        lines.append(f'    <title>{title}</title>')
+        lines.append(f'    <link href="{base_url}/insights/{slug}/" rel="alternate" type="text/html"/>')
+        lines.append(f'    <id>{base_url}/insights/{slug}/</id>')
+        if pub_str:
+            lines.append(f'    <published>{pub_str}</published>')
+        if upd_str:
+            lines.append(f'    <updated>{upd_str}</updated>')
+        if summary:
+            lines.append(f'    <summary>{summary}</summary>')
+        if dd.get("primary_domain"):
+            lines.append(f'    <category term="{xml_escape(dd["primary_domain"])}"/>')
+        for domain in (dd.get("domains") or []):
+            if domain != dd.get("primary_domain"):
+                lines.append(f'    <category term="{xml_escape(domain)}"/>')
+        lines.append(f'    <author><name>{author}</name></author>')
+        lines.append('  </entry>')
+
+    lines.append('</feed>')
+    write_file(os.path.join(out_dir, "insights", "feed.atom"), "\n".join(lines))
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -351,6 +412,7 @@ def main():
     if rendered:
         render_index(rendered, env, out_dir, global_total)
         generate_sitemap(rendered, out_dir)
+        generate_feed(rendered, out_dir)
 
     print(f"\nDone! {len(rendered)} deep dive(s) → {out_dir}/insights/")
 
