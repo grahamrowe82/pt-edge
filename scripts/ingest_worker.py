@@ -41,7 +41,7 @@ def seconds_until_next_run() -> float:
 
 
 def today_run_completed() -> bool:
-    """Check sync_log for a successful github entry today (first ingest phase)."""
+    """Check sync_log for a successful views refresh today (late-stage phase)."""
     db_url = os.environ.get("DATABASE_URL", "")
     if not db_url:
         logger.warning("No DATABASE_URL — cannot check sync_log, skipping")
@@ -53,7 +53,7 @@ def today_run_completed() -> bool:
         cur = conn.cursor()
         cur.execute("""
             SELECT COUNT(*) FROM sync_log
-            WHERE sync_type = 'github'
+            WHERE sync_type = 'views'
               AND status IN ('success', 'partial')
               AND started_at::date = CURRENT_DATE
         """)
