@@ -8,7 +8,7 @@ OPENAPI_SPEC = {
         "description": (
             "AI project intelligence API. Quality scores, trends, and metadata "
             "for 220,000+ AI repos across GitHub, PyPI, npm, Docker Hub, "
-            "HuggingFace, and Hacker News. Free tier: 100 requests/day."
+            "HuggingFace, and Hacker News. Open by default: 100 requests/day without a key, 1,000 with a free key, 10,000 with email."
         ),
     },
     "servers": [{"url": "https://pt-edge.onrender.com"}],
@@ -20,7 +20,7 @@ OPENAPI_SPEC = {
                 "description": (
                     "Returns a bearer token for authenticating API requests. "
                     "All fields are optional — agents can POST with an empty body. "
-                    "Free tier: 100 requests/day."
+                    "No email: 1,000 requests/day. With email: 10,000/day."
                 ),
                 "requestBody": {
                     "required": False,
@@ -123,7 +123,7 @@ OPENAPI_SPEC = {
                 "description": (
                     "Returns quality-scored repos from any domain: mcp, agents, ml-frameworks, rag, "
                     "embeddings, llm-tools, nlp, transformers, and more. Filter by subcategory to get "
-                    "all projects in a specific niche. No auth required (50/day), or use a key for higher limits."
+                    "all projects in a specific niche. No auth required (100/day), or use a key for higher limits."
                 ),
                 "parameters": [
                     {"name": "domain", "in": "query", "required": True, "schema": {"type": "string"}, "description": "Domain slug: mcp, agents, ml-frameworks, rag, embeddings, etc."},
@@ -169,9 +169,9 @@ OPENAPI_SPEC = {
                 "type": "http",
                 "scheme": "bearer",
                 "description": (
-                    "Optional. All endpoints work without a key (50 requests/day). "
-                    "A free key gives 500/day (POST /api/v1/keys). "
-                    "Add your email for 50,000/day. All tiers are free."
+                    "Optional. All endpoints work without a key (100 requests/day). "
+                    "A free key gives 1,000/day (POST /api/v1/keys). "
+                    "Add your email for 10,000/day. All tiers are free."
                 ),
             }
         }
@@ -184,7 +184,7 @@ AI_PLUGIN = {
     "description": (
         "AI project intelligence — quality scores, trends, and metadata "
         "for 220,000+ AI repos. Open by default: all endpoints work without "
-        "authentication (50 requests/day). Optional API key for higher limits."
+        "authentication (100 requests/day). Optional API key for higher limits."
     ),
     "api": {
         "type": "openapi",
@@ -193,9 +193,9 @@ AI_PLUGIN = {
     "auth": {
         "type": "none",
         "instructions": (
-            "No authentication required. All endpoints work anonymously at 50 requests/day. "
-            "For higher limits: POST /api/v1/keys for 500/day (no email), "
-            "or POST with {\"email\": \"...\"} for 50,000/day. All tiers free."
+            "No authentication required. All endpoints work anonymously at 100 requests/day. "
+            "For higher limits: POST /api/v1/keys for 1,000/day (no email), "
+            "or POST with {\"email\": \"...\"} for 10,000/day. All tiers free."
         ),
     },
 }
