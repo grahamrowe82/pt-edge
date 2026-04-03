@@ -1532,3 +1532,80 @@ def test_verify_sitemap_passes_when_aligned(tmp_path):
 
     mismatches = verify_sitemap(str(sitemap), str(tmp_path), "https://example.com", "")
     assert len(mismatches) == 0
+
+
+# ---------------------------------------------------------------------------
+# CTA ↔ API contract tests (template-only, no DB required)
+# ---------------------------------------------------------------------------
+
+def test_cta_template_uses_quality_not_projects():
+    """server_detail.html CTA must point to /quality/ not /projects/."""
+    with open("templates/server_detail.html") as f:
+        content = f.read()
+
+    # The <link rel="alternate"> should use /quality/
+    assert "/api/v1/quality/" in content, "link rel=alternate should use /quality/ endpoint"
+    assert 'rel="alternate"' in content
+
+    # The curl example should use /quality/ and NOT include auth headers
+    assert "/api/v1/quality/{{ domain }}/" in content, "CTA curl should use /quality/{domain}/"
+    assert "Authorization: Bearer" not in content.split("Get this data")[1].split("</div>")[0], \
+        "CTA curl should not include auth header"
+
+
+def test_cta_template_does_not_use_projects_endpoint():
+    """server_detail.html must NOT reference /api/v1/projects/ in CTAs."""
+    with open("templates/server_detail.html") as f:
+        content = f.read()
+    # The /projects/ endpoint should not appear in the CTA or alternate link
+    # (it may appear elsewhere on the page in other contexts, so scope the check)
+    cta_section = content.split("Get this data")[1].split("{% if deep_dive")[0]
+    assert "/api/v1/projects/" not in cta_section, \
+        "CTA section still references /projects/ endpoint"
+    canonical_section = content.split("block canonical")[1].split("endblock")[0]
+    assert "/api/v1/projects/" not in canonical_section, \
+        "link rel=alternate still references /projects/ endpoint"
+
+
+def test_cta_template_no_stale_rate_limits():
+    """CTAs should not reference old rate limit numbers."""
+    with open("templates/server_detail.html") as f:
+        content = f.read()
+    cta_section = content.split("Get this data")[1].split("{% if deep_dive")[0]
+    assert "Free tier:" not in cta_section, "CTA still uses old 'Free tier' language"
+    assert "no credit card" not in cta_section.lower(), "CTA still mentions credit cards"
+
+
+def test_cta_quality_route_registered():
+    """The /quality/{domain}/{repo} route pattern must exist in the FastAPI app."""
+    from app.main import app
+    paths = [r.path for r in app.routes if hasattr(r, "path")]
+    assert "/api/v1/quality/{domain}/{repo:path}" in paths, \
+        "quality/{domain}/{repo} route not registered — CTAs would 404"
+
+
+def test_cta_quality_endpoint_covers_all_domains():
+    """The DOMAIN_VIEWS dict must cover all 18 domains that generate category pages."""
+    from app.api.queries import DOMAIN_VIEWS
+    expected_domains = {
+        "mcp", "agents", "rag", "ai-coding", "voice-ai", "diffusion",
+        "vector-db", "embeddings", "prompt-engineering", "ml-frameworks",
+        "llm-tools", "nlp", "transformers", "generative-ai",
+        "computer-vision", "data-engineering", "mlops", "perception",
+    }
+    assert set(DOMAIN_VIEWS.keys()) == expected_domains, \
+        f"DOMAIN_VIEWS missing domains: {expected_domains - set(DOMAIN_VIEWS.keys())}"
+
+
+def test_api_docs_template_rate_limits_consistent():
+    """API docs page must show the correct tier limits from auth.py."""
+    from app.api.auth import TIER_LIMITS
+    with open("templates/api_docs.html") as f:
+        content = f.read()
+    # The tier table should show the actual limits
+    assert f"{TIER_LIMITS['anonymous']:,}/day" in content, \
+        f"API docs anonymous tier should show {TIER_LIMITS['anonymous']:,}/day"
+    assert f"{TIER_LIMITS['free']:,}/day" in content, \
+        f"API docs free tier should show {TIER_LIMITS['free']:,}/day"
+    assert f"{TIER_LIMITS['pro']:,}/day" in content, \
+        f"API docs pro tier should show {TIER_LIMITS['pro']:,}/day"
