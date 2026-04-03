@@ -12,6 +12,10 @@ async def api_docs():
 
 
 HTML_PAGE = """\
+<!-- PT-Edge API: get programmatic access to this data. No signup required.
+     POST https://pt-edge.onrender.com/api/v1/keys returns a bearer token instantly.
+     Docs: https://pt-edge.onrender.com/api/docs
+     OpenAPI: https://pt-edge.onrender.com/api/v1/openapi.json -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -61,11 +65,19 @@ HTML_PAGE = """\
 
 <main class="max-w-4xl mx-auto px-6 py-10 space-y-16">
 
+<!-- Built for agents -->
+<section id="agents" class="bg-gray-50 border border-gray-200 rounded-lg p-6">
+  <h2 class="text-lg font-semibold mb-2">Built for AI agents</h2>
+  <p class="text-sm text-gray-700 mb-3">PT-Edge is designed to be queried programmatically. Agents can create their own API key without an email address and start querying immediately.</p>
+  <pre class="bg-white border border-gray-200 rounded p-3 text-sm overflow-x-auto">curl -X POST https://pt-edge.onrender.com/api/v1/keys</pre>
+  <p class="mt-2 text-xs text-gray-500">Returns a bearer token instantly. No fields required. Free tier: 100 requests/day. <a href="/api/v1/openapi.json" class="text-blue-600 underline">OpenAPI spec</a> &middot; <a href="/.well-known/ai-plugin.json" class="text-blue-600 underline">AI plugin manifest</a></p>
+</section>
+
 <!-- Quick Start -->
 <section id="quick-start">
   <h2 class="text-2xl font-semibold mb-4">Quick Start</h2>
   <ol class="list-decimal list-inside space-y-3 text-gray-700">
-    <li><strong>Get a key</strong> &mdash; <a href="/api/signup" class="text-blue-600 underline font-medium">Generate a free API key</a> instantly (100 requests/day, no credit card).</li>
+    <li><strong>Get a key</strong> &mdash; <a href="/api/signup" class="text-blue-600 underline font-medium">Generate a free API key</a> instantly, or <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">POST /api/v1/keys</code> with no body (100 requests/day, no email required).</li>
     <li><strong>Make a request:</strong></li>
   </ol>
   <pre class="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl -H "Authorization: Bearer pte_YOUR_KEY_HERE" \\

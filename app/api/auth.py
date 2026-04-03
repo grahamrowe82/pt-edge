@@ -91,12 +91,31 @@ async def require_api_key(request: Request) -> dict:
     if date_str != today:
         # New day — reset
         _daily_counts[key_id] = (today, 1)
+        count = 0
     else:
         if count >= limit:
+            # Attach rate limit headers even on 429
             raise HTTPException(
                 status_code=429,
                 detail={"error": {"code": "rate_limit_exceeded", "message": f"Daily limit of {limit} requests exceeded. Resets at midnight UTC."}},
+                headers=_rate_limit_headers(limit, 0),
             )
         _daily_counts[key_id] = (today, count + 1)
 
+    # Stash rate limit info on request for middleware to attach as headers
+    request.state.rate_limit = {"limit": limit, "remaining": max(0, limit - count - 1)}
+
     return key_data
+
+
+def _rate_limit_headers(limit: int, remaining: int) -> dict[str, str]:
+    """Standard rate limit headers."""
+    from datetime import datetime, timezone, timedelta
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return {
+        "X-RateLimit-Limit": str(limit),
+        "X-RateLimit-Remaining": str(remaining),
+        "X-RateLimit-Reset": tomorrow.isoformat(),
+    }

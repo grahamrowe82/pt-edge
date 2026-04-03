@@ -1,3 +1,7 @@
+<!-- PT-Edge API: get programmatic access to this data. No signup required.
+     POST https://pt-edge.onrender.com/api/v1/keys returns a bearer token instantly.
+     Docs: https://pt-edge.onrender.com/api/docs
+     OpenAPI: https://pt-edge.onrender.com/api/v1/openapi.json -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,6 +10,7 @@
   <title>{% block title %}{{ domain_label }} Directory | PT-Edge{% endblock %}</title>
   {% block meta %}{% endblock %}
   {% block canonical %}{% endblock %}
+  <link rel="api" href="https://pt-edge.onrender.com/api/v1/openapi.json" type="application/openapi+json">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232563eb'/><text x='16' y='22' font-family='system-ui' font-size='18' font-weight='bold' fill='white' text-anchor='middle'>PT</text></svg>">
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">

@@ -1,6 +1,10 @@
 """Self-serve API key signup page served as inline HTML at /api/signup."""
 
 SIGNUP_HTML = """\
+<!-- PT-Edge API: get programmatic access to this data. No signup required.
+     POST https://pt-edge.onrender.com/api/v1/keys returns a bearer token instantly.
+     Docs: https://pt-edge.onrender.com/api/docs
+     OpenAPI: https://pt-edge.onrender.com/api/v1/openapi.json -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -39,14 +43,14 @@ SIGNUP_HTML = """\
 
     <form class="mt-8 space-y-4" onsubmit="return handleSubmit(event)">
       <div>
-        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
-        <input type="email" id="email" required
+        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email <span class="text-gray-400 font-normal">(optional)</span></label>
+        <input type="email" id="email"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                placeholder="you@company.com">
       </div>
       <div>
-        <label for="company" class="block text-sm font-medium text-gray-700 mb-1">Company or project name</label>
-        <input type="text" id="company" required
+        <label for="company" class="block text-sm font-medium text-gray-700 mb-1">Company or project name <span class="text-gray-400 font-normal">(optional)</span></label>
+        <input type="text" id="company"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                placeholder="Acme AI">
       </div>
@@ -57,7 +61,13 @@ SIGNUP_HTML = """\
       <p id="error-msg" class="text-sm text-red-600 hidden"></p>
     </form>
 
-    <p class="mt-6 text-xs text-gray-400">
+    <div class="mt-6 bg-gray-50 border border-gray-200 rounded-lg p-4">
+      <p class="text-xs font-medium text-gray-700 mb-1.5">For agents and scripts</p>
+      <pre class="text-xs bg-white border border-gray-200 rounded p-2 overflow-x-auto">curl -X POST https://pt-edge.onrender.com/api/v1/keys</pre>
+      <p class="mt-1.5 text-xs text-gray-400">No fields required. Returns a bearer token instantly.</p>
+    </div>
+
+    <p class="mt-4 text-xs text-gray-400">
       Free tier: 100 requests/day, resets at midnight UTC. Need more? <a href="mailto:graham@phasetransitions.ai" class="underline">Get in touch</a> for Pro access (10K/day).
     </p>
   </div>
@@ -95,13 +105,16 @@ async function handleSubmit(e) {
   btn.textContent = 'Generating...';
 
   try {
+    const body = {};
+    const email = document.getElementById('email').value.trim();
+    const company = document.getElementById('company').value.trim();
+    if (email) body.email = email;
+    if (company) body.company = company;
+
     const res = await fetch('/api/v1/keys', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        email: document.getElementById('email').value.trim(),
-        company: document.getElementById('company').value.trim()
-      })
+      body: JSON.stringify(body)
     });
 
     if (!res.ok) {

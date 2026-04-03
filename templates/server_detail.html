@@ -10,7 +10,8 @@
 <meta property="og:url" content="{{ base_url }}{{ base_path }}/servers/{{ server.full_name }}/">
 {% endblock %}
 
-{% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/servers/{{ server.full_name }}/">{% endblock %}
+{% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/servers/{{ server.full_name }}/">
+<link rel="alternate" type="application/json" href="https://pt-edge.onrender.com/api/v1/projects/{{ server.full_name }}">{% endblock %}
 
 {% block jsonld %}
 <script type="application/ld+json">
