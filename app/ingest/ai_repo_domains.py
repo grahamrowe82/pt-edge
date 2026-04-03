@@ -138,4 +138,68 @@ DOMAIN_OVERRIDES: dict[tuple[str, str], str] = {
     ("casadi", "casadi"): "ml-frameworks",
     ("brian-team", "brian2"): "ml-frameworks",
     ("devitocodes", "devito"): "ml-frameworks",
+    # foundational seeds — pinned domains (see FOUNDATIONAL_SEEDS below)
+    ("openai", "openai-python"): "llm-tools",
+    ("anthropics", "anthropic-sdk-python"): "llm-tools",
+    ("openai", "tiktoken"): "llm-tools",
+    ("pydantic", "pydantic"): "llm-tools",
+    ("tiangolo", "fastapi"): "ml-frameworks",
+    ("encode", "uvicorn"): "ml-frameworks",
+    ("encode", "httpx"): "ml-frameworks",
+    ("tiangolo", "typer"): "ml-frameworks",
+    ("Textualize", "rich"): "ml-frameworks",
+    ("pallets", "click"): "ml-frameworks",
+    ("python-pillow", "Pillow"): "computer-vision",
+    ("modelcontextprotocol", "python-sdk"): "mcp",
+    ("modelcontextprotocol", "typescript-sdk"): "mcp",
+    ("Farama-Foundation", "Gymnasium"): "ml-frameworks",
+    ("microsoft", "LightGBM"): "ml-frameworks",
+    ("dmlc", "xgboost"): "ml-frameworks",
+    ("cohere-ai", "cohere-python"): "llm-tools",
+    ("groq", "groq-python"): "llm-tools",
+    ("mistralai", "client-python"): "llm-tools",
+    ("google-gemini", "generative-ai-python"): "llm-tools",
+    ("Dao-AILab", "flash-attention"): "transformers",
+    ("facebookresearch", "faiss"): "vector-db",
+    ("omni-us", "jsonargparse"): "ml-frameworks",
+    ("omegaconf", "omegaconf"): "ml-frameworks",
+    ("Lightning-AI", "pytorch-lightning"): "ml-frameworks",
+    ("joblib", "joblib"): "ml-frameworks",
 }
+
+# Foundational AI infrastructure repos that aren't discovered by topic search
+# but are heavily depended on by repos in the dataset.
+# Format: (owner, repo, domain, pypi_package, npm_package)
+FOUNDATIONAL_SEEDS: list[tuple[str, str, str, str | None, str | None]] = [
+    # LLM provider SDKs
+    ("openai", "openai-python", "llm-tools", "openai", None),
+    ("anthropics", "anthropic-sdk-python", "llm-tools", "anthropic", None),
+    ("cohere-ai", "cohere-python", "llm-tools", "cohere", None),
+    ("groq", "groq-python", "llm-tools", "groq", None),
+    ("mistralai", "client-python", "llm-tools", "mistralai", None),
+    ("google-gemini", "generative-ai-python", "llm-tools", "google-generativeai", None),
+    ("openai", "tiktoken", "llm-tools", "tiktoken", None),
+    # MCP SDKs
+    ("modelcontextprotocol", "python-sdk", "mcp", "mcp", None),
+    ("modelcontextprotocol", "typescript-sdk", "mcp", None, "@modelcontextprotocol/sdk"),
+    # Core AI frameworks
+    ("pydantic", "pydantic", "llm-tools", "pydantic", None),
+    ("tiangolo", "fastapi", "ml-frameworks", "fastapi", None),
+    ("encode", "uvicorn", "ml-frameworks", "uvicorn", None),
+    ("encode", "httpx", "ml-frameworks", "httpx", None),
+    ("tiangolo", "typer", "ml-frameworks", "typer", None),
+    ("Textualize", "rich", "ml-frameworks", "rich", None),
+    ("pallets", "click", "ml-frameworks", "click", None),
+    ("python-pillow", "Pillow", "computer-vision", "pillow", None),
+    ("huggingface", "huggingface_hub", "ml-frameworks", "huggingface-hub", None),
+    # ML infrastructure
+    ("Farama-Foundation", "Gymnasium", "ml-frameworks", "gymnasium", None),
+    ("microsoft", "LightGBM", "ml-frameworks", "lightgbm", None),
+    ("dmlc", "xgboost", "ml-frameworks", "xgboost", None),
+    ("Lightning-AI", "pytorch-lightning", "ml-frameworks", "pytorch-lightning", None),
+    ("Dao-AILab", "flash-attention", "transformers", "flash-attn", None),
+    ("facebookresearch", "faiss", "vector-db", "faiss-cpu", None),
+    ("omni-us", "jsonargparse", "ml-frameworks", "jsonargparse", None),
+    ("omegaconf", "omegaconf", "ml-frameworks", "omegaconf", None),
+    ("joblib", "joblib", "ml-frameworks", "joblib", None),
+]

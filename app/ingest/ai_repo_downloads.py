@@ -376,6 +376,12 @@ async def ingest_ai_repo_downloads(
                             if stats:
                                 dl_monthly += stats["last_month"]
 
+                    # Normalize package names to match package_deps convention
+                    if pypi_pkg:
+                        pypi_pkg = pypi_pkg.lower().replace("_", "-")
+                    if npm_pkg:
+                        npm_pkg = npm_pkg.lower()
+
                     if pypi_pkg or npm_pkg or crate_pkg:
                         updates.append((rid, pypi_pkg, npm_pkg, crate_pkg, dl_monthly))
                         logger.info(

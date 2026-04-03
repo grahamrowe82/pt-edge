@@ -41,7 +41,7 @@ from app.settings import settings
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 20
-MIN_STARS = 100
+MIN_STARS = 20
 
 DETECT_PROMPT = """\
 You are a package registry expert. Given a list of GitHub repos, predict the \
@@ -289,6 +289,12 @@ async def detect_packages_llm(limit: int = 500) -> dict:
                 pypi_pkg, npm_pkg, crate_pkg, dl_monthly = await _verify_and_fetch(
                     client, pred, owner, repo, registry_sem
                 )
+
+                # Normalize package names to match package_deps convention
+                if pypi_pkg:
+                    pypi_pkg = pypi_pkg.lower().replace("_", "-")
+                if npm_pkg:
+                    npm_pkg = npm_pkg.lower()
 
                 if pypi_pkg or npm_pkg or crate_pkg:
                     all_updates.append((rid, pypi_pkg, npm_pkg, crate_pkg, dl_monthly))
