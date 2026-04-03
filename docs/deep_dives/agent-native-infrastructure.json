@@ -1,0 +1,37 @@
+{
+    "slug": "agent-native-infrastructure",
+    "title": "Your Agent Doesn't Have an Email Address (Yet)",
+    "subtitle": "30+ repos are building identity, credentials, email, and payment infrastructure for agents as first-class entities. Scattered across 25 subcategories with no name. Here's the map.",
+    "author": "Graham Rowe",
+    "primary_domain": "agents",
+    "domains": ["agents", "mcp"],
+    "meta_description": "Agent-native infrastructure: the emerging category of services designed for AI agents as first-class entities. Identity, email, credentials, payments, and gateways — 30+ repos across 25 subcategories.",
+    "template_file": "agent-native-infrastructure.html",
+    "featured_repos": [
+        "Agent-Field/agentfield",
+        "agenticmail/agenticmail",
+        "Dicklesworthstone/mcp_agent_mail",
+        "TheLunarCompany/lunar",
+        "BlockRunAI/ClawRouter",
+        "open-gitagent/gitclaw",
+        "agentsystems/agentsystems",
+        "jentic/jentic-mini",
+        "AgentlyHQ/aixyz",
+        "microsoft/agent-governance-toolkit",
+        "Railly/tinte",
+        "nexu-io/nexu",
+        "archestra-ai/archestra",
+        "TracecatHQ/tracecat",
+        "CopilotKit/open-research-ANA"
+    ],
+    "featured_categories": [
+        "agents:multi-agent-orchestration",
+        "mcp:mcp-gateway-infrastructure",
+        "agents:agent-runtime-engines",
+        "agents:agent-security-hardening",
+        "agents:agent-payment-protocols",
+        "mcp:mcp-server-frameworks",
+        "agents:agent-authorization-guardrails"
+    ],
+    "status": "published"
+}

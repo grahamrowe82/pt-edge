@@ -1,0 +1,35 @@
+<p>On a recent Y Combinator podcast, a founder described how Claude Code chose Supabase for his project's database. Not because the founder asked for Supabase. Because Claude Code read the documentation, found it well-structured, and decided it was the best fit. The agent made the tool selection. The human just approved.</p>
+
+<p>PT-Edge tracks 226,000+ AI repos. In the MCP ecosystem — where agents are literally the primary user — repos with detailed, structured documentation average 354 stars. Those without average 19. That's an 18x difference.</p>
+
+<h2>Documentation is the new distribution</h2>
+
+<p>In the pre-agent era, developer tools got adopted through Stack Overflow, conference talks, and GitHub trending. In the agent era, the agent reads your docs, evaluates whether they contain enough to solve the current problem, and either uses your tool or moves on. The documentation <em>is</em> the product evaluation.</p>
+
+<p>Better docs → agents choose your tool → more usage → more adoption. Worse docs → agents skip you → your tool doesn't exist in the agent's world.</p>
+
+<h2>llms.txt: the new robots.txt</h2>
+
+<p>A convention is emerging. Just as <code>robots.txt</code> tells search crawlers how to interact with a site, <code>llms.txt</code> tells AI agents what a project does and how to use it.</p>
+
+<p><a href="https://mcp.phasetransitions.ai/rag/servers/mensfeld/llm-docs-builder/">llm-docs-builder</a> transforms markdown docs into LLM-optimised formats and generates llms.txt files. <a href="https://mcp.phasetransitions.ai/embeddings/servers/revokslab/codecrawl/">CodeCrawl</a> turns entire codebases into LLM-ready data with llms.txt from a single API call. <a href="https://mcp.phasetransitions.ai/servers/thedaviddias/mcp-llms-txt-explorer/">mcp-llms-txt-explorer</a> lets agents discover and browse llms.txt files across the web.</p>
+
+<h2>Beyond llms.txt: agent-native protocols</h2>
+
+<p><a href="https://mcp.phasetransitions.ai/agents/servers/osmandkitay/aura/">AURA</a> — Agent-Usable Resource Assertion — is an open protocol "designed to make the web machine-readable." It replaces fragile scraping with structured, agent-optimised content. This isn't just better docs. It's a new protocol layer.</p>
+
+<p><a href="https://mcp.phasetransitions.ai/servers/marckrenn/rtfmbro-mcp/">rtfmbro</a> provides always-up-to-date, version-specific package documentation as context for coding agents. When Claude Code needs to use a library, rtfmbro provides the exact docs for the exact version — preventing outdated code suggestions.</p>
+
+<p><a href="https://mcp.phasetransitions.ai/servers/docfork/docfork/">Docfork</a> is explicitly "Up-to-date Docs for AI Agents." The framing tells you where this is going: documentation as a service, maintained specifically for agent consumption.</p>
+
+<h2>What to do right now</h2>
+
+<p>If you maintain a developer tool: add an llms.txt. Structure your README for extraction — code-first, Q&amp;A sections, version-specific install commands. Document every error with a resolution. Agents will search for it.</p>
+
+<p>Documentation is becoming the primary interface between your tool and the agents that decide whether to use it. The projects that optimise for agent readability now will have a structural advantage as agent-driven adoption becomes the default.</p>
+
+<h2>Explore the data</h2>
+
+<p>Every project mentioned here has a quality-scored page in our directories, updated daily. Browse the <a href="https://mcp.phasetransitions.ai/categories/">MCP categories</a>, <a href="https://mcp.phasetransitions.ai/agents/categories/">agent categories</a>, or check <a href="https://mcp.phasetransitions.ai/trending/">what's trending</a> this week.</p>
+
+<p>The full deep dive with the MCP correlation data and all tools is at <a href="https://mcp.phasetransitions.ai/insights/agent-native-docs/">mcp.phasetransitions.ai/insights/agent-native-docs</a>.</p>

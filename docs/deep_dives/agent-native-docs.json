@@ -1,0 +1,34 @@
+{
+    "slug": "agent-native-docs",
+    "title": "Your Docs Are Written for Humans. Your Users Are Agents.",
+    "subtitle": "Agents choose developer tools based on documentation quality. llms.txt is the new robots.txt. The MCP data proves it: repos with detailed docs get 18x the stars.",
+    "author": "Graham Rowe",
+    "primary_domain": "mcp",
+    "domains": ["mcp", "agents", "llm-tools"],
+    "meta_description": "Agent-native documentation: why agents choose tools based on docs, the llms.txt movement, and what the MCP ecosystem data reveals about doc quality and adoption.",
+    "template_file": "agent-native-docs.html",
+    "featured_repos": [
+        "osmandkitay/aura",
+        "docfork/docfork",
+        "mensfeld/llm-docs-builder",
+        "marckrenn/rtfmbro-mcp",
+        "revokslab/codecrawl",
+        "thedaviddias/mcp-llms-txt-explorer",
+        "sopaco/deepwiki-rs",
+        "strands-agents/docs",
+        "strands-agents/mcp-server",
+        "fractalic-ai/fractalic",
+        "leemysw/feishu-docx",
+        "mintlify/writer",
+        "eli64s/readme-ai",
+        "marv1nnnnn/llm-min.txt",
+        "eastriverlee/LLM.swift"
+    ],
+    "featured_categories": [
+        "mcp:documentation-access-mcp",
+        "agents:agentic-ai-education",
+        "llm-tools:terminal-ai-coding-assistants",
+        "mcp:mcp-server-integrations"
+    ],
+    "status": "published"
+}

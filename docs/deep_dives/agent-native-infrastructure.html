@@ -1,0 +1,159 @@
+<p>Your AI agent needs to send an email. It needs to receive one back. It needs API credentials that persist between sessions. It needs a phone number. Maybe it needs to make a payment.</p>
+
+<p>None of this infrastructure exists for agents. Gmail blocks automation. OAuth assumes a human in the loop. Twilio wasn't built for autonomous callers. Every piece of infrastructure your agent touches was designed for humans and grudgingly tolerates machines.</p>
+
+<p>PT-Edge tracks 30+ repos building what we're calling <strong>agent-native infrastructure</strong> &mdash; services designed from the ground up for AI agents as first-class entities. They're scattered across 25 different subcategories because nobody has named this category yet. Here's the map.</p>
+
+<h2>Five layers forming</h2>
+
+<p>The repos cluster into five emerging layers. Each solves a different piece of the "agents need their own stuff" problem.</p>
+
+<h2>Layer 1: Identity</h2>
+
+<p>Before an agent can do anything, it needs to be <em>someone</em>. Not a user's API key &mdash; its own persistent identity.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set identity = ['Agent-Field/agentfield', 'open-gitagent/gitclaw', 'AgentlyHQ/aixyz'] %}
+    {% for name in identity %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if 'agentfield' in name %}Identity-aware agent microservices{% elif 'gitclaw' in name %}Agent identity in git (rules, memory, tools as files){% elif 'aixyz' in name %}ERC-8004 on-chain identity + x402 payments{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/Agent-Field/agentfield/">AgentField</a> ({{ repos.get('Agent-Field/agentfield', {}).stars | intcomma }} stars) treats agents like microservices &mdash; "scalable, observable, and identity-aware from day one." <a href="{{ domain_path('agents') }}/servers/open-gitagent/gitclaw/">GitClaw</a> takes a different approach: your agent <em>lives inside a git repo</em> where its identity, rules, memory, and skills are all version-controlled files. <a href="{{ domain_path('agents') }}/servers/AgentlyHQ/aixyz/">AiXYZ</a> goes furthest &mdash; on-chain identity via ERC-8004 with native payment wiring.</p>
+
+<h2>Layer 2: Communication</h2>
+
+<p>Agents need to send and receive messages without borrowing a human's inbox.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set comms = ['agenticmail/agenticmail', 'Dicklesworthstone/mcp_agent_mail', 'nexu-io/nexu'] %}
+    {% for name in comms %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if 'agenticmail' in name %}Email + SMS infrastructure for agents{% elif 'mcp_agent_mail' in name %}Async coordination: identities, inboxes, searchable threads{% elif 'nexu' in name %}Bridge to WeChat, Slack, Discord, Feishu{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/agenticmail/agenticmail/">AgenticMail</a> gives agents their own email addresses and phone numbers &mdash; send and receive real messages programmatically without using a human's Gmail. <a href="{{ domain_path('mcp') }}/servers/Dicklesworthstone/mcp_agent_mail/">MCP Agent Mail</a> ({{ repos.get('Dicklesworthstone/mcp_agent_mail', {}).stars | intcomma }} stars) provides an asynchronous coordination layer with persistent inboxes, searchable threads, and file leases. <a href="{{ domain_path('agents') }}/servers/nexu-io/nexu/">Nexu</a> bridges agents into existing human channels &mdash; WeChat, Slack, Discord &mdash; so agents can reach people where they already are.</p>
+
+<h2>Layer 3: Gateways</h2>
+
+<p>Agent-native gateways route agent traffic with agent-specific concerns: governance, payments, model selection.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set gateways = ['TheLunarCompany/lunar', 'BlockRunAI/ClawRouter', 'archestra-ai/archestra'] %}
+    {% for name in gateways %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if 'lunar' in name %}Agent native MCP gateway for governance + security{% elif 'ClawRouter' in name %}Agent-native LLM router, 41+ models, USDC payments{% elif 'archestra' in name %}Enterprise platform with MCP registry + orchestrator{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/BlockRunAI/ClawRouter/">ClawRouter</a> ({{ repos.get('BlockRunAI/ClawRouter', {}).stars | intcomma }} stars) is explicitly "agent-native" &mdash; routing across 41+ models with sub-millisecond latency and USDC payments on Base and Solana. This is what it looks like when infrastructure is designed for agents first: the payment layer is built in, not bolted on.</p>
+
+<h2>Layer 4: Runtime</h2>
+
+<p>Where agents actually execute &mdash; with their own credential stores and sandboxed environments.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set runtime = ['agentsystems/agentsystems', 'jentic/jentic-mini'] %}
+    {% for name in runtime %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if 'agentsystems' in name %}Self-hosted app store with credential injection{% elif 'jentic' in name %}API execution layer with runtime credential brokering{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/agentsystems/agentsystems/">AgentSystems</a> is a self-hosted app store for agents &mdash; install third-party agents, run them on your infrastructure with container isolation and credential injection. <a href="{{ domain_path('agents') }}/servers/jentic/jentic-mini/">Jentic Mini</a> sits between your agent and the outside world: "your agent says what it wants to do, Jentic handles the how &mdash; finding the right API, injecting credentials at runtime, brokering the request."</p>
+
+<h2>Layer 5: Governance</h2>
+
+<p>If agents have their own identities and infrastructure, they need their own governance.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set governance = ['microsoft/agent-governance-toolkit', 'TracecatHQ/tracecat'] %}
+    {% for name in governance %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if 'governance' in name %}Zero-trust identity + policy enforcement for agents{% elif 'tracecat' in name %}AI-native automation for security teams{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<h2>25 subcategories and no name</h2>
+
+<p>The most telling signal: these 30+ repos are scattered across 25 different subcategories in PT-Edge's taxonomy. Agent payment protocols, MCP gateway infrastructure, multi-agent orchestration, agent security hardening, email MCP servers, personal AI operating systems, agent runtime engines, lightweight agent runtimes &mdash; the taxonomy doesn't have a bucket for "infrastructure designed for agents as entities." That's because the category is forming right now.</p>
+
+<p>On Hacker News, the conversation is emerging too. <a href="https://news.ycombinator.com/">AgentMail launched on HN</a> in January 2026 and got 169 points. "Agent Passport &mdash; OAuth-like identity verification for agents" appeared in February. "KeyID &mdash; Free email and phone infrastructure for AI agents" in March. The pattern is accelerating: each month brings new infrastructure designed specifically for agents.</p>
+
+<h2>Where this is heading</h2>
+
+<p>The trajectory is clear. As agents become more autonomous, they need more of their own infrastructure. Today it's email and credentials. Tomorrow it's payment rails, scheduling, persistent storage, social accounts. Every service in the human tech stack will eventually have an agent-native equivalent.</p>
+
+<p>The question for builders: do you retrofit your existing human-first infrastructure to tolerate agents? Or do you build agent-native from day one? The repos in this analysis are betting on the latter.</p>
+
+<h2>Go deeper</h2>
+
+<p>Every project mentioned here has a quality-scored page in our directory, updated daily:</p>
+
+<ul>
+  <li><a href="{{ domain_path('agents') }}/categories/">Agent categories</a> &mdash; including the 25 subcategories where this infrastructure is scattered</li>
+  <li><a href="{{ domain_path('mcp') }}/categories/">MCP categories</a> &mdash; gateway and protocol infrastructure</li>
+  <li><a href="{{ domain_path('agents') }}/trending/">Trending agent projects</a> &mdash; what's moving this week</li>
+</ul>

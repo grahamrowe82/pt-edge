@@ -1,0 +1,37 @@
+{
+    "slug": "domain-expert-builders",
+    "title": "Your Newest Competitor Isn't a Developer",
+    "subtitle": "27% of AI repos created in 2026 sustain 300+ commits per month. New GitHub accounts, first repos ever, absurd velocity. Here's what's happening — and what it means for the developer tools market.",
+    "author": "Graham Rowe",
+    "primary_domain": "ai-coding",
+    "domains": ["ai-coding", "agents", "ml-frameworks"],
+    "meta_description": "Domain experts are arriving on GitHub via AI coding agents. 27% of new AI repos in 2026 sustain 300+ commits/month from single-owner accounts. Data-driven analysis of the domain expert builder phenomenon.",
+    "template_file": "domain-expert-builders.html",
+    "featured_repos": [
+        "CodeWithCJ/SparkyFitness",
+        "Narcooo/inkos",
+        "tw93/Kaku",
+        "affaan-m/everything-claude-code",
+        "Yeachan-Heo/oh-my-claudecode",
+        "sickn33/antigravity-awesome-skills",
+        "generalaction/emdash",
+        "pinchtab/pinchtab",
+        "jackwener/opencli",
+        "jundot/omlx",
+        "mksglu/context-mode",
+        "osaurus-ai/osaurus",
+        "superset-sh/superset",
+        "InsForge/InsForge",
+        "qwibitai/nanoclaw",
+        "campfirein/cipher",
+        "alirezarezvani/claude-skills"
+    ],
+    "featured_categories": [
+        "ai-coding:claude-code-session-management",
+        "agents:claude-code-team-systems",
+        "agents:claude-code-workspaces",
+        "agents:personal-ai-operating-systems",
+        "agents:agentic-workflow-skills"
+    ],
+    "status": "published"
+}

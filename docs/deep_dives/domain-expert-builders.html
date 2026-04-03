@@ -1,0 +1,100 @@
+<p>Something changed in 2026. PT-Edge tracks daily metrics on 226,000+ AI repositories, and the commit velocity distribution has shifted structurally. In 2024, 5.24% of new AI repos sustained more than 300 commits per month. In 2025, it was 9.45%. In 2026 so far, it's 27.66%.</p>
+
+<p>That's not incremental. That's a new population of builders arriving on GitHub &mdash; and they don't look like developers.</p>
+
+<h2>The fingerprint: superhuman velocity from new accounts</h2>
+
+<p>Here's the pattern we're seeing in the data: single-owner GitHub accounts with one or two repos, created in the last six months, sustaining 400-600+ commits per month. No prior open-source history. No contributor network. Just one person and an AI coding agent shipping at a pace that would be impossible manually.</p>
+
+<table>
+  <thead>
+    <tr><th>Year</th><th>Total new repos</th><th>&gt;300 commits/30d</th><th>% of total</th><th>&gt;600 commits/30d</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>2024</td><td>248</td><td>13</td><td>5.2%</td><td>8</td></tr>
+    <tr><td>2025</td><td>275</td><td>26</td><td>9.5%</td><td>9</td></tr>
+    <tr><td>2026 (to date)</td><td>47</td><td>13</td><td>27.7%</td><td>3</td></tr>
+  </tbody>
+</table>
+
+<p>The cohort of "new builders" &mdash; owners with 2 or fewer repos in our index and more than 300 commits per month &mdash; has grown from roughly 1 per month in early 2025 to 3-4 per month in early 2026. This is a structural shift, not statistical noise.</p>
+
+<h2>Who are these builders?</h2>
+
+<p>They're domain experts using Claude Code, Cursor, Codex, and similar AI coding agents to build products in their areas of expertise. The AI writes the code. They provide the intent and domain knowledge.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Commits/30d</th><th>What it is</th></tr>
+  </thead>
+  <tbody>
+    {% set exemplars = ['CodeWithCJ/SparkyFitness', 'Narcooo/inkos', 'tw93/Kaku', 'jundot/omlx', 'mksglu/context-mode'] %}
+    {% for name in exemplars %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.commits_30d | intcomma if r.commits_30d else '&mdash;' }}</td>
+      <td>{{ r.description | truncate(80) if r.description else '&mdash;' }}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('ml-frameworks') }}/servers/CodeWithCJ/SparkyFitness/">SparkyFitness</a> ({{ repos.get('CodeWithCJ/SparkyFitness', {}).stars | intcomma }} stars, {{ repos.get('CodeWithCJ/SparkyFitness', {}).commits_30d | intcomma }} commits/30d) is the archetype. A family fitness tracker &mdash; tracking food, water, health &mdash; built by a single contributor on a first-time GitHub account. The code is well-structured because Claude Code writes well-structured code. The commit velocity is absurd because the builder isn't reading the code, they're describing what they want.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/Narcooo/inkos/">Inkos</a> ({{ repos.get('Narcooo/inkos', {}).stars | intcomma }} stars) is an autonomous novel-writing agent &mdash; agents write, audit, and revise novels with human review gates. Not a developer tool. A creative tool built by someone who understands narrative craft.</p>
+
+<h2>Why the code is better, not worse</h2>
+
+<p>The counter-intuitive finding: code from AI-assisted non-developers is often <em>higher quality</em> than typical developer code. Claude Code follows best practices by default &mdash; proper error handling, consistent naming, test coverage. The domain expert doesn't know enough to override these defaults with shortcuts. The AI coding agent writes textbook code because it was trained on textbooks.</p>
+
+<p>This means the traditional signal of code quality &mdash; clean architecture, comprehensive tests, proper packaging &mdash; no longer distinguishes developer-built from domain-expert-built repos. The distinguishing signal is the velocity and ownership pattern, not the code quality.</p>
+
+<h2>The Claude Code ecosystem as the on-ramp</h2>
+
+<p>The infrastructure enabling this shift is growing rapidly:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Commits/30d</th><th>Role</th></tr>
+  </thead>
+  <tbody>
+    {% set ecosystem = ['affaan-m/everything-claude-code', 'Yeachan-Heo/oh-my-claudecode', 'sickn33/antigravity-awesome-skills', 'alirezarezvani/claude-skills', 'superset-sh/superset'] %}
+    {% for name in ecosystem %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.commits_30d | intcomma if r.commits_30d else '&mdash;' }}</td>
+      <td>{% if 'everything' in name %}Performance optimization harness{% elif 'oh-my' in name %}Teams-first multi-agent orchestration{% elif 'awesome-skills' in name %}1000+ agentic skills collection{% elif 'claude-skills' in name %}180+ production-ready skills{% elif 'superset' in name %}IDE for the AI agents era{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>These projects &mdash; themselves often built by the same high-velocity, single-contributor pattern &mdash; are lowering the barrier further. A domain expert installs Claude Code, adds a skill pack, and starts building. No setup, no configuration, no learning curve beyond "describe what you want."</p>
+
+<h2>What this means</h2>
+
+<p>The developer market isn't shrinking. It's expanding. The addressable population of people who can build production software is growing from ~20 million trained developers to potentially hundreds of millions of domain experts with AI coding agents. Each one brings domain knowledge that developers lack.</p>
+
+<p>For developer tool companies, this changes the go-to-market calculus. Your next million users may not know what a package manager is. They'll discover your tool because their AI agent chose it, not because they read your blog post. Documentation matters more than marketing. Simplicity matters more than power.</p>
+
+<p>For existing developers, the competitive landscape shifts. The clinical psychologist who builds her own equestrian coaching app isn't hiring you to build it for her. She's doing it herself, faster than you could, with deeper domain knowledge. The moat isn't coding skill anymore. It's understanding the problem.</p>
+
+<h2>Go deeper</h2>
+
+<p>Every project mentioned here has a quality-scored page in our directory, updated daily:</p>
+
+<ul>
+  <li><a href="{{ domain_path('ai-coding') }}/categories/">AI coding tool categories</a> &mdash; the tools enabling this shift</li>
+  <li><a href="{{ domain_path('agents') }}/categories/">Agent categories</a> &mdash; the ecosystem these builders are entering</li>
+  <li><a href="{{ domain_path('ai-coding') }}/trending/">Trending AI coding projects</a> &mdash; what's moving this week</li>
+</ul>
