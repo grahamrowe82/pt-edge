@@ -11,6 +11,8 @@ The allocation engine identifies these gaps via:
 - **Position strength:** Google placing us at position 3 on a new domain = thin competition. This is Google telling us directly where the content gap is.
 - The further a topic is from the LLM/agent hype cycle, the bigger our advantage.
 
+For Substack companion pieces specifically, we also use the **nucleation pipeline** — a five-step process that identifies topics with high building activity, low narrative crystallisation, and large frustrated audiences. This optimises for readership on Substack, where "Your ___" framing and decision-driven content performs best. See `docs/briefs/topic-discovery-methodology.md` for the full methodology.
+
 Deep dives are framed as **decision guides** because that's the unique value daily quality scores enable. "What should I use?" is a question only daily scoring can answer well — static blog posts can't.
 
 ## Prerequisites

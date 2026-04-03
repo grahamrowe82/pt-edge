@@ -1,0 +1,43 @@
+{
+    "slug": "llm-eval-landscape",
+    "title": "You're Shipping AI You Can't Measure",
+    "subtitle": "1,159 repos are building LLM evaluation infrastructure. Most teams are still eyeballing outputs. Here's the decision guide to what actually works.",
+    "author": "Graham Rowe",
+    "primary_domain": "llm-tools",
+    "domains": ["llm-tools", "agents", "rag", "embeddings", "prompt-engineering"],
+    "meta_description": "LLM evaluation landscape in 2026: 1,159 repos across 9 subcategories, no dominant winner. Decision guide covering RAG eval, agent benchmarks, code eval, and production monitoring — with quality scores updated daily.",
+    "template_file": "llm-eval-landscape.html",
+    "featured_repos": [
+        "vibrantlabsai/ragas",
+        "Giskard-AI/giskard-oss",
+        "open-compass/opencompass",
+        "open-compass/VLMEvalKit",
+        "EvolvingLMMs-Lab/lmms-eval",
+        "embeddings-benchmark/mteb",
+        "uptrain-ai/uptrain",
+        "huggingface/evaluation-guidebook",
+        "evalplus/evalplus",
+        "THUDM/AgentBench",
+        "tatsu-lab/alpaca_eval",
+        "prometheus-eval/prometheus-eval",
+        "katanemo/plano",
+        "aiverify-foundation/moonshot",
+        "xlang-ai/OSWorld",
+        "Farama-Foundation/chatarena",
+        "microsoftarchive/promptbench",
+        "microsoft/promptbench",
+        "MLGroupJLU/LLM-eval-survey",
+        "kieranklaassen/leva"
+    ],
+    "featured_categories": [
+        "llm-tools:evaluation-frameworks-metrics",
+        "llm-tools:llm-comparison-evaluation",
+        "llm-tools:domain-specific-benchmarks",
+        "agents:agent-evaluation-benchmarking",
+        "prompt-engineering:llm-evaluation-frameworks",
+        "embeddings:embedding-evaluation-benchmarks",
+        "rag:rag-evaluation-frameworks",
+        "generative-ai:llm-evaluation-platforms"
+    ],
+    "status": "published"
+}

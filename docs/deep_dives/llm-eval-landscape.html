@@ -1,0 +1,227 @@
+<p>You shipped an AI feature. It seems to work. Users aren't complaining yet. But when someone asks "how do you know it's good?" the honest answer is: you don't. You're eyeballing outputs, running a few manual tests, and hoping.</p>
+
+<p>You're not alone. PT-Edge tracks 1,159 repos across 9 subcategories building LLM evaluation infrastructure. The sheer number tells the story: everyone knows this problem needs solving, and nobody agrees on how.</p>
+
+<p>Here's what the data says about what's actually production-ready and what's still research.</p>
+
+<h2>The eval landscape has five layers</h2>
+
+<p>Most developers conflate "evaluation" into one bucket. It's actually five distinct problems, each at a different maturity level:</p>
+
+<ol>
+  <li><strong>Output quality</strong> &mdash; Is the LLM response correct, relevant, and safe?</li>
+  <li><strong>RAG pipeline</strong> &mdash; Is the retrieval feeding the right context?</li>
+  <li><strong>Agent behaviour</strong> &mdash; Can the agent complete multi-step tasks reliably?</li>
+  <li><strong>Code generation</strong> &mdash; Does the generated code actually run and pass tests?</li>
+  <li><strong>Model comparison</strong> &mdash; Which model is best for your specific use case and budget?</li>
+</ol>
+
+<p>Each layer has different tools, different maturity, and different traps. Let's walk through each.</p>
+
+<h2>Layer 1: Output quality evaluation</h2>
+
+<p>The most common starting point &mdash; and the most confusing. Three approaches compete:</p>
+
+<p><strong>LLM-as-judge</strong> uses a stronger model to grade a weaker one. It's the default because it's easy to set up: send the output to GPT-4 with a rubric, get a score back. The problem is that judges have systematic biases &mdash; they prefer longer outputs, favour their own generation patterns, and can't reliably detect subtle factual errors.</p>
+
+<p><strong>Reference-based metrics</strong> compare outputs against gold-standard answers using exact match, semantic similarity, or entailment. More reliable but requires a labelled test set, which most teams don't have.</p>
+
+<p><strong>Programmatic checks</strong> use deterministic assertions: does the output contain required fields, follow the schema, stay under the length limit, avoid forbidden patterns? Less glamorous but more trustworthy for production monitoring.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Downloads/mo</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set output_eval = ['Giskard-AI/giskard-oss', 'prometheus-eval/prometheus-eval', 'uptrain-ai/uptrain'] %}
+    {% for name in output_eval %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma if r.downloads_monthly else '&mdash;' }}</td>
+      <td>{% if 'giskard' in name %}Modular checks (LLM-judge + deterministic + scenario-based){% elif 'prometheus' in name %}Open-source LLM-as-judge{% elif 'uptrain' in name %}Automated grading with dashboards{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('llm-tools') }}/servers/Giskard-AI/giskard-oss/">Giskard</a> ({{ repos.get('Giskard-AI/giskard-oss', {}).quality_score }}/100, {{ repos.get('Giskard-AI/giskard-oss', {}).stars | intcomma }} stars) is the most complete general-purpose eval framework we track. It recently split into lightweight packages (<code>giskard-checks</code>, <code>giskard-scan</code>, <code>giskard-rag</code>) so you only install what you need. It supports both deterministic assertions and LLM-as-judge, which is the right architecture &mdash; you want both.</p>
+
+<p><a href="{{ domain_path('llm-tools') }}/servers/prometheus-eval/prometheus-eval/">Prometheus</a> ({{ repos.get('prometheus-eval/prometheus-eval', {}).stars | intcomma }} stars) takes a different approach: open-source models fine-tuned specifically for evaluation. If you're uncomfortable sending outputs to GPT-4 for judging (data privacy, cost), Prometheus lets you run the judge locally.</p>
+
+<p><strong>Our recommendation:</strong> Start with programmatic checks for your known requirements (schema validation, length limits, required fields). Add LLM-as-judge for subjective quality. Don't rely on LLM-as-judge alone &mdash; it will tell you everything looks great until it suddenly doesn't.</p>
+
+<h2>Layer 2: RAG evaluation</h2>
+
+<p>If you're building retrieval-augmented generation, the eval problem doubles: you need to measure both retrieval quality (did you fetch the right documents?) and generation quality (did the LLM use them correctly?).</p>
+
+<p>This is the most mature eval subcategory, and there's a clear category leader:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Downloads/mo</th><th>What it measures</th></tr>
+  </thead>
+  <tbody>
+    {% set rag_eval = ['vibrantlabsai/ragas'] %}
+    {% for name in rag_eval %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma if r.downloads_monthly else '&mdash;' }}</td>
+      <td>Context relevance, faithfulness, answer correctness, noise robustness</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('llm-tools') }}/servers/vibrantlabsai/ragas/">RAGAS</a> ({{ repos.get('vibrantlabsai/ragas', {}).quality_score }}/100, {{ repos.get('vibrantlabsai/ragas', {}).stars | intcomma }} stars, {{ repos.get('vibrantlabsai/ragas', {}).downloads_monthly | intcomma }} downloads/month) defines the RAG eval space. It breaks evaluation into four dimensions: faithfulness (does the answer follow the context?), answer relevance, context precision (how much retrieved context was useful?), and context recall (did you find everything you needed?). It generates synthetic test sets from your production data so you don't need manually labelled examples.</p>
+
+<p>With {{ repos.get('vibrantlabsai/ragas', {}).downloads_monthly | intcomma }} monthly downloads, RAGAS has genuine production adoption &mdash; not just GitHub stars. It integrates with LangChain and major observability platforms.</p>
+
+<p>103 other repos sit in the <a href="{{ domain_path('rag') }}/categories/">RAG evaluation subcategory</a>, but none come close to RAGAS in adoption or quality. If you're building RAG, start here.</p>
+
+<h2>Layer 3: Agent evaluation</h2>
+
+<p>This is where the landscape is most chaotic. Evaluating agents is fundamentally harder than evaluating single LLM calls because agents take multi-step actions with side effects. A coding agent might write correct code that passes tests but introduces a security vulnerability. A research agent might retrieve accurate information but miss critical context.</p>
+
+<p>PT-Edge tracks 150 repos in <a href="{{ domain_path('agents') }}/categories/">agent evaluation and benchmarking</a>. Most are academic benchmarks, not production tools:</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Focus</th></tr>
+  </thead>
+  <tbody>
+    {% set agent_eval = ['katanemo/plano', 'THUDM/AgentBench', 'xlang-ai/OSWorld', 'Farama-Foundation/chatarena'] %}
+    {% for name in agent_eval %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if 'plano' in name %}Production agent testing with LLM-judged scenarios{% elif 'AgentBench' in name %}Multi-environment agent benchmark (OS, DB, web){% elif 'OSWorld' in name %}Real computer environment benchmark (screenshot grounding){% elif 'chatarena' in name %}Multi-agent evaluation via simulated conversations{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/katanemo/plano/">Plano</a> ({{ repos.get('katanemo/plano', {}).stars | intcomma }} stars) is the closest thing to production agent testing we've found. It lets you define scenarios with expected outcomes and uses LLM judges to score agent performance across dimensions you specify.</p>
+
+<p>The hard truth: agent evaluation is still mostly manual. Most teams deploying agents evaluate them by running scenarios and reviewing traces by hand. The tooling gap here is the widest in the entire eval landscape, and it's where the most building is happening &mdash; 150 repos and growing.</p>
+
+<h2>Layer 4: Code evaluation</h2>
+
+<p>If you're using LLMs to generate code &mdash; and in 2026, most development teams are &mdash; the eval question is more tractable: does the code run, pass tests, and handle edge cases?</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it tests</th></tr>
+  </thead>
+  <tbody>
+    {% set code_eval = ['evalplus/evalplus'] %}
+    {% for name in code_eval %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>Rigorous code evaluation with augmented test suites (NeurIPS 2023)</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('llm-tools') }}/servers/evalplus/evalplus/">EvalPlus</a> ({{ repos.get('evalplus/evalplus', {}).stars | intcomma }} stars) is the standard for rigorous code eval. It augments HumanEval and MBPP benchmarks with 80x more test cases, catching failures that basic benchmarks miss. The original HumanEval had problems passing code that seemed correct but failed on edge cases &mdash; EvalPlus fixes this.</p>
+
+<p>Code evaluation is the most mature layer because the success criterion is binary: does the code pass the tests or not? No LLM-as-judge ambiguity, no subjective rubrics. If your AI feature is code generation, this is the easiest place to build reliable evals.</p>
+
+<h2>Layer 5: Model comparison</h2>
+
+<p>Which model should you use? The "it depends" answer is unsatisfying but true &mdash; and the benchmarking landscape is built to help you decide.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Downloads/mo</th><th>Scope</th></tr>
+  </thead>
+  <tbody>
+    {% set comparison = ['open-compass/opencompass', 'open-compass/VLMEvalKit', 'EvolvingLMMs-Lab/lmms-eval', 'embeddings-benchmark/mteb'] %}
+    {% for name in comparison %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{{ r.downloads_monthly | intcomma if r.downloads_monthly else '&mdash;' }}</td>
+      <td>{% if 'opencompass' in name %}100+ benchmarks across language, reasoning, code, safety{% elif 'VLMEvalKit' in name %}Vision-language model evaluation (GPT-4V, Gemini, etc.){% elif 'lmms-eval' in name %}Multimodal: text, image, video, audio{% elif 'mteb' in name %}Embedding model benchmarks (the standard for vector search quality){% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('llm-tools') }}/servers/open-compass/opencompass/">OpenCompass</a> ({{ repos.get('open-compass/opencompass', {}).quality_score }}/100, {{ repos.get('open-compass/opencompass', {}).stars | intcomma }} stars, {{ repos.get('open-compass/opencompass', {}).downloads_monthly | intcomma }} downloads/month) is the most comprehensive benchmarking platform. It covers 100+ benchmarks and can evaluate both API models and local models in a unified framework.</p>
+
+<p>For embeddings specifically, <a href="{{ domain_path('embeddings') }}/servers/embeddings-benchmark/mteb/">MTEB</a> ({{ repos.get('embeddings-benchmark/mteb', {}).stars | intcomma }} stars, {{ repos.get('embeddings-benchmark/mteb', {}).downloads_monthly | intcomma }} downloads/month) is the undisputed standard. If you're choosing an embedding model, MTEB scores are the metric to compare.</p>
+
+<h2>The real problem: nobody has an eval pipeline</h2>
+
+<p>The tools exist. The problem is that most teams never wire them together into something that runs automatically. Here's what a real eval pipeline looks like:</p>
+
+<ol>
+  <li><strong>Baseline test suite.</strong> 50-100 representative inputs with expected outputs. Not comprehensive &mdash; just enough to catch regressions. <a href="{{ domain_path('llm-tools') }}/servers/Giskard-AI/giskard-oss/">Giskard</a> or <a href="{{ domain_path('llm-tools') }}/servers/vibrantlabsai/ragas/">RAGAS</a> can generate these from your production data.</li>
+  <li><strong>CI integration.</strong> Run evals on every prompt change, model version change, or RAG pipeline change. Block merges that reduce scores below thresholds.</li>
+  <li><strong>Production monitoring.</strong> Sample live traffic, run async evals, alert on quality degradation. This is where most teams have zero coverage.</li>
+  <li><strong>Cost tracking.</strong> Eval the cost-quality tradeoff: a cheaper model might be 95% as good at 10% of the cost. Without evals, you can't make this decision with data.</li>
+</ol>
+
+<p>The <a href="{{ domain_path('llm-tools') }}/servers/huggingface/evaluation-guidebook/">HuggingFace Evaluation Guidebook</a> ({{ repos.get('huggingface/evaluation-guidebook', {}).stars | intcomma }} stars) is the best free resource for understanding evaluation theory. It's not a tool &mdash; it's the conceptual foundation that helps you decide which tools to use and why.</p>
+
+<h2>Where this is heading</h2>
+
+<p>Anthropic recently acknowledged that their safety evaluation methods aren't keeping pace with capability improvements. If the frontier labs can't keep up with eval, production teams have no chance without better tooling.</p>
+
+<p>Three trends to watch:</p>
+
+<ul>
+  <li><strong>Eval-as-infrastructure.</strong> Evaluation moving from a researcher activity to a CI/CD primitive. <a href="{{ domain_path('llm-tools') }}/servers/kieranklaassen/leva/">Leva</a> ({{ repos.get('kieranklaassen/leva', {}).stars | intcomma }} stars) is built specifically for Rails apps with production data &mdash; evaluation as a framework feature, not an add-on.</li>
+  <li><strong>Agent eval will mature fast.</strong> 150 repos in the agent evaluation subcategory with average quality still low &mdash; this is exactly where the amnesia space was 12 months ago. Expect consolidation.</li>
+  <li><strong>LLM-as-judge will get better and cheaper.</strong> <a href="{{ domain_path('llm-tools') }}/servers/prometheus-eval/prometheus-eval/">Prometheus</a> proves that open-source judge models work. As these improve, the cost of running evals drops from dollars to fractions of a cent, making continuous evaluation viable.</li>
+</ul>
+
+<h2>What to do right now</h2>
+
+<p>If you're shipping an AI feature with no evaluation, here's the minimum viable eval pipeline:</p>
+
+<ol>
+  <li><strong>RAG?</strong> Install <a href="{{ domain_path('llm-tools') }}/servers/vibrantlabsai/ragas/">RAGAS</a>. Generate a test set from your production data. Run it on every pipeline change.</li>
+  <li><strong>General LLM outputs?</strong> Start with <a href="{{ domain_path('llm-tools') }}/servers/Giskard-AI/giskard-oss/">Giskard</a> for programmatic checks + LLM-as-judge. Define pass/fail thresholds.</li>
+  <li><strong>Code generation?</strong> Use <a href="{{ domain_path('llm-tools') }}/servers/evalplus/evalplus/">EvalPlus</a> for rigorous test suites.</li>
+  <li><strong>Choosing a model?</strong> Check <a href="{{ domain_path('llm-tools') }}/servers/open-compass/opencompass/">OpenCompass</a> scores for your task type. For embeddings, use <a href="{{ domain_path('embeddings') }}/servers/embeddings-benchmark/mteb/">MTEB</a>.</li>
+  <li><strong>Agents?</strong> This is still manual. Log traces, review them regularly, build scenario tests as you find failure modes. Watch <a href="{{ domain_path('agents') }}/servers/katanemo/plano/">Plano</a> for when the tooling matures.</li>
+</ol>
+
+<p>The bar isn't perfection. The bar is knowing whether your AI is getting better or worse. Right now, most teams can't answer that question.</p>
+
+<h2>Go deeper</h2>
+
+<p>Every project mentioned here has a quality-scored page in our directory, updated daily:</p>
+
+<ul>
+  <li><a href="{{ domain_path('llm-tools') }}/categories/">LLM evaluation categories</a> &mdash; frameworks, benchmarks, and comparison tools</li>
+  <li><a href="{{ domain_path('agents') }}/categories/">Agent evaluation categories</a> &mdash; the fastest-growing eval subcategory</li>
+  <li><a href="{{ domain_path('embeddings') }}/categories/">Embedding benchmarks</a> &mdash; MTEB and related evaluation infrastructure</li>
+  <li><a href="{{ domain_path('rag') }}/categories/">RAG evaluation</a> &mdash; RAGAS and the retrieval quality ecosystem</li>
+  <li><a href="{{ domain_path('llm-tools') }}/trending/">Trending eval projects</a> &mdash; what's moving this week</li>
+</ul>
