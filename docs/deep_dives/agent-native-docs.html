@@ -1,0 +1,117 @@
+<p>On a recent Y Combinator podcast, a founder described how Claude Code chose Supabase for his project's database. Not because he asked for Supabase. Because Claude Code read the documentation, found it well-structured, and decided it was the best fit. The agent made the tool selection decision. The human just approved it.</p>
+
+<p>This is happening across the developer tools ecosystem. Agents are becoming the primary consumers of documentation &mdash; and the documentation wasn't designed for them. PT-Edge data reveals the gap: MCP repos with detailed, structured documentation average 354 stars. Those without average 19. That's an 18x difference, and it's not a coincidence.</p>
+
+<h2>Documentation is the new distribution channel</h2>
+
+<p>In the pre-agent era, developer tools got adopted through Stack Overflow answers, conference talks, blog posts, and GitHub trending. A developer would hear about a tool, read the README, try it, and maybe adopt it.</p>
+
+<p>In the agent era, the agent reads the documentation directly. It doesn't attend conferences. It doesn't read blog posts. It reads docs, evaluates whether they contain enough information to solve the current problem, and either uses the tool or moves on. The documentation <em>is</em> the product evaluation.</p>
+
+<p>This means documentation quality isn't a nice-to-have. It's the primary competitive moat for developer tool adoption. Better docs → agents choose your tool → more usage → more adoption. Worse docs → agents skip you → your tool doesn't exist in the agent's world.</p>
+
+<h2>The MCP evidence</h2>
+
+<p>MCP servers are the purest test case because agents are literally the primary user. PT-Edge scores MCP repos with AI-generated summaries of varying quality. The correlation between documentation quality and adoption is stark:</p>
+
+<table>
+  <thead>
+    <tr><th>Documentation quality</th><th>Repos</th><th>Avg stars</th><th>Avg downloads/mo</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Detailed summary</strong> (200+ chars)</td><td>2,164</td><td>354</td><td>61,550</td></tr>
+    <tr><td><strong>No summary</strong></td><td>1,595</td><td>19</td><td>12</td></tr>
+  </tbody>
+</table>
+
+<p>Repos with detailed documentation get 18x the stars and 5,000x the downloads. Correlation isn't causation &mdash; good projects tend to have good docs. But in the MCP ecosystem, where agents are the primary user, the relationship between documentation quality and adoption is stronger than in any other domain we track.</p>
+
+<h2>llms.txt: the new robots.txt</h2>
+
+<p>A new convention is emerging. Just as <code>robots.txt</code> tells search crawlers how to interact with a site, <code>llms.txt</code> tells AI agents what a project does and how to use it. It's a machine-readable summary designed specifically for LLM consumption.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set llms_txt = ['mensfeld/llm-docs-builder', 'revokslab/codecrawl', 'thedaviddias/mcp-llms-txt-explorer', 'marv1nnnnn/llm-min.txt'] %}
+    {% for name in llms_txt %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if 'llm-docs-builder' in name %}Transform markdown docs for LLM + RAG consumption, generate llms.txt{% elif 'codecrawl' in name %}Turn codebases into LLM-ready data with llms.txt generation{% elif 'llms-txt-explorer' in name %}MCP server to explore websites with llms.txt files{% elif 'llm-min' in name %}Min.js-style compression of docs for LLM context windows{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('rag') }}/servers/mensfeld/llm-docs-builder/">llm-docs-builder</a> transforms markdown documentation into LLM-optimised formats and generates <code>llms.txt</code> files. <a href="{{ domain_path('embeddings') }}/servers/revokslab/codecrawl/">CodeCrawl</a> extracts data from entire codebases and generates <code>llms.txt</code> with a single API call. The tooling for creating agent-readable docs is emerging fast.</p>
+
+<h2>The AURA protocol and purpose-built tools</h2>
+
+<p>Beyond llms.txt, a more ambitious movement is underway: documentation designed from first principles for agent consumption.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>What it does</th></tr>
+  </thead>
+  <tbody>
+    {% set doc_tools = ['osmandkitay/aura', 'docfork/docfork', 'marckrenn/rtfmbro-mcp', 'sopaco/deepwiki-rs'] %}
+    {% for name in doc_tools %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if 'aura' in name %}AURA: Agent-Usable Resource Assertion — open protocol for machine-readable web{% elif 'docfork' in name %}Up-to-date docs specifically for AI agents{% elif 'rtfmbro' in name %}Always-current, version-specific package docs for coding agents{% elif 'deepwiki' in name %}Generate accurate technical docs and AI-ready context from code{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/osmandkitay/aura/">AURA</a> &mdash; Agent-Usable Resource Assertion &mdash; is an open protocol "designed to make the web machine-readable." It replaces fragile scraping with structured, agent-optimised content. This isn't just better docs. It's a new protocol layer designed specifically for agent consumption.</p>
+
+<p><a href="{{ domain_path('mcp') }}/servers/marckrenn/rtfmbro-mcp/">rtfmbro</a> solves a different angle: providing always-up-to-date, version-specific package documentation as context for coding agents. When Claude Code needs to use a library, it doesn't read the generic README &mdash; rtfmbro provides the exact documentation for the exact version, preventing outdated code suggestions.</p>
+
+<h2>What agent-readable documentation looks like</h2>
+
+<p>Traditional documentation optimises for human skimming: tutorials, conceptual overviews, narrative explanations. Agent-readable documentation optimises for machine parsing:</p>
+
+<ul>
+  <li><strong>Code snippets over prose.</strong> Agents extract and execute code. Narrative context is noise.</li>
+  <li><strong>Q&amp;A format over tutorials.</strong> "How do I send an email?" with a direct code answer. Agents match queries to answers.</li>
+  <li><strong>Versioned and timestamped.</strong> Agents need to know if the docs are current. Stale docs produce stale code.</li>
+  <li><strong>Structured metadata.</strong> What the tool does, what it requires, what it returns &mdash; in parseable format, not prose.</li>
+  <li><strong>Error documentation.</strong> What goes wrong and how to fix it. Agents hit errors constantly and need resolution paths.</li>
+</ul>
+
+<h2>What to do right now</h2>
+
+<p>If you maintain a developer tool:</p>
+
+<ol>
+  <li><strong>Add an <code>llms.txt</code></strong> to your repo. Use <a href="{{ domain_path('rag') }}/servers/mensfeld/llm-docs-builder/">llm-docs-builder</a> or <a href="{{ domain_path('embeddings') }}/servers/revokslab/codecrawl/">CodeCrawl</a> to generate it.</li>
+  <li><strong>Structure your README for extraction.</strong> Short paragraphs, code-first, Q&amp;A sections. Avoid long narrative blocks.</li>
+  <li><strong>Add version-specific installation examples.</strong> Agents generate code &mdash; they need exact commands, not "install the latest version."</li>
+  <li><strong>Document errors.</strong> Every error message should have a documented resolution. Agents will search for it.</li>
+</ol>
+
+<p>Documentation is becoming the primary interface between your tool and the agents that decide whether to use it. The projects that optimise for agent readability now will have a structural advantage as agent-driven adoption becomes the default.</p>
+
+<h2>Go deeper</h2>
+
+<p>Every project mentioned here has a quality-scored page in our directory, updated daily:</p>
+
+<ul>
+  <li><a href="{{ domain_path('mcp') }}/categories/">MCP categories</a> &mdash; where agent-first documentation matters most</li>
+  <li><a href="{{ domain_path('agents') }}/categories/">Agent categories</a> &mdash; the ecosystem driving this shift</li>
+  <li><a href="{{ domain_path('llm-tools') }}/categories/">LLM tool categories</a> &mdash; documentation and evaluation infrastructure</li>
+  <li><a href="{{ domain_path('mcp') }}/trending/">Trending MCP projects</a> &mdash; what's moving this week</li>
+</ul>
