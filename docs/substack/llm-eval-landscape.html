@@ -1,0 +1,39 @@
+<p>You shipped an AI feature. It seems to work. Users aren't complaining yet. But when someone asks "how do you know it's good?" the honest answer is: you don't. You're eyeballing outputs, running a few manual tests, and hoping.</p>
+
+<p>PT-Edge tracks 1,159 repos across 9 subcategories building LLM evaluation infrastructure. The sheer number tells the story: everyone knows this problem needs solving, and nobody agrees on how. Here's what the data says about what's actually production-ready.</p>
+
+<h2>The vibes-based eval problem</h2>
+
+<p>Start with the assumption most teams make: "I'll review a few outputs and I'll know if it's working." This doesn't scale. A prompt change that improves 80% of outputs might silently degrade the other 20%. A model upgrade that benchmarks better overall might perform worse on your specific use case. Without automated evaluation, you won't catch either of these until users complain.</p>
+
+<p>An HN post titled "Without benchmarking LLMs, you're likely overpaying" got 197 points in January. Someone posted "Ask HN: How are people doing AI evals these days?" and got 13 comments debating completely different approaches. Even Anthropic recently acknowledged that their safety evaluation methods aren't keeping pace with capability improvements. If the frontier labs can't keep up with eval, production teams have no chance without better tooling.</p>
+
+<h2>Five layers, five different problems</h2>
+
+<p>Most developers treat evaluation as one thing. It's actually five:</p>
+
+<p><strong>RAG evaluation</strong> is the most mature layer, and it has a clear winner. <a href="https://mcp.phasetransitions.ai/llm-tools/servers/vibrantlabsai/ragas/">RAGAS</a> (12,900+ stars, 1.2M downloads/month) breaks RAG eval into four dimensions: faithfulness, answer relevance, context precision, and context recall. It generates synthetic test sets from your production data so you don't need manual labels. If you're building RAG, start here.</p>
+
+<p><strong>Output quality</strong> is where the confusion lives. Three approaches compete: LLM-as-judge (easy to set up, systematically biased), reference-based metrics (reliable, requires labelled data you don't have), and programmatic checks (boring, trustworthy). <a href="https://mcp.phasetransitions.ai/llm-tools/servers/Giskard-AI/giskard-oss/">Giskard</a> (5,200+ stars) is the most complete framework — it supports all three and recently split into lightweight packages so you only install what you need. Start with programmatic checks for hard requirements, add LLM-as-judge for subjective quality. Don't rely on LLM-as-judge alone.</p>
+
+<p><strong>Code evaluation</strong> is the most tractable layer because the success criterion is binary: does the code pass the tests? <a href="https://mcp.phasetransitions.ai/llm-tools/servers/evalplus/evalplus/">EvalPlus</a> (1,700+ stars) augments standard benchmarks with 80x more test cases, catching failures that HumanEval misses.</p>
+
+<p><strong>Model comparison</strong> has strong tooling. <a href="https://mcp.phasetransitions.ai/llm-tools/servers/open-compass/opencompass/">OpenCompass</a> (6,800+ stars, 58K downloads/month) covers 100+ benchmarks in a unified framework. For embeddings, <a href="https://mcp.phasetransitions.ai/embeddings/servers/embeddings-benchmark/mteb/">MTEB</a> (3,200+ stars, 968K downloads/month) is the undisputed standard.</p>
+
+<p><strong>Agent evaluation</strong> is where the landscape is most chaotic. 150 repos, mostly academic benchmarks, almost nothing production-ready. <a href="https://mcp.phasetransitions.ai/agents/servers/katanemo/plano/">Plano</a> (6,000+ stars) is the closest thing to production agent testing — scenario-based evaluation with LLM judges. But the hard truth is that most teams deploying agents are still evaluating them by reviewing traces by hand.</p>
+
+<h2>Only 5 newsletter mentions in 90 days</h2>
+
+<p>Here's what caught our attention. PT-Edge tracks seven major AI newsletters — Simon Willison, Latent Space, The Zvi, and others. In the last 90 days, LLM evaluation as a practical topic got just 5 mentions across 3 newsletters. Compare that to agent memory (18 mentions across all 7 newsletters in the same period). The tooling is being built, but the narrative around "how should I actually evaluate my AI?" hasn't crystallised. Everyone's building evaluation infrastructure — 1,159 repos — and almost nobody is writing about how to use it.</p>
+
+<h2>Where this is heading</h2>
+
+<p>Agent evaluation is the biggest gap and the fastest-growing subcategory. Evaluating a chatbot response is hard. Evaluating a multi-step agent that writes code, makes API calls, and modifies files is an order of magnitude harder. The tooling that emerges here will matter as much as the agent frameworks themselves — you can't deploy agents you can't measure.</p>
+
+<p>The other shift: evaluation moving from a research activity to a CI/CD primitive. <a href="https://mcp.phasetransitions.ai/llm-tools/servers/kieranklaassen/leva/">Leva</a> (133 stars) is built for Rails apps with production data — evaluation as a framework feature, not an academic exercise. Expect more of this.</p>
+
+<h2>Explore the data</h2>
+
+<p>Every project mentioned here has a quality-scored page in our directories, updated daily. Browse the <a href="https://mcp.phasetransitions.ai/llm-tools/categories/">LLM eval categories</a>, <a href="https://mcp.phasetransitions.ai/agents/categories/">agent evaluation categories</a>, or <a href="https://mcp.phasetransitions.ai/embeddings/categories/">embedding benchmarks</a> to explore the full landscape.</p>
+
+<p>The full deep dive with detailed project tables and quality scores is at <a href="https://mcp.phasetransitions.ai/insights/llm-eval-landscape/">mcp.phasetransitions.ai/insights/llm-eval-landscape</a>.</p>

@@ -147,42 +147,54 @@ Select 5-10 categories for `featured_categories`.
 
 **Tone:** Frame around the searcher's decision. Not a data dump.
 
-### 4. Insert into the database
+### 4. Write the Substack companion
+
+Write the Substack companion **before** inserting into the database or opening the PR. A simplified HTML version at `docs/substack/{slug}.html`:
+
+- ~800 words (Substack audience skims)
+- Basic HTML only — no tables, no CSS, no scripts (Substack strips them)
+- Hardcoded links to `https://mcp.phasetransitions.ai/...` (no Jinja2)
+- Every project name links to its PT-Edge server detail page
+- Ends with CTA to the full deep dive on the site
+- Ends with links to directory, categories, and trending pages
+
+### 5. Insert into the database
+
+**This must happen before the PR is merged.** The deploy reads from the `deep_dives` table at container startup — if the row isn't there when the deploy runs, the page won't render and the deep dive link in the Substack piece will 404.
 
 ```bash
 source .env && .venv/bin/python scripts/insert_deep_dive.py docs/deep_dives/{slug}.json
 ```
 
-This upserts into the `deep_dives` table. The `generate_deep_dives.py` script reads from this table at container startup.
+This upserts the deep dive (including the rendered HTML template) into the `deep_dives` table. Once merged and deployed, `generate_deep_dives.py` renders the page with live repo data at `/insights/{slug}/`.
 
-### 5. Write the Substack companion
+**The sequence matters:**
+1. DB insert happens locally before the PR is merged
+2. PR includes the JSON, HTML template, and Substack companion
+3. Merge triggers deploy, which reads the DB row and renders the page
+4. All links (including the deep dive URL in the Substack piece) are live immediately after deploy
 
-A simplified HTML version at `docs/substack/{slug}.html`:
-
-- ~800 words (Substack audience skims)
-- Basic HTML only — no tables, no CSS, no scripts (Substack strips them)
-- Every project name links to its PT-Edge server detail page
-- Ends with CTA to the full deep dive on the site
-- Ends with links to directory, categories, and trending pages
+If you skip the DB insert and merge first, the deploy will run without the deep dive row and the page won't exist. You'll need to insert and then trigger another deploy to fix it.
 
 ### 6. Verify all links
 
-Before publishing, check every link returns HTTP 200:
+Before publishing, check every link in the Substack HTML returns HTTP 200:
 
 ```bash
-# Check all PT-Edge links in the Substack HTML
-grep -oP 'href="https://mcp\.phasetransitions\.ai[^"]*"' docs/substack/{slug}.html | \
-  tr -d '"' | sed 's/href=//' | while read url; do
-    code=$(python3 -c "import urllib.request; print(urllib.request.urlopen('$url').getcode())" 2>&1)
+grep -oE 'href="https://mcp\.phasetransitions\.ai[^"]*"' docs/substack/{slug}.html | \
+  sed 's/href="//;s/"$//' | while read url; do
+    code=$(curl -s -o /dev/null -w "%{http_code}" "$url")
     echo "$code $url"
   done
 ```
 
+The deep dive link (`/insights/{slug}/`) will 404 until the first deploy after insert — that's expected. All server and category links should be 200.
+
 ### 7. Deploy and verify
 
-1. Commit the JSON, HTML, Substack HTML, and any template changes
-2. Push and merge the PR
-3. Trigger a deploy on the `pt-edge` web service (clear build cache if needed)
+1. Confirm the DB insert from step 5 succeeded (`Upserted deep dive: {slug} (published)`)
+2. Commit the JSON, HTML template, and Substack HTML
+3. Push and merge the PR — this triggers deploy
 4. Verify the deep dive renders at `/insights/{slug}/`
 5. Verify "Featured in" links appear on featured repo server detail pages
 6. Verify the deep dive appears on the `/insights/` index
