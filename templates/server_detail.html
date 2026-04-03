@@ -11,7 +11,7 @@
 {% endblock %}
 
 {% block canonical %}<link rel="canonical" href="{{ base_url }}{{ base_path }}/servers/{{ server.full_name }}/">
-<link rel="alternate" type="application/json" href="https://pt-edge.onrender.com/api/v1/projects/{{ server.full_name }}">{% endblock %}
+<link rel="alternate" type="application/json" href="https://pt-edge.onrender.com/api/v1/quality/{{ domain }}/{{ server.full_name }}">{% endblock %}
 
 {% block jsonld %}
 <script type="application/ld+json">
@@ -177,9 +177,8 @@
 
   <div class="mb-8 rounded-lg border border-gray-200 bg-gray-50 p-4">
     <p class="text-sm font-medium text-gray-700 mb-2">Get this data via API</p>
-    <pre class="text-xs bg-white border border-gray-200 rounded p-3 overflow-x-auto">curl -H "Authorization: Bearer YOUR_KEY" \
-  https://pt-edge.onrender.com/api/v1/projects/{{ server.full_name }}</pre>
-    <p class="mt-2 text-xs text-gray-500">Free tier: 100 requests/day, no credit card. <a href="/api/signup" class="text-blue-600 hover:underline font-medium">Get your API key</a></p>
+    <pre class="text-xs bg-white border border-gray-200 rounded p-3 overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/quality/{{ domain }}/{{ server.full_name }}"</pre>
+    <p class="mt-2 text-xs text-gray-500">No API key required. 100 requests/day, or <a href="/api/docs" class="text-blue-600 hover:underline font-medium">get a key</a> for more.</p>
   </div>
 
   {% if deep_dive_links %}

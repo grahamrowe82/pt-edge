@@ -151,6 +151,13 @@ async def domain_brief(domain: str, request: Request, key_data: dict = Depends(_
 async def project_detail(slug: str, request: Request, key_data: dict = Depends(_auth)):
     result = queries.get_project(slug)
     if not result:
+        if "/" in slug:
+            domains = ", ".join(sorted(queries.DOMAIN_VIEWS.keys()))
+            raise HTTPException(status_code=404, detail={"error": {
+                "code": "not_found",
+                "message": f"Project '{slug}' not found.",
+                "hint": f"For repos by full name, use: GET /api/v1/quality/{{domain}}/{slug} — valid domains: {domains}",
+            }})
         _not_found(f"Project '{slug}'")
     return _ok(result)
 
@@ -474,7 +481,12 @@ async def quality_repo(
         raise HTTPException(status_code=422, detail={"error": {"code": "invalid_domain", "message": f"Unknown domain '{domain}'."}})
     result = queries.get_quality_by_repo(domain=domain, repo=repo)
     if not result:
-        _not_found(f"Repo '{repo}' in domain '{domain}'")
+        other_domains = ", ".join(sorted(d for d in queries.DOMAIN_VIEWS.keys() if d != domain))
+        raise HTTPException(status_code=404, detail={"error": {
+            "code": "not_found",
+            "message": f"Repo '{repo}' not found in domain '{domain}'.",
+            "hint": f"This repo may be in a different domain. Try: {other_domains}",
+        }})
     return _ok(result)
 
 
