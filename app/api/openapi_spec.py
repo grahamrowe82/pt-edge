@@ -130,14 +130,16 @@ OPENAPI_SPEC = {
             }
         },
     },
+    "security": [],
     "components": {
         "securitySchemes": {
             "bearerAuth": {
                 "type": "http",
                 "scheme": "bearer",
                 "description": (
-                    "Get a free key by POSTing to /api/v1/keys (no fields required). "
-                    "Use the returned key as: Authorization: Bearer pte_..."
+                    "Optional. All endpoints work without a key (50 requests/day). "
+                    "A free key gives 500/day (POST /api/v1/keys). "
+                    "Add your email for 50,000/day. All tiers are free."
                 ),
             }
         }
@@ -149,20 +151,19 @@ AI_PLUGIN = {
     "name": "PT-Edge",
     "description": (
         "AI project intelligence — quality scores, trends, and metadata "
-        "for 220,000+ AI repos. Agents can create their own API key instantly "
-        "with no email required."
+        "for 220,000+ AI repos. Open by default: all endpoints work without "
+        "authentication (50 requests/day). Optional API key for higher limits."
     ),
     "api": {
         "type": "openapi",
         "url": "https://pt-edge.onrender.com/api/v1/openapi.json",
     },
     "auth": {
-        "type": "bearer",
+        "type": "none",
         "instructions": (
-            "POST https://pt-edge.onrender.com/api/v1/keys with an empty body "
-            "or optional JSON {\"email\": \"...\", \"company\": \"...\"}. "
-            "Returns a bearer token immediately. No email required. "
-            "Free tier: 100 requests/day."
+            "No authentication required. All endpoints work anonymously at 50 requests/day. "
+            "For higher limits: POST /api/v1/keys for 500/day (no email), "
+            "or POST with {\"email\": \"...\"} for 50,000/day. All tiers free."
         ),
     },
 }

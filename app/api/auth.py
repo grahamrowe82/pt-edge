@@ -2,7 +2,7 @@ import hashlib
 import time
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import HTTPException, Request
 from sqlalchemy import text
@@ -15,12 +15,14 @@ logger = logging.getLogger(__name__)
 _key_cache: dict[str, tuple[dict, float]] = {}
 _CACHE_TTL = 60  # seconds
 
-# In-memory daily rate counter: key_id -> (date_str, count)
-_daily_counts: dict[int, tuple[str, int]] = defaultdict(lambda: ("", 0))
+# In-memory daily rate counters
+_daily_counts: dict[int, tuple[str, int]] = defaultdict(lambda: ("", 0))  # key_id -> (date, count)
+_ip_daily_counts: dict[str, tuple[str, int]] = defaultdict(lambda: ("", 0))  # ip -> (date, count)
 
 TIER_LIMITS = {
-    "free": 100,
-    "pro": 10_000,
+    "anonymous": 50,
+    "free": 500,
+    "pro": 50_000,
 }
 
 
@@ -30,6 +32,13 @@ def _hash_key(raw_key: str) -> str:
 
 def _today_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _get_client_ip(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 def _lookup_key(key_hash: str) -> dict | None:
@@ -62,15 +71,82 @@ def _lookup_key(key_hash: str) -> dict | None:
     return data
 
 
-async def require_api_key(request: Request) -> dict:
-    """FastAPI dependency that validates Bearer token and enforces rate limits."""
+def _rate_limit_headers(limit: int, remaining: int) -> dict[str, str]:
+    """Standard rate limit headers."""
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return {
+        "X-RateLimit-Limit": str(limit),
+        "X-RateLimit-Remaining": str(remaining),
+        "X-RateLimit-Reset": tomorrow.isoformat(),
+    }
+
+
+def _enforce_rate_limit_keyed(key_data: dict, request: Request) -> None:
+    """Rate limit by API key."""
+    key_id = key_data["id"]
+    tier = key_data.get("tier", "free")
+    limit = TIER_LIMITS.get(tier, TIER_LIMITS["free"])
+    today = _today_utc()
+
+    date_str, count = _daily_counts[key_id]
+    if date_str != today:
+        _daily_counts[key_id] = (today, 1)
+        count = 0
+    else:
+        if count >= limit:
+            raise HTTPException(
+                status_code=429,
+                detail={"error": {"code": "rate_limit_exceeded", "message": f"Daily limit of {limit} requests exceeded. Resets at midnight UTC."}},
+                headers=_rate_limit_headers(limit, 0),
+            )
+        _daily_counts[key_id] = (today, count + 1)
+
+    request.state.rate_limit = {"limit": limit, "remaining": max(0, limit - count - 1)}
+
+
+def _enforce_rate_limit_anonymous(request: Request) -> None:
+    """Rate limit by IP address for unauthenticated requests."""
+    ip = _get_client_ip(request)
+    limit = TIER_LIMITS["anonymous"]
+    today = _today_utc()
+
+    date_str, count = _ip_daily_counts[ip]
+    if date_str != today:
+        _ip_daily_counts[ip] = (today, 1)
+        count = 0
+    else:
+        if count >= limit:
+            raise HTTPException(
+                status_code=429,
+                detail={"error": {
+                    "code": "rate_limit_exceeded",
+                    "message": (
+                        f"Anonymous limit of {limit} requests/day exceeded. "
+                        f"Get a free API key for {TIER_LIMITS['free']}/day: POST /api/v1/keys (no email required). "
+                        f"Add your email for {TIER_LIMITS['pro']:,}/day."
+                    ),
+                }},
+                headers=_rate_limit_headers(limit, 0),
+            )
+        _ip_daily_counts[ip] = (today, count + 1)
+
+    request.state.rate_limit = {"limit": limit, "remaining": max(0, limit - count - 1)}
+
+
+async def optional_api_key(request: Request) -> dict:
+    """FastAPI dependency: validates Bearer token if present, allows anonymous access otherwise."""
     auth = request.headers.get("authorization", "")
+
     if not auth.lower().startswith("bearer "):
-        raise HTTPException(status_code=401, detail={"error": {"code": "unauthorized", "message": "Missing Authorization: Bearer <key> header"}})
+        # Anonymous access — rate limit by IP
+        _enforce_rate_limit_anonymous(request)
+        return {"tier": "anonymous", "id": None}
 
     raw_key = auth[7:].strip()
     if not raw_key.startswith("pte_") or len(raw_key) != 36:
-        raise HTTPException(status_code=401, detail={"error": {"code": "unauthorized", "message": "Invalid API key format"}})
+        raise HTTPException(status_code=401, detail={"error": {"code": "unauthorized", "message": "Invalid API key format. Keys start with pte_ and are 36 characters."}})
 
     key_hash = _hash_key(raw_key)
     key_data = _lookup_key(key_hash)
@@ -81,41 +157,9 @@ async def require_api_key(request: Request) -> dict:
     if not key_data.get("is_active") or key_data.get("revoked_at") is not None:
         raise HTTPException(status_code=401, detail={"error": {"code": "unauthorized", "message": "API key has been revoked"}})
 
-    # Rate limiting
-    key_id = key_data["id"]
-    tier = key_data.get("tier", "free")
-    limit = TIER_LIMITS.get(tier, 100)
-    today = _today_utc()
-
-    date_str, count = _daily_counts[key_id]
-    if date_str != today:
-        # New day — reset
-        _daily_counts[key_id] = (today, 1)
-        count = 0
-    else:
-        if count >= limit:
-            # Attach rate limit headers even on 429
-            raise HTTPException(
-                status_code=429,
-                detail={"error": {"code": "rate_limit_exceeded", "message": f"Daily limit of {limit} requests exceeded. Resets at midnight UTC."}},
-                headers=_rate_limit_headers(limit, 0),
-            )
-        _daily_counts[key_id] = (today, count + 1)
-
-    # Stash rate limit info on request for middleware to attach as headers
-    request.state.rate_limit = {"limit": limit, "remaining": max(0, limit - count - 1)}
-
+    _enforce_rate_limit_keyed(key_data, request)
     return key_data
 
 
-def _rate_limit_headers(limit: int, remaining: int) -> dict[str, str]:
-    """Standard rate limit headers."""
-    from datetime import datetime, timezone, timedelta
-    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    return {
-        "X-RateLimit-Limit": str(limit),
-        "X-RateLimit-Remaining": str(remaining),
-        "X-RateLimit-Reset": tomorrow.isoformat(),
-    }
+# Keep the old name as alias for backward compatibility with manage script imports
+require_api_key = optional_api_key

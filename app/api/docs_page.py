@@ -67,20 +67,29 @@ HTML_PAGE = """\
 
 <!-- Built for agents -->
 <section id="agents" class="bg-gray-50 border border-gray-200 rounded-lg p-6">
-  <h2 class="text-lg font-semibold mb-2">Built for AI agents</h2>
-  <p class="text-sm text-gray-700 mb-3">PT-Edge is designed to be queried programmatically. Agents can create their own API key without an email address and start querying immediately.</p>
-  <pre class="bg-white border border-gray-200 rounded p-3 text-sm overflow-x-auto">curl -X POST https://pt-edge.onrender.com/api/v1/keys</pre>
-  <p class="mt-2 text-xs text-gray-500">Returns a bearer token instantly. No fields required. Free tier: 100 requests/day. <a href="/api/v1/openapi.json" class="text-blue-600 underline">OpenAPI spec</a> &middot; <a href="/.well-known/ai-plugin.json" class="text-blue-600 underline">AI plugin manifest</a></p>
+  <h2 class="text-lg font-semibold mb-2">Open by default</h2>
+  <p class="text-sm text-gray-700 mb-3">Every endpoint works without authentication. No signup, no API key, just call it. Keys are optional and only increase your rate limit.</p>
+  <pre class="bg-white border border-gray-200 rounded p-3 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/trending?limit=5"</pre>
+  <p class="mt-2 text-xs text-gray-500">Works right now. 50 requests/day without a key. <a href="/api/v1/openapi.json" class="text-blue-600 underline">OpenAPI spec</a> &middot; <a href="/.well-known/ai-plugin.json" class="text-blue-600 underline">AI plugin manifest</a></p>
 </section>
 
 <!-- Quick Start -->
 <section id="quick-start">
   <h2 class="text-2xl font-semibold mb-4">Quick Start</h2>
   <ol class="list-decimal list-inside space-y-3 text-gray-700">
-    <li><strong>Get a key</strong> &mdash; <a href="/api/signup" class="text-blue-600 underline font-medium">Generate a free API key</a> instantly, or <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">POST /api/v1/keys</code> with no body (100 requests/day, no email required).</li>
-    <li><strong>Make a request:</strong></li>
+    <li><strong>Make a request</strong> &mdash; no key needed:</li>
   </ol>
-  <pre class="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl -H "Authorization: Bearer pte_YOUR_KEY_HERE" \\
+  <pre class="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/trending?limit=5"</pre>
+  <p class="mt-3 text-gray-700 text-sm">Want higher limits? Get a key instantly:</p>
+  <pre class="mt-2 bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto"><span class="text-gray-500"># 500 requests/day — no email required</span>
+curl -X POST https://pt-edge.onrender.com/api/v1/keys
+
+<span class="text-gray-500"># 50,000 requests/day — just add your email</span>
+curl -X POST https://pt-edge.onrender.com/api/v1/keys \\
+  -H "Content-Type: application/json" \\
+  -d '{"email": "you@company.com"}'</pre>
+  <p class="mt-3 text-gray-700">Then use your key:</p>
+  <pre class="mt-2 bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl -H "Authorization: Bearer pte_YOUR_KEY" \\
   https://pt-edge.onrender.com/api/v1/projects/langchain</pre>
   <p class="mt-3 text-gray-700">You'll get back:</p>
   <pre class="mt-2 bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">{
@@ -107,33 +116,39 @@ HTML_PAGE = """\
 
 <!-- Authentication -->
 <section id="authentication">
-  <h2 class="text-2xl font-semibold mb-4">Authentication</h2>
-  <p class="text-gray-700">All requests require a Bearer token in the <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">Authorization</code> header.</p>
-  <pre class="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm">Authorization: Bearer pte_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
-  <p class="mt-3 text-gray-700">Keys use the <code class="bg-gray-100 px-1.5 py-0.5 rounded text-sm">pte_</code> prefix and are 36 characters total.</p>
+  <h2 class="text-2xl font-semibold mb-4">Authentication &amp; Rate Limits</h2>
+  <p class="text-gray-700">Authentication is <strong>optional</strong>. All endpoints work without a key. Adding a key increases your rate limit.</p>
 
-  <h3 class="text-lg font-medium mt-6 mb-3">Rate Limits</h3>
-  <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
+  <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden mt-4">
     <thead class="bg-gray-50">
       <tr>
         <th class="text-left px-4 py-2 font-medium">Tier</th>
         <th class="text-left px-4 py-2 font-medium">Daily Limit</th>
-        <th class="text-left px-4 py-2 font-medium">Resets</th>
+        <th class="text-left px-4 py-2 font-medium">How to get it</th>
       </tr>
     </thead>
     <tbody>
       <tr class="border-t border-gray-200">
-        <td class="px-4 py-2">Free</td>
-        <td class="px-4 py-2">100 requests/day</td>
-        <td class="px-4 py-2">Midnight UTC</td>
+        <td class="px-4 py-2">Anonymous</td>
+        <td class="px-4 py-2">50 requests/day</td>
+        <td class="px-4 py-2">Just call the API</td>
       </tr>
       <tr class="border-t border-gray-200">
-        <td class="px-4 py-2">Pro</td>
-        <td class="px-4 py-2">10,000 requests/day</td>
-        <td class="px-4 py-2">Midnight UTC</td>
+        <td class="px-4 py-2">Free key</td>
+        <td class="px-4 py-2">500 requests/day</td>
+        <td class="px-4 py-2"><code class="bg-gray-100 px-1 rounded">POST /api/v1/keys</code></td>
+      </tr>
+      <tr class="border-t border-gray-200">
+        <td class="px-4 py-2">Pro key</td>
+        <td class="px-4 py-2">50,000 requests/day</td>
+        <td class="px-4 py-2"><code class="bg-gray-100 px-1 rounded">POST /api/v1/keys</code> with email</td>
       </tr>
     </tbody>
   </table>
+  <p class="mt-3 text-sm text-gray-500">All tiers are free. All tiers get the same data. Resets at midnight UTC.</p>
+
+  <p class="mt-4 text-gray-700">If you use a key, pass it as a Bearer token:</p>
+  <pre class="mt-2 bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm">Authorization: Bearer pte_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</pre>
 
   <h3 class="text-lg font-medium mt-6 mb-3">Error Responses</h3>
   <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto"><span class="text-gray-500">// 401 Unauthorized</span>

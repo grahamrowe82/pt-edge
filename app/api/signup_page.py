@@ -39,11 +39,11 @@ SIGNUP_HTML = """\
 
   <div id="signup-form">
     <h1 class="text-2xl font-bold tracking-tight">Get your free API key</h1>
-    <p class="mt-2 text-gray-600">100 requests/day. No credit card. Instant access.</p>
+    <p class="mt-2 text-gray-600">No key needed for basic access (50/day). A key gets you 500/day. Add your email for 50,000/day.</p>
 
     <form class="mt-8 space-y-4" onsubmit="return handleSubmit(event)">
       <div>
-        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email <span class="text-gray-400 font-normal">(optional)</span></label>
+        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email <span class="text-gray-400 font-normal">(optional &mdash; add for 50,000 requests/day)</span></label>
         <input type="email" id="email"
                class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                placeholder="you@company.com">
