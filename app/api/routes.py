@@ -431,3 +431,70 @@ async def mcp_health(
     if not result:
         _not_found(f"MCP repo '{repo}'")
     return _ok(result)
+
+
+# ---------------------------------------------------------------------------
+# Generic quality endpoints (all 18 domains)
+# ---------------------------------------------------------------------------
+
+_VALID_DOMAINS = "|".join(queries.DOMAIN_VIEWS.keys())
+
+
+@router.get("/quality")
+async def quality_scores(
+    request: Request,
+    domain: str = Query(..., description="Domain slug (e.g. mcp, agents, ml-frameworks)"),
+    subcategory: str = Query(None),
+    quality_tier: str = Query(None, pattern="^(verified|established|emerging|experimental)$"),
+    min_score: int = Query(None, ge=0, le=100),
+    limit: int = Query(50, le=500, ge=1),
+    offset: int = Query(0, ge=0),
+    key_data: dict = Depends(_auth),
+):
+    if domain not in queries.DOMAIN_VIEWS:
+        raise HTTPException(status_code=422, detail={"error": {"code": "invalid_domain", "message": f"Unknown domain '{domain}'. Valid: {', '.join(sorted(queries.DOMAIN_VIEWS.keys()))}"}})
+    results = queries.get_quality_scores(
+        domain=domain, subcategory=subcategory, quality_tier=quality_tier,
+        min_score=min_score, limit=limit, offset=offset,
+    )
+    return _ok(results, count=len(results), query_params={
+        "domain": domain, "subcategory": subcategory, "quality_tier": quality_tier,
+        "min_score": min_score, "limit": limit, "offset": offset,
+    })
+
+
+@router.get("/quality/{domain}/{repo:path}")
+async def quality_repo(
+    domain: str,
+    repo: str,
+    request: Request,
+    key_data: dict = Depends(_auth),
+):
+    if domain not in queries.DOMAIN_VIEWS:
+        raise HTTPException(status_code=422, detail={"error": {"code": "invalid_domain", "message": f"Unknown domain '{domain}'."}})
+    result = queries.get_quality_by_repo(domain=domain, repo=repo)
+    if not result:
+        _not_found(f"Repo '{repo}' in domain '{domain}'")
+    return _ok(result)
+
+
+@router.get("/datasets/quality")
+async def dataset_quality(
+    response: Response,
+    domain: str = Query(..., description="Domain slug (e.g. mcp, agents, ml-frameworks)"),
+    subcategory: str = Query(None),
+    quality_tier: str = Query(None, pattern="^(verified|established|emerging|experimental)$"),
+    limit: int = Query(500, le=2000, ge=1),
+    offset: int = Query(0, ge=0),
+):
+    if domain not in queries.DOMAIN_VIEWS:
+        raise HTTPException(status_code=422, detail={"error": {"code": "invalid_domain", "message": f"Unknown domain '{domain}'. Valid: {', '.join(sorted(queries.DOMAIN_VIEWS.keys()))}"}})
+    results = queries.get_quality_scores(
+        domain=domain, subcategory=subcategory, quality_tier=quality_tier,
+        limit=limit, offset=offset,
+    )
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return _ok(results, count=len(results), query_params={
+        "domain": domain, "subcategory": subcategory, "quality_tier": quality_tier,
+        "limit": limit, "offset": offset,
+    })

@@ -116,17 +116,49 @@ OPENAPI_SPEC = {
                 "security": [{"bearerAuth": []}],
             }
         },
+        "/api/v1/quality": {
+            "get": {
+                "operationId": "getQualityScores",
+                "summary": "Quality scores for AI projects across all 18 domains.",
+                "description": (
+                    "Returns quality-scored repos from any domain: mcp, agents, ml-frameworks, rag, "
+                    "embeddings, llm-tools, nlp, transformers, and more. Filter by subcategory to get "
+                    "all projects in a specific niche. No auth required (50/day), or use a key for higher limits."
+                ),
+                "parameters": [
+                    {"name": "domain", "in": "query", "required": True, "schema": {"type": "string"}, "description": "Domain slug: mcp, agents, ml-frameworks, rag, embeddings, etc."},
+                    {"name": "subcategory", "in": "query", "schema": {"type": "string"}, "description": "Filter by category within the domain"},
+                    {"name": "quality_tier", "in": "query", "schema": {"type": "string", "enum": ["verified", "established", "emerging", "experimental"]}},
+                    {"name": "min_score", "in": "query", "schema": {"type": "integer", "minimum": 0, "maximum": 100}},
+                    {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 50, "maximum": 500}},
+                    {"name": "offset", "in": "query", "schema": {"type": "integer", "default": 0}},
+                ],
+            }
+        },
+        "/api/v1/datasets/quality": {
+            "get": {
+                "operationId": "getDatasetQuality",
+                "summary": "Public quality scores dataset — no auth required, 1-hour cache.",
+                "description": "Same data as /quality but with higher default limit and HTTP caching. Ideal for bulk exports and embedding in pages.",
+                "parameters": [
+                    {"name": "domain", "in": "query", "required": True, "schema": {"type": "string"}},
+                    {"name": "subcategory", "in": "query", "schema": {"type": "string"}},
+                    {"name": "quality_tier", "in": "query", "schema": {"type": "string", "enum": ["verified", "established", "emerging", "experimental"]}},
+                    {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 500, "maximum": 2000}},
+                    {"name": "offset", "in": "query", "schema": {"type": "integer", "default": 0}},
+                ],
+            }
+        },
         "/api/v1/mcp/scores": {
             "get": {
                 "operationId": "getMcpScores",
-                "summary": "MCP server quality scores with filtering.",
+                "summary": "MCP server quality scores (alias for /quality?domain=mcp).",
                 "parameters": [
                     {"name": "quality_tier", "in": "query", "schema": {"type": "string", "enum": ["verified", "established", "emerging", "experimental"]}},
                     {"name": "subcategory", "in": "query", "schema": {"type": "string"}},
                     {"name": "min_score", "in": "query", "schema": {"type": "integer"}},
                     {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 50, "maximum": 200}},
                 ],
-                "security": [{"bearerAuth": []}],
             }
         },
     },

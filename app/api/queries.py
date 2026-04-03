@@ -1024,10 +1024,10 @@ def get_dataset_mcp_repos(
 
 
 # ---------------------------------------------------------------------------
-# MCP quality scores
+# Quality scores (all domains)
 # ---------------------------------------------------------------------------
 
-_MCP_QUALITY_COLS = """
+_QUALITY_COLS = """
     full_name, name, description, stars, forks,
     language, license, archived, subcategory,
     last_pushed_at, pypi_package, npm_package,
@@ -1037,15 +1037,46 @@ _MCP_QUALITY_COLS = """
     quality_score, quality_tier, risk_flags
 """
 
+# Maps domain slug to materialized view name. View names are hardcoded —
+# never constructed from user input — so no SQL injection risk.
+DOMAIN_VIEWS = {
+    "mcp": "mv_mcp_quality",
+    "agents": "mv_agents_quality",
+    "rag": "mv_rag_quality",
+    "ai-coding": "mv_ai_coding_quality",
+    "voice-ai": "mv_voice_ai_quality",
+    "diffusion": "mv_diffusion_quality",
+    "vector-db": "mv_vector_db_quality",
+    "embeddings": "mv_embeddings_quality",
+    "prompt-engineering": "mv_prompt_eng_quality",
+    "ml-frameworks": "mv_ml_frameworks_quality",
+    "llm-tools": "mv_llm_tools_quality",
+    "nlp": "mv_nlp_quality",
+    "transformers": "mv_transformers_quality",
+    "generative-ai": "mv_generative_ai_quality",
+    "computer-vision": "mv_computer_vision_quality",
+    "data-engineering": "mv_data_engineering_quality",
+    "mlops": "mv_mlops_quality",
+    "perception": "mv_perception_quality",
+}
 
-def get_mcp_quality_scores(
-    quality_tier: str = None,
+# Keep old name as alias
+_MCP_QUALITY_COLS = _QUALITY_COLS
+
+
+def get_quality_scores(
+    domain: str,
     subcategory: str = None,
+    quality_tier: str = None,
     min_score: int = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[dict]:
-    """List MCP repos with quality scores."""
+    """List repos with quality scores for any domain."""
+    view = DOMAIN_VIEWS.get(domain)
+    if not view:
+        return []
+
     conditions = []
     params: dict = {"lim": limit, "off": offset}
     if quality_tier:
@@ -1062,25 +1093,38 @@ def get_mcp_quality_scores(
 
     with readonly_engine.connect() as conn:
         return _safe_mv_query(conn, f"""
-            SELECT {_MCP_QUALITY_COLS}
-            FROM mv_mcp_quality
+            SELECT {_QUALITY_COLS}
+            FROM {view}
             {where}
             ORDER BY quality_score DESC NULLS LAST, stars DESC NULLS LAST
             LIMIT :lim OFFSET :off
         """, params)
 
 
-def get_mcp_quality_by_repo(repo: str) -> dict | None:
-    """Single MCP repo quality lookup by full_name or name."""
+def get_quality_by_repo(domain: str, repo: str) -> dict | None:
+    """Single repo quality lookup by full_name or name, for any domain."""
+    view = DOMAIN_VIEWS.get(domain)
+    if not view:
+        return None
+
     with readonly_engine.connect() as conn:
         rows = _safe_mv_query(conn, f"""
-            SELECT {_MCP_QUALITY_COLS}
-            FROM mv_mcp_quality
+            SELECT {_QUALITY_COLS}
+            FROM {view}
             WHERE LOWER(full_name) = LOWER(:repo)
                OR LOWER(name) = LOWER(:repo)
             LIMIT 1
         """, {"repo": repo})
     return rows[0] if rows else None
+
+
+# Backward-compatible aliases for existing MCP-specific endpoints
+def get_mcp_quality_scores(**kwargs) -> list[dict]:
+    return get_quality_scores(domain="mcp", **kwargs)
+
+
+def get_mcp_quality_by_repo(repo: str) -> dict | None:
+    return get_quality_by_repo(domain="mcp", repo=repo)
 
 
 def get_papers(q: str = None, project_slug: str = None, year: int = None, limit: int = 20) -> list[dict]:
