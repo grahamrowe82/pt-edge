@@ -88,7 +88,7 @@ async def create_key(body: KeyRequest = KeyRequest(), request: Request = None):
                 INSERT INTO api_keys (key_hash, key_prefix, company_name, contact_email, tier)
                 VALUES (:h, :p, :company, :email, 'free')
             """),
-            {"h": key_hash, "p": key_prefix, "company": company or "anonymous", "email": email},
+            {"h": key_hash, "p": key_prefix, "company": company or "anonymous", "email": email or ""},
         )
         session.commit()
 
