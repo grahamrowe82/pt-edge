@@ -683,6 +683,9 @@ def generate_robots(base_url, base_path, out_dir):
         f"# Docs: https://pt-edge.onrender.com/api/docs\n"
         f"# Get a key: POST https://pt-edge.onrender.com/api/v1/keys (no auth required, no email required)\n"
         f"# OpenAPI spec: https://pt-edge.onrender.com/api/v1/openapi.json\n"
+        f"\n"
+        f"# Atom feed for deep dive insights\n"
+        f"# Feed: {base_url}/insights/feed.atom\n"
     )
     write_file(os.path.join(out_dir, "robots.txt"), content)
 
