@@ -11,6 +11,10 @@ On startup, checks whether today's run has already completed. If not,
 runs immediately before entering the normal sleep loop. This makes the
 worker self-healing after crashes and allows manual triggering via a
 service restart.
+
+Auto-deploy is disabled (render.yaml) so code pushes don't interrupt
+running jobs. After each successful ingest, the worker triggers its own
+redeploy via the Render API to pick up any code changes from the day.
 """
 import logging
 import os
@@ -29,6 +33,7 @@ logger = logging.getLogger("ingest_worker")
 TARGET_HOUR_UTC = 6  # 6:00 AM UTC
 HEARTBEAT_INTERVAL = 1800  # log every 30 minutes while sleeping
 SCRIPT = str(Path(__file__).parent / "ingest_all.py")
+SERVICE_ID = "srv-d77c6s14tr6s739h798g"
 
 
 def seconds_until_next_run() -> float:
@@ -86,6 +91,33 @@ def run_ingest():
         logger.error(
             f"Ingest failed with exit code {result.returncode} ({elapsed:.0f}s)"
         )
+    return result.returncode == 0
+
+
+def trigger_self_deploy():
+    """Trigger a redeploy of this worker to pick up code changes from main."""
+    api_key = os.environ.get("RENDER_API_KEY", "")
+    if not api_key:
+        logger.info("No RENDER_API_KEY — skipping self-deploy")
+        return
+
+    import urllib.request
+    import json
+
+    url = f"https://api.render.com/v1/services/{SERVICE_ID}/deploys"
+    data = json.dumps({"clearCache": "do_not_clear"}).encode()
+    req = urllib.request.Request(
+        url, data=data, method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            logger.info(f"Self-deploy triggered ({resp.status})")
+    except Exception as e:
+        logger.warning(f"Self-deploy failed (non-fatal): {e}")
 
 
 def main_loop():
@@ -111,7 +143,11 @@ def main_loop():
             if wait > 0:
                 logger.info(f"Worker alive — {wait / 3600:.1f}h until next run")
 
-        run_ingest()
+        success = run_ingest()
+
+        # After a successful run, redeploy to pick up any code changes
+        if success:
+            trigger_self_deploy()
 
 
 if __name__ == "__main__":
