@@ -69,7 +69,7 @@ HTML_PAGE = """\
 <section id="agents" class="bg-gray-50 border border-gray-200 rounded-lg p-6">
   <h2 class="text-lg font-semibold mb-2">Open by default</h2>
   <p class="text-sm text-gray-700 mb-3">Every endpoint works without authentication. No signup, no API key, just call it. Keys are optional and only increase your rate limit.</p>
-  <pre class="bg-white border border-gray-200 rounded p-3 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/trending?limit=5"</pre>
+  <pre class="bg-white border border-gray-200 rounded p-3 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/quality?domain=agents&amp;subcategory=autonomous-research-labs"</pre>
   <p class="mt-2 text-xs text-gray-500">Works right now. 50 requests/day without a key. <a href="/api/v1/openapi.json" class="text-blue-600 underline">OpenAPI spec</a> &middot; <a href="/.well-known/ai-plugin.json" class="text-blue-600 underline">AI plugin manifest</a></p>
 </section>
 
