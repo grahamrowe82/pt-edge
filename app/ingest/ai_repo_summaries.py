@@ -1,13 +1,14 @@
-"""Generate AI summaries for ai_repos by fetching README + calling Haiku.
+"""Generate practitioner-focused problem briefs for ai_repos.
 
-Produces a 2-3 sentence qualitative description of what the project does,
-its key features, and what it integrates with. The summary is stored in
-ai_repos.ai_summary and displayed on directory pages alongside live metrics.
+Produces a problem brief (summary, use_this_if, not_ideal_if, domain_tags)
+written for the person who has the problem — scientists, marketers, traders,
+HR managers — not developers. Also caches the README text for future
+enrichment passes without re-fetching from GitHub.
 
-Processes repos in descending quality_score order. Skips repos with empty
-or unhelpful READMEs.
+Processes repos prioritised by allocation budget. Uses cached README when
+available (re-fetches if cache is >90 days old).
 
-Run standalone:  python -m app.ingest.ai_repo_summaries [--limit 200] [--min-score 30]
+Run standalone:  python -m app.ingest.ai_repo_summaries [--limit 200] [--min-score 0]
 """
 import asyncio
 import argparse
@@ -20,33 +21,44 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine
-from app.ingest.llm import call_haiku_text
+from app.ingest.llm import call_haiku
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
 MAX_PER_RUN = 2000
-MIN_QUALITY_SCORE = 30
+MIN_QUALITY_SCORE = 0
 README_MAX_CHARS = 8000
 MIN_README_LENGTH = 100  # skip READMEs shorter than this
+README_CACHE_DAYS = 90  # re-fetch README if cache is older than this
 
-SUMMARY_PROMPT = """\
-You are writing a technical summary of an open-source project for a developer directory.
+PROBLEM_BRIEF_PROMPT = """\
+You are writing a short problem brief for an open-source project. Your audience is NOT a developer — \
+it's the person who has the problem this project solves. That might be a scientist, a marketer, \
+a trader, an HR manager, a teacher, an operations engineer — whoever benefits from this existing.
 
-The project's one-line GitHub description is already shown on the page:
-"{description}"
+From the README below, produce a JSON object with these fields:
 
-Your job is to go DEEPER than that description. From the README, write 2-3 sentences covering:
-- Key features or capabilities the description doesn't mention
-- How it works — the architecture, approach, or key technology choices
-- What it integrates with, or what ecosystem/framework it targets
+1. "summary": 2-3 sentences covering:
+   - What real-world task or workflow this helps with, in plain language
+   - What goes in and what comes out (in terms the practitioner understands, not API terms)
+   - Who would use this — the actual end-user persona, not "Python developers"
+
+2. "use_this_if": One sentence starting with "Use this if..." describing the ideal use case
+
+3. "not_ideal_if": One sentence starting with "Not ideal if..." describing when to look elsewhere
+
+4. "domain_tags": 3-5 tags in the vocabulary of the end user, NOT the developer. \
+   Use job/field/workflow terms like "spectroscopy", "competitor-analysis", "portfolio-backtesting", \
+   "resume-screening" — not technology terms like "contrastive-learning", "multi-agent", "transformer".
 
 Rules:
-- Do NOT repeat or paraphrase the GitHub description — it's already visible
-- Be specific and technical ("uses stdio transport with automatic reconnection") not vague ("easy to use")
-- Don't mention stars, downloads, or popularity — those are shown separately
-- Don't start with "This project..." or the project name — start with the substance
-- Maximum 3 sentences, ~50-80 words total
+- Write for the person who has the problem, in their language
+- Be specific and concrete — name the domain, the data type, the workflow
+- If this is genuinely a developer tool (library, SDK, infrastructure), then the developer IS the end user — write in their language
+- Don't mention GitHub stars, scores, or popularity
+- Don't start with "This project..." — start with the substance
+- Maximum 80 words for the summary
 
 Project: {full_name}
 GitHub description: {description}
@@ -94,7 +106,7 @@ async def fetch_readme(client: httpx.AsyncClient, full_name: str) -> str | None:
 
 
 def _find_candidates(limit: int, min_score: int):
-    """Find repos needing summaries, prioritised by allocation budget."""
+    """Find repos needing problem briefs, prioritised by allocation budget."""
     with engine.connect() as conn:
         # Check if allocation budget is available
         has_budget = conn.execute(text(
@@ -111,6 +123,7 @@ def _find_candidates(limit: int, min_score: int):
                 ranked AS (
                     SELECT ar.id, ar.full_name, ar.description,
                            ar.domain, ar.subcategory,
+                           ar.readme_cache, ar.readme_cached_at,
                            ROW_NUMBER() OVER (
                                PARTITION BY ar.domain, ar.subcategory
                                ORDER BY ar.stars DESC NULLS LAST
@@ -118,11 +131,12 @@ def _find_candidates(limit: int, min_score: int):
                     FROM ai_repos ar
                     JOIN budget b ON ar.domain = b.domain
                                  AND ar.subcategory = b.subcategory
-                    WHERE ar.ai_summary IS NULL
+                    WHERE ar.problem_domains IS NULL
                       AND ar.description IS NOT NULL
                       AND ar.description <> ''
                 )
-                SELECT r.id, r.full_name, r.description
+                SELECT r.id, r.full_name, r.description,
+                       r.readme_cache, r.readme_cached_at
                 FROM ranked r
                 JOIN budget b ON r.domain = b.domain
                              AND r.subcategory = b.subcategory
@@ -132,7 +146,8 @@ def _find_candidates(limit: int, min_score: int):
         else:
             # Fallback: original behaviour
             rows = conn.execute(text("""
-                SELECT ar.id, ar.full_name, ar.description
+                SELECT ar.id, ar.full_name, ar.description,
+                       ar.readme_cache, ar.readme_cached_at
                 FROM ai_repos ar
                 JOIN (
                     SELECT id, quality_score FROM mv_mcp_quality
@@ -145,7 +160,7 @@ def _find_candidates(limit: int, min_score: int):
                     UNION ALL SELECT id, quality_score FROM mv_embeddings_quality
                     UNION ALL SELECT id, quality_score FROM mv_prompt_eng_quality
                 ) q ON ar.id = q.id
-                WHERE ar.ai_summary IS NULL
+                WHERE ar.problem_domains IS NULL
                   AND q.quality_score >= :min_score
                 ORDER BY q.quality_score DESC
                 LIMIT :limit
@@ -155,13 +170,36 @@ def _find_candidates(limit: int, min_score: int):
     return [dict(r._mapping) for r in rows]
 
 
-def _save_summary(repo_id: int, summary: str):
+def _save_readme_cache(repo_id: int, readme: str):
+    """Cache the README text for future enrichment passes."""
     with engine.connect() as conn:
         conn.execute(text("""
             UPDATE ai_repos
-            SET ai_summary = :summary, ai_summary_at = NOW()
+            SET readme_cache = :readme, readme_cached_at = NOW()
             WHERE id = :id
-        """), {"summary": summary, "id": repo_id})
+        """), {"readme": readme, "id": repo_id})
+        conn.commit()
+
+
+def _save_problem_brief(repo_id: int, summary: str, use_this_if: str,
+                        not_ideal_if: str, domain_tags: list[str]):
+    """Save the problem brief fields to ai_repos."""
+    with engine.connect() as conn:
+        conn.execute(text("""
+            UPDATE ai_repos
+            SET ai_summary = :summary,
+                use_this_if = :use_this_if,
+                not_ideal_if = :not_ideal_if,
+                problem_domains = :domain_tags,
+                ai_summary_at = NOW()
+            WHERE id = :id
+        """), {
+            "summary": summary,
+            "use_this_if": use_this_if,
+            "not_ideal_if": not_ideal_if,
+            "domain_tags": domain_tags,
+            "id": repo_id,
+        })
         conn.commit()
 
 
@@ -176,19 +214,31 @@ def _mark_skipped(repo_id: int):
         conn.commit()
 
 
+def _readme_cache_fresh(repo: dict) -> bool:
+    """Check if the cached README is fresh enough to use."""
+    if not repo.get("readme_cache"):
+        return False
+    cached_at = repo.get("readme_cached_at")
+    if not cached_at:
+        return False
+    age_days = (datetime.now(timezone.utc) - cached_at).days
+    return age_days < README_CACHE_DAYS
+
+
 async def generate_ai_summaries(
     limit: int = MAX_PER_RUN,
     min_score: int = MIN_QUALITY_SCORE,
 ) -> dict:
-    """Fetch READMEs and generate AI summaries for top repos missing them."""
+    """Fetch READMEs and generate problem briefs for repos missing them."""
     candidates = _find_candidates(limit, min_score)
     if not candidates:
-        return {"processed": 0, "generated": 0, "skipped": 0}
+        return {"processed": 0, "generated": 0, "skipped": 0, "cache_hits": 0}
 
-    logger.info(f"Generating AI summaries for {len(candidates)} repos (min_score={min_score})")
+    logger.info(f"Generating problem briefs for {len(candidates)} repos (min_score={min_score})")
 
     generated = 0
     skipped = 0
+    cache_hits = 0
     sem = asyncio.Semaphore(5)  # max 5 concurrent GitHub fetches
 
     # Pre-flight: check GitHub API before fetching thousands of READMEs
@@ -213,41 +263,62 @@ async def generate_ai_summaries(
 
     async with httpx.AsyncClient(timeout=30) as client:
         for i, repo in enumerate(candidates):
-            # Fetch README with concurrency limit
-            async with sem:
-                readme = await fetch_readme(client, repo["full_name"])
-                await asyncio.sleep(0.2)  # respect GitHub rate limits
+            # Use cached README if fresh, otherwise fetch from GitHub
+            if _readme_cache_fresh(repo):
+                readme = repo["readme_cache"]
+                cache_hits += 1
+            else:
+                async with sem:
+                    readme = await fetch_readme(client, repo["full_name"])
+                    await asyncio.sleep(0.2)  # respect GitHub rate limits
+
+                if readme:
+                    _save_readme_cache(repo["id"], readme)
 
             if not readme:
                 _mark_skipped(repo["id"])
                 skipped += 1
                 continue
 
-            # Generate summary via Haiku
-            prompt = SUMMARY_PROMPT.format(
+            # Generate problem brief via Gemini
+            prompt = PROBLEM_BRIEF_PROMPT.format(
                 full_name=repo["full_name"],
                 description=repo["description"] or "No description provided",
                 readme_text=readme,
             )
-            summary = await call_haiku_text(prompt, max_tokens=200)
+            result = await call_haiku(prompt, max_tokens=400)
 
-            if summary and len(summary) > 20:
-                _save_summary(repo["id"], summary)
+            if result and isinstance(result, dict) and result.get("summary"):
+                _save_problem_brief(
+                    repo["id"],
+                    summary=result["summary"],
+                    use_this_if=result.get("use_this_if", ""),
+                    not_ideal_if=result.get("not_ideal_if", ""),
+                    domain_tags=result.get("domain_tags", []),
+                )
                 generated += 1
             else:
                 _mark_skipped(repo["id"])
                 skipped += 1
 
             if (i + 1) % 50 == 0:
-                logger.info(f"  {i + 1}/{len(candidates)} processed ({generated} generated, {skipped} skipped)")
+                logger.info(
+                    f"  {i + 1}/{len(candidates)} processed "
+                    f"({generated} generated, {skipped} skipped, {cache_hits} cache hits)"
+                )
 
-    result = {"processed": len(candidates), "generated": generated, "skipped": skipped}
-    logger.info(f"AI summaries: {result}")
+    result = {
+        "processed": len(candidates),
+        "generated": generated,
+        "skipped": skipped,
+        "cache_hits": cache_hits,
+    }
+    logger.info(f"Problem briefs: {result}")
     return result
 
 
 async def _main():
-    parser = argparse.ArgumentParser(description="Generate AI summaries for repos")
+    parser = argparse.ArgumentParser(description="Generate problem briefs for repos")
     parser.add_argument("--limit", type=int, default=MAX_PER_RUN)
     parser.add_argument("--min-score", type=int, default=MIN_QUALITY_SCORE)
     args = parser.parse_args()
