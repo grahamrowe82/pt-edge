@@ -492,21 +492,31 @@ async def generate_domain_briefs() -> dict:
 
 
 REPO_BRIEF_PROMPT = """\
-You are an AI infrastructure analyst writing intelligence briefs for
-a directory site that ranks open-source AI tools by quality.
+You are a technology consultant advising people on whether to depend on \
+open-source projects. Your readers are scientists, business managers, and \
+engineers — not developers. Be direct and decisive, no hedging.
 
-Write a brief for each repository below. Each brief must:
-1. Lead with the most interesting metric or trend
-2. Make concrete claims with specific numbers
-3. Flag noteworthy signals: adoption, momentum, or lack thereof
+For each repository below, assess:
+1. **Dependability**: Active development? Broad adoption? Organisation or solo maintainer?
+2. **Maturity signal**: One of: "Production-ready" (active, widely adopted, packaged), \
+"Mature and stable" (established, reliable), "Research-grade" (solid for research, \
+not production), "Early-stage" (promising, unproven), or "Stalled" (inactive, abandonment risk)
 
 Output format — return valid JSON only:
-[{{"id": <repo_id>, "title": "<headline claim, max 120 chars>", "summary": "<2-3 sentences of grounded analysis>", "evidence": [{{"type": "project", "slug": "<full_name>", "metric": "<metric_name>", "value": <number>, "as_of": "{today}"}}]}}]
+[{{"id": <repo_id>, "title": "<adoption signal + key fact, max 120 chars>", "summary": "<2 sentences, max 50 words. State facts, not speculation. Be direct.>", "evidence": [{{"type": "project", "slug": "<full_name>", "metric": "<metric_name>", "value": <number>, "as_of": "{today}"}}]}}]
 
 Rules:
-- Title must include at least one specific number
-- Summary must contain at least 2 concrete numbers
-- Do NOT describe what the repo does — focus on what is HAPPENING
+- Interpret the quality scores for a non-technical reader — don't repeat the numbers
+- The quality score (0-100) synthesises maintenance, adoption, maturity, and community
+- A high adoption score with low maintenance means "widely used but development is slowing"
+- 0 commits in 30 days does NOT mean stalled — many stable projects release infrequently. \
+Check last_commit date: if within 6 months, it's active or stable, not stalled
+- "Stalled" only when last commit is >1 year ago AND adoption is low
+- 0 downloads may mean untracked, not unused — check stars and forks
+- A project created years ago with steady stars is more dependable than a recent one
+- Research paper implementations are valuable for research even with few stars
+- Title must include the maturity signal and one specific number
+- Do NOT describe what the project does — that's covered elsewhere on the page
 - Evidence array must include every metric cited
 
 Repositories:
@@ -547,7 +557,8 @@ async def generate_repo_briefs() -> dict:
                        COALESCE(ar.downloads_monthly, 0) AS monthly_downloads,
                        COALESCE(ar.forks, 0) AS forks,
                        COALESCE(ar.commits_30d, 0) AS commits_30d,
-                       ar.description,
+                       ar.description, ar.license,
+                       ar.last_pushed_at, ar.created_at,
                        ROW_NUMBER() OVER (
                            PARTITION BY ar.domain, ar.subcategory
                            ORDER BY ar.stars DESC NULLS LAST
@@ -559,7 +570,8 @@ async def generate_repo_briefs() -> dict:
                   AND ar.description IS NOT NULL AND ar.description <> ''
             )
             SELECT r.id, r.full_name, r.name, r.domain, r.subcategory,
-                   r.stars, r.monthly_downloads, r.forks, r.commits_30d, r.description
+                   r.stars, r.monthly_downloads, r.forks, r.commits_30d,
+                   r.description, r.license, r.last_pushed_at, r.created_at
             FROM ranked r
             JOIN budget b ON r.domain = b.domain AND r.subcategory = b.subcategory
             WHERE r.rn <= b.row_limit
@@ -571,8 +583,55 @@ async def generate_repo_briefs() -> dict:
 
     logger.info(f"Generating repo briefs for {len(rows)} repos")
 
-    # Batch into groups of BATCH_SIZE
+    # Fetch quality scores for selected repos.
+    # Each repo lives in exactly one domain-specific quality view.
+    # Query each view separately to avoid a brittle 18-way UNION ALL.
     all_rows = [dict(r._mapping) for r in rows]
+    repo_ids = [r["id"] for r in all_rows]
+
+    DOMAIN_VIEW_MAP = {
+        "mcp": "mv_mcp_quality", "agents": "mv_agents_quality",
+        "rag": "mv_rag_quality", "ai-coding": "mv_ai_coding_quality",
+        "voice-ai": "mv_voice_ai_quality", "diffusion": "mv_diffusion_quality",
+        "vector-db": "mv_vector_db_quality", "embeddings": "mv_embeddings_quality",
+        "prompt-engineering": "mv_prompt_eng_quality",
+        "ml-frameworks": "mv_ml_frameworks_quality",
+        "llm-tools": "mv_llm_tools_quality", "nlp": "mv_nlp_quality",
+        "transformers": "mv_transformers_quality",
+        "generative-ai": "mv_generative_ai_quality",
+        "computer-vision": "mv_computer_vision_quality",
+        "data-engineering": "mv_data_engineering_quality",
+        "mlops": "mv_mlops_quality", "perception": "mv_perception_quality",
+    }
+
+    # Group repo IDs by domain, query each view once
+    quality_scores = {}  # repo_id -> {quality_score, maintenance_score, ...}
+    domains_needed = set(r["domain"] for r in all_rows)
+    with engine.connect() as conn:
+        for domain in domains_needed:
+            view = DOMAIN_VIEW_MAP.get(domain)
+            if not view:
+                continue
+            domain_ids = [r["id"] for r in all_rows if r["domain"] == domain]
+            if not domain_ids:
+                continue
+            qrows = conn.execute(text(f"""
+                SELECT id, quality_score, maintenance_score, adoption_score,
+                       maturity_score, community_score
+                FROM {view} WHERE id = ANY(:ids)
+            """), {"ids": domain_ids}).fetchall()
+            for qr in qrows:
+                qm = qr._mapping
+                quality_scores[qm["id"]] = dict(qm)
+
+    # Merge quality scores into rows
+    for r in all_rows:
+        qs = quality_scores.get(r["id"], {})
+        r["quality_score"] = qs.get("quality_score", 0)
+        r["maintenance_score"] = qs.get("maintenance_score", 0)
+        r["adoption_score"] = qs.get("adoption_score", 0)
+        r["maturity_score"] = qs.get("maturity_score", 0)
+        r["community_score"] = qs.get("community_score", 0)
     batches = [all_rows[i:i + BATCH_SIZE] for i in range(0, len(all_rows), BATCH_SIZE)]
     total_generated = 0
     errors = 0
@@ -581,10 +640,20 @@ async def generate_repo_briefs() -> dict:
         # Format repo lines
         lines = []
         for r in batch:
+            last_push = str(r.get('last_pushed_at') or 'unknown')[:10]
+            created = str(r.get('created_at') or 'unknown')[:10]
+            qs = r.get('quality_score') or 0
+            ms = r.get('maintenance_score') or 0
+            ads = r.get('adoption_score') or 0
+            mats = r.get('maturity_score') or 0
+            cs = r.get('community_score') or 0
             lines.append(
                 f"{r['id']} | {r['full_name']} | {r.get('domain', 'n/a')} | "
                 f"★{r['stars']} | ↓{r['monthly_downloads']} | "
                 f"forks:{r['forks']} | commits_30d:{r['commits_30d']} | "
+                f"created:{created} | last_commit:{last_push} | "
+                f"license:{r.get('license') or 'none'} | "
+                f"quality:{qs}/100 (maint:{ms}/25 adopt:{ads}/25 mature:{mats}/25 community:{cs}/25) | "
                 f"{(r.get('description') or '')[:100]}"
             )
         repos_text = "\n".join(lines)

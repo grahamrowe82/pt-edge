@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 
 # Base row counts at multiplier=1.0 — matches current hardcoded limits
 BASE_CONTENT_ROWS = {
-    "ai_repo_summaries": 2000,
-    "comparison_sentences": 2000,
-    "repo_briefs": 100,
+    "ai_repo_summaries": 8000,
+    "comparison_sentences": 4000,
+    "repo_briefs": 2000,
 }
 
 

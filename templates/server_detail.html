@@ -25,6 +25,7 @@
   "codeRepository": "https://github.com/{{ server.full_name }}",
   {% if server.language %}"programmingLanguage": "{{ server.language }}",{% endif %}
   {% if server.license %}"license": "{{ server.license }}",{% endif %}
+  {% if server.problem_domains %}"keywords": {{ server.problem_domains | tojson }},{% endif %}
   "review": {
     "@type": "Review",
     "author": {"@type": "Organization", "name": "PT-Edge"},
@@ -82,6 +83,31 @@
       {% if server.ai_summary %}<p>{{ server.ai_summary }}</p>{% endif %}
       {% set metrics = metrics_paragraph(server) %}
       {% if metrics %}<p class="{% if server.ai_summary %}mt-2 {% endif %}text-sm text-gray-500">{{ metrics }}</p>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if server.use_this_if or server.not_ideal_if %}
+  <div class="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
+    {% if server.use_this_if %}
+    <div class="rounded-lg border border-green-200 bg-green-50 p-3">
+      <p class="text-sm text-green-800">{{ server.use_this_if }}</p>
+    </div>
+    {% endif %}
+    {% if server.not_ideal_if %}
+    <div class="rounded-lg border border-amber-200 bg-amber-50 p-3">
+      <p class="text-sm text-amber-800">{{ server.not_ideal_if }}</p>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if server.problem_domains and server.problem_domains | length > 0 %}
+  <div class="mb-6">
+    <div class="flex flex-wrap gap-2">
+      {% for tag in server.problem_domains %}
+      <span class="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{{ tag }}</span>
+      {% endfor %}
     </div>
   </div>
   {% endif %}
