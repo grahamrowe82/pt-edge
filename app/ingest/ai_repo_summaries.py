@@ -170,36 +170,41 @@ def _find_candidates(limit: int, min_score: int):
     return [dict(r._mapping) for r in rows]
 
 
-def _save_readme_cache(repo_id: int, readme: str):
-    """Cache the README text for future enrichment passes."""
-    with engine.connect() as conn:
-        conn.execute(text("""
-            UPDATE ai_repos
-            SET readme_cache = :readme, readme_cached_at = NOW()
-            WHERE id = :id
-        """), {"readme": readme, "id": repo_id})
-        conn.commit()
-
-
 def _save_problem_brief(repo_id: int, summary: str, use_this_if: str,
-                        not_ideal_if: str, domain_tags: list[str]):
-    """Save the problem brief fields to ai_repos."""
+                        not_ideal_if: str, domain_tags: list[str],
+                        readme: str | None = None):
+    """Save problem brief + optional README cache in a single transaction."""
     with engine.connect() as conn:
-        conn.execute(text("""
-            UPDATE ai_repos
-            SET ai_summary = :summary,
-                use_this_if = :use_this_if,
-                not_ideal_if = :not_ideal_if,
-                problem_domains = :domain_tags,
-                ai_summary_at = NOW()
-            WHERE id = :id
-        """), {
-            "summary": summary,
-            "use_this_if": use_this_if,
-            "not_ideal_if": not_ideal_if,
-            "domain_tags": domain_tags,
-            "id": repo_id,
-        })
+        if readme:
+            conn.execute(text("""
+                UPDATE ai_repos
+                SET ai_summary = :summary,
+                    use_this_if = :use_this_if,
+                    not_ideal_if = :not_ideal_if,
+                    problem_domains = :domain_tags,
+                    ai_summary_at = NOW(),
+                    readme_cache = :readme,
+                    readme_cached_at = NOW()
+                WHERE id = :id
+            """), {
+                "summary": summary, "use_this_if": use_this_if,
+                "not_ideal_if": not_ideal_if, "domain_tags": domain_tags,
+                "readme": readme, "id": repo_id,
+            })
+        else:
+            conn.execute(text("""
+                UPDATE ai_repos
+                SET ai_summary = :summary,
+                    use_this_if = :use_this_if,
+                    not_ideal_if = :not_ideal_if,
+                    problem_domains = :domain_tags,
+                    ai_summary_at = NOW()
+                WHERE id = :id
+            """), {
+                "summary": summary, "use_this_if": use_this_if,
+                "not_ideal_if": not_ideal_if, "domain_tags": domain_tags,
+                "id": repo_id,
+            })
         conn.commit()
 
 
@@ -264,6 +269,7 @@ async def generate_ai_summaries(
     async with httpx.AsyncClient(timeout=30) as client:
         for i, repo in enumerate(candidates):
             # Use cached README if fresh, otherwise fetch from GitHub
+            fetched_readme = None
             if _readme_cache_fresh(repo):
                 readme = repo["readme_cache"]
                 cache_hits += 1
@@ -271,9 +277,7 @@ async def generate_ai_summaries(
                 async with sem:
                     readme = await fetch_readme(client, repo["full_name"])
                     await asyncio.sleep(0.2)  # respect GitHub rate limits
-
-                if readme:
-                    _save_readme_cache(repo["id"], readme)
+                fetched_readme = readme  # save to cache in the same transaction
 
             if not readme:
                 _mark_skipped(repo["id"])
@@ -295,6 +299,7 @@ async def generate_ai_summaries(
                     use_this_if=result.get("use_this_if", ""),
                     not_ideal_if=result.get("not_ideal_if", ""),
                     domain_tags=result.get("domain_tags", []),
+                    readme=fetched_readme,  # cache in same transaction
                 )
                 generated += 1
             else:
