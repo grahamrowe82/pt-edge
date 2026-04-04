@@ -164,7 +164,7 @@ async def ingest_v2ex() -> dict:
                     title = t.get("title", "")
                     content = t.get("content", "")
                     is_relevant = _matches_broad_filter(title, content)
-                    if not is_relevant and settings.ANTHROPIC_API_KEY:
+                    if not is_relevant and settings.GEMINI_API_KEY:
                         is_relevant = await _llm_ai_filter(title, content)
                     if is_relevant:
                         row = _build_row(t, projects, lab_slug_to_id)

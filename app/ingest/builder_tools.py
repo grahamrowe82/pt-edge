@@ -308,7 +308,7 @@ async def _llm_match_mcp_repos(
     all_mcp: list[dict],
 ) -> dict[int, dict]:
     """Use LLM to match tools to MCP repos. Returns {tool_id: matched_repo}."""
-    if not settings.ANTHROPIC_API_KEY or not unmatched_tools:
+    if not settings.GEMINI_API_KEY or not unmatched_tools:
         return {}
 
     # Build repo name list (top 500 by stars, already sorted)

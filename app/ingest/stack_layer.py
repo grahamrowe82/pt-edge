@@ -51,8 +51,8 @@ Projects:
 
 async def classify_stack_layers(limit: int = 1000) -> dict:
     """Use LLM to classify projects by stack layer."""
-    if not settings.ANTHROPIC_API_KEY:
-        logger.info("No ANTHROPIC_API_KEY — skipping stack layer classification")
+    if not settings.GEMINI_API_KEY:
+        logger.info("No GEMINI_API_KEY — skipping stack layer classification")
         return {"classified": 0, "skipped": "no API key"}
 
     started_at = datetime.now(timezone.utc)
@@ -220,8 +220,8 @@ Projects:
 
 async def classify_project_domains(limit: int = 500) -> dict:
     """Use LLM to classify domain for projects without one (unlinked to ai_repos)."""
-    if not settings.ANTHROPIC_API_KEY:
-        logger.info("No ANTHROPIC_API_KEY — skipping domain classification")
+    if not settings.GEMINI_API_KEY:
+        logger.info("No GEMINI_API_KEY — skipping domain classification")
         return {"classified": 0, "skipped": "no API key"}
 
     started_at = datetime.now(timezone.utc)

@@ -303,8 +303,8 @@ Repos:
 
 async def classify_subcategory_llm(limit: int = 7500) -> dict:
     """Use LLM to classify repos that regex didn't match, across all supported domains."""
-    if not settings.ANTHROPIC_API_KEY:
-        logger.info("No ANTHROPIC_API_KEY — skipping LLM subcategory classification")
+    if not settings.GEMINI_API_KEY:
+        logger.info("No GEMINI_API_KEY — skipping LLM subcategory classification")
         return {"classified": 0, "skipped": "no API key"}
 
     started_at = datetime.now(timezone.utc)

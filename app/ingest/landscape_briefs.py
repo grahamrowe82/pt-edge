@@ -81,8 +81,8 @@ Return valid JSON:
 
 async def generate_landscape_briefs() -> dict:
     """Generate LLM landscape briefs for each ecosystem layer."""
-    if not settings.ANTHROPIC_API_KEY:
-        logger.info("No ANTHROPIC_API_KEY — skipping landscape briefs")
+    if not settings.GEMINI_API_KEY:
+        logger.info("No GEMINI_API_KEY — skipping landscape briefs")
         return {"generated": 0, "skipped": "no API key"}
 
     started_at = datetime.now(timezone.utc)

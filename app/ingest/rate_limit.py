@@ -38,3 +38,4 @@ class RateLimiter:
 
 ANTHROPIC_LIMITER = RateLimiter(rpm=settings.ANTHROPIC_RPM)
 OPENAI_LIMITER = RateLimiter(rpm=settings.OPENAI_RPM)
+GEMINI_LIMITER = RateLimiter(rpm=settings.GEMINI_RPM)
