@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.mcp.server import mount_mcp
 from app.api.routes import router as api_router, APIUsageMiddleware
+from app.middleware.access_log import AccessLogMiddleware
 from app.api.docs_page import router as docs_router
 from app.api.keys import router as keys_router
 from app.api.signup_page import SIGNUP_HTML
@@ -39,6 +40,7 @@ app.include_router(api_router)
 app.include_router(docs_router)
 app.include_router(keys_router)
 app.add_middleware(APIUsageMiddleware)
+app.add_middleware(AccessLogMiddleware)
 
 
 @app.get("/api/signup", response_class=HTMLResponse)
