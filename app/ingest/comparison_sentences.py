@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 
 from app.db import engine, readonly_engine
-from app.ingest.llm import call_haiku_text
+from app.ingest.llm import call_llm_text
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ async def generate_comparison_sentences(limit=MAX_PER_RUN):
             downloads_b=c["b_downloads"] or 0,
         )
 
-        sentence = await call_haiku_text(prompt, max_tokens=150)
+        sentence = await call_llm_text(prompt, max_tokens=150)
 
         if sentence and len(sentence) > 20:
             with engine.connect() as conn:

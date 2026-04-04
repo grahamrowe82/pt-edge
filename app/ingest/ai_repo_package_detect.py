@@ -64,10 +64,10 @@ Repos:
 
 async def _call_llm(repos_text: str) -> list[dict] | None:
     """Call LLM to predict package names for a batch of repos."""
-    from app.ingest.llm import call_haiku
+    from app.ingest.llm import call_llm
 
     prompt = DETECT_PROMPT.format(repos_text=repos_text)
-    return await call_haiku(prompt, max_tokens=2048)
+    return await call_llm(prompt, max_tokens=2048)
 
 
 async def _verify_and_fetch(

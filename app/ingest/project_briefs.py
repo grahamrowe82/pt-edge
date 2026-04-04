@@ -17,7 +17,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.ingest.llm import call_haiku
+from app.ingest.llm import call_llm
 from app.models import SyncLog
 from app.settings import settings
 
@@ -319,7 +319,7 @@ async def generate_project_briefs(limit: int = 500) -> dict:
             today=today,
         )
 
-        predictions = await call_haiku(prompt, max_tokens=4096)
+        predictions = await call_llm(prompt, max_tokens=4096)
         if not predictions:
             logger.warning(f"Batch {batch_idx + 1}/{len(batches)}: LLM returned no results")
             errors += 1
@@ -439,7 +439,7 @@ async def generate_domain_briefs() -> dict:
             today=today,
         )
 
-        result = await call_haiku(prompt, max_tokens=2048)
+        result = await call_llm(prompt, max_tokens=2048)
         if not result or not isinstance(result, dict):
             logger.warning(f"Domain brief for '{domain}': LLM returned no valid result")
             errors += 1
@@ -659,7 +659,7 @@ async def generate_repo_briefs() -> dict:
         repos_text = "\n".join(lines)
         prompt = REPO_BRIEF_PROMPT.format(repos_text=repos_text, today=today)
 
-        result = await call_haiku(prompt, max_tokens=4096)
+        result = await call_llm(prompt, max_tokens=4096)
         if not result or not isinstance(result, list):
             logger.warning(f"Batch {batch_idx + 1}/{len(batches)}: LLM returned no results")
             errors += 1

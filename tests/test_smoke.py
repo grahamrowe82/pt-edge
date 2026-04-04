@@ -879,13 +879,13 @@ class TestRateLimiter:
     """RateLimiter enforces minimum interval between calls."""
 
     def test_import(self):
-        from app.ingest.rate_limit import RateLimiter, ANTHROPIC_LIMITER, OPENAI_LIMITER
-        assert isinstance(ANTHROPIC_LIMITER, RateLimiter)
+        from app.ingest.rate_limit import RateLimiter, GEMINI_LIMITER, OPENAI_LIMITER
+        assert isinstance(GEMINI_LIMITER, RateLimiter)
         assert isinstance(OPENAI_LIMITER, RateLimiter)
 
     def test_rpm_setting(self):
-        from app.ingest.rate_limit import ANTHROPIC_LIMITER, OPENAI_LIMITER
-        assert ANTHROPIC_LIMITER.rpm == 120
+        from app.ingest.rate_limit import GEMINI_LIMITER, OPENAI_LIMITER
+        assert GEMINI_LIMITER.rpm == 800
         assert OPENAI_LIMITER.rpm == 400
 
     def test_interval_calculation(self):
@@ -1062,7 +1062,7 @@ def test_rate_limiter_in_package_detect():
     import inspect
     from app.ingest import ai_repo_package_detect
     source = inspect.getsource(ai_repo_package_detect)
-    assert "call_haiku" in source
+    assert "call_llm" in source
 
 
 def test_rate_limiter_in_newsletters():
@@ -1070,7 +1070,7 @@ def test_rate_limiter_in_newsletters():
     import inspect
     from app.ingest import newsletters
     source = inspect.getsource(newsletters)
-    assert "call_haiku" in source
+    assert "call_llm" in source
 
 
 def test_rate_limiter_in_releases():
@@ -1078,7 +1078,7 @@ def test_rate_limiter_in_releases():
     import inspect
     from app.ingest import releases
     source = inspect.getsource(releases)
-    assert "call_haiku" in source
+    assert "call_llm" in source
 
 
 def test_rate_limiter_in_embeddings():
@@ -1110,9 +1110,9 @@ def test_runner_pipeline_order():
 
 def test_llm_helper_import():
     """Shared LLM helper imports without crashing."""
-    from app.ingest.llm import call_haiku, call_haiku_text
-    assert callable(call_haiku)
-    assert callable(call_haiku_text)
+    from app.ingest.llm import call_llm, call_llm_text
+    assert callable(call_llm)
+    assert callable(call_llm_text)
 
 
 def test_llm_helper_uses_rate_limiter():
@@ -1138,12 +1138,12 @@ def test_subcategory_llm_in_runner():
     assert "classify_subcategory_llm" in source
 
 
-def test_subcategory_llm_uses_call_haiku():
+def test_subcategory_llm_uses_call_llm():
     """LLM subcategory classification uses shared LLM helper."""
     import inspect
     from app.ingest import ai_repo_subcategory
     source = inspect.getsource(ai_repo_subcategory)
-    assert "call_haiku" in source
+    assert "call_llm" in source
 
 
 def test_hn_llm_match_import():
@@ -1161,12 +1161,12 @@ def test_hn_llm_match_in_runner():
     assert "match_hn_posts_llm" in source
 
 
-def test_hn_llm_match_uses_call_haiku():
+def test_hn_llm_match_uses_call_llm():
     """HN LLM matching uses shared LLM helper."""
     import inspect
     from app.ingest import hn_llm_match
     source = inspect.getsource(hn_llm_match)
-    assert "call_haiku" in source
+    assert "call_llm" in source
 
 
 def test_candidate_category_llm():
@@ -1174,7 +1174,7 @@ def test_candidate_category_llm():
     import inspect
     from app.ingest import candidates
     source = inspect.getsource(candidates)
-    assert "call_haiku" in source or "_classify_category_llm" in source
+    assert "call_llm" in source or "_classify_category_llm" in source
 
 
 def test_v2ex_llm_filter():
@@ -1190,7 +1190,7 @@ def test_builder_tools_llm_match():
     import inspect
     from app.ingest import builder_tools
     source = inspect.getsource(builder_tools)
-    assert "call_haiku" in source or "_llm_match_mcp_repos" in source
+    assert "call_llm" in source or "_llm_match_mcp_repos" in source
 
 
 def test_newsletter_llm_resolve():
@@ -1296,14 +1296,14 @@ class TestAntiPatterns:
             )
             if uses_llm:
                 has_limiter = (
-                    "ANTHROPIC_LIMITER" in source
+                    "GEMINI_LIMITER" in source
                     or "GEMINI_LIMITER" in source
-                    or "call_haiku" in source
-                    or "call_haiku_text" in source
+                    or "call_llm" in source
+                    or "call_llm_text" in source
                 )
                 assert has_limiter, (
                     f"app/ingest/{name}.py calls an LLM API "
-                    f"without a rate limiter or call_haiku helper."
+                    f"without a rate limiter or call_llm helper."
                 )
 
     def test_openai_calls_use_rate_limiter(self):

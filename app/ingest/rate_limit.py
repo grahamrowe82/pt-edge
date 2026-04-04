@@ -1,12 +1,10 @@
 """Shared rate limiters for external API calls.
 
-Anthropic Tier 1: 50 RPM — we use 40 for safety margin.
+Gemini: 1000 RPM paid tier — we use 800 for safety margin.
 OpenAI: 500 RPM — we use 400 for safety margin.
 
 Usage:
-    from app.ingest.rate_limit import ANTHROPIC_LIMITER, OPENAI_LIMITER
 
-    await ANTHROPIC_LIMITER.acquire()
     resp = await client.post(...)
 """
 import asyncio
@@ -36,6 +34,5 @@ class RateLimiter:
             self._last_call = asyncio.get_event_loop().time()
 
 
-ANTHROPIC_LIMITER = RateLimiter(rpm=settings.ANTHROPIC_RPM)
 OPENAI_LIMITER = RateLimiter(rpm=settings.OPENAI_RPM)
 GEMINI_LIMITER = RateLimiter(rpm=settings.GEMINI_RPM)

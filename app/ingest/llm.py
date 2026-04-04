@@ -4,14 +4,14 @@ Centralises the httpx -> Gemini API pattern: rate limiting, retries,
 429 backoff, JSON parsing.
 
 Usage:
-    result = await call_haiku(prompt, max_tokens=2048)
+    result = await call_llm(prompt, max_tokens=2048)
     # result is parsed JSON (dict or list) or None on failure
 
-    text = await call_haiku_text(prompt, max_tokens=20)
+    text = await call_llm_text(prompt, max_tokens=20)
     # text is raw string or None on failure
 
-Note: function names kept as call_haiku/call_haiku_text for backwards
-compatibility with 18 call sites. Will be renamed in a cleanup PR.
+Note: function names kept as call_llm/call_llm_text for backwards
+
 """
 import asyncio
 import json
@@ -29,7 +29,7 @@ _GEMINI_URL = (
 )
 
 
-async def call_haiku(
+async def call_llm(
     prompt: str,
     *,
     max_tokens: int = 2048,
@@ -91,7 +91,7 @@ async def call_haiku(
     return None
 
 
-async def call_haiku_text(
+async def call_llm_text(
     prompt: str,
     *,
     max_tokens: int = 512,
