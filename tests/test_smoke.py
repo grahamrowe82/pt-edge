@@ -1058,27 +1058,27 @@ def test_ai_repo_package_detect_in_runner():
 
 
 def test_rate_limiter_in_package_detect():
-    """LLM package detection uses rate limiter."""
+    """LLM package detection uses rate limiter (via shared wrapper)."""
     import inspect
     from app.ingest import ai_repo_package_detect
     source = inspect.getsource(ai_repo_package_detect)
-    assert "ANTHROPIC_LIMITER" in source
+    assert "call_haiku" in source
 
 
 def test_rate_limiter_in_newsletters():
-    """Newsletter ingest uses rate limiter."""
+    """Newsletter ingest uses rate limiter (via shared wrapper)."""
     import inspect
     from app.ingest import newsletters
     source = inspect.getsource(newsletters)
-    assert "ANTHROPIC_LIMITER" in source
+    assert "call_haiku" in source
 
 
 def test_rate_limiter_in_releases():
-    """Release ingest uses rate limiter."""
+    """Release ingest uses rate limiter (via shared wrapper)."""
     import inspect
     from app.ingest import releases
     source = inspect.getsource(releases)
-    assert "ANTHROPIC_LIMITER" in source
+    assert "call_haiku" in source
 
 
 def test_rate_limiter_in_embeddings():
@@ -1116,11 +1116,11 @@ def test_llm_helper_import():
 
 
 def test_llm_helper_uses_rate_limiter():
-    """Shared LLM helper uses ANTHROPIC_LIMITER."""
+    """Shared LLM helper uses GEMINI_LIMITER."""
     import inspect
     from app.ingest import llm
     source = inspect.getsource(llm)
-    assert "ANTHROPIC_LIMITER" in source
+    assert "GEMINI_LIMITER" in source
 
 
 def test_subcategory_llm_import():
@@ -1285,23 +1285,25 @@ class TestAntiPatterns:
             )
 
     def test_anthropic_calls_use_rate_limiter(self):
-        """Any module calling the Anthropic API must use the rate limiter."""
+        """Any module calling an LLM API must use the rate limiter."""
         for name, source in _ingest_modules():
             if name in ("rate_limit", "llm"):
                 continue
-            uses_anthropic = (
+            uses_llm = (
                 ("messages.create" in source and "anthropic" in source.lower())
                 or "api.anthropic.com" in source
+                or "generativelanguage.googleapis.com" in source
             )
-            if uses_anthropic:
+            if uses_llm:
                 has_limiter = (
                     "ANTHROPIC_LIMITER" in source
+                    or "GEMINI_LIMITER" in source
                     or "call_haiku" in source
                     or "call_haiku_text" in source
                 )
                 assert has_limiter, (
-                    f"app/ingest/{name}.py calls the Anthropic API "
-                    f"without ANTHROPIC_LIMITER or call_haiku helper."
+                    f"app/ingest/{name}.py calls an LLM API "
+                    f"without a rate limiter or call_haiku helper."
                 )
 
     def test_openai_calls_use_rate_limiter(self):
