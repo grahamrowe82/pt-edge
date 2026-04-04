@@ -492,21 +492,26 @@ async def generate_domain_briefs() -> dict:
 
 
 REPO_BRIEF_PROMPT = """\
-You are an AI infrastructure analyst writing intelligence briefs for
-a directory site that ranks open-source AI tools by quality.
+You are a technology consultant advising people on whether to depend on \
+open-source projects. Your readers are scientists, business managers, and \
+engineers — not developers. Be direct and decisive, no hedging.
 
-Write a brief for each repository below. Each brief must:
-1. Lead with the most interesting metric or trend
-2. Make concrete claims with specific numbers
-3. Flag noteworthy signals: adoption, momentum, or lack thereof
+For each repository below, assess:
+1. **Dependability**: Active development? Broad adoption? Organisation or solo maintainer?
+2. **Maturity signal**: One of: "Production-ready" (active, widely adopted, packaged), \
+"Mature and stable" (established, reliable), "Research-grade" (solid for research, \
+not production), "Early-stage" (promising, unproven), or "Stalled" (inactive, abandonment risk)
 
 Output format — return valid JSON only:
-[{{"id": <repo_id>, "title": "<headline claim, max 120 chars>", "summary": "<2-3 sentences of grounded analysis>", "evidence": [{{"type": "project", "slug": "<full_name>", "metric": "<metric_name>", "value": <number>, "as_of": "{today}"}}]}}]
+[{{"id": <repo_id>, "title": "<adoption signal + key fact, max 120 chars>", "summary": "<2 sentences, max 50 words. State facts, not speculation. Be direct.>", "evidence": [{{"type": "project", "slug": "<full_name>", "metric": "<metric_name>", "value": <number>, "as_of": "{today}"}}]}}]
 
 Rules:
-- Title must include at least one specific number
-- Summary must contain at least 2 concrete numbers
-- Do NOT describe what the repo does — focus on what is HAPPENING
+- Title must include the maturity signal and one specific number
+- Summary must reference specific numbers — state facts not speculation
+- 0 downloads may mean untracked, not unused — check stars and forks
+- A project with thousands of stars from a named org is not experimental
+- Research paper implementations are valuable for research even with few stars
+- Do NOT describe what the project does — that's covered elsewhere on the page
 - Evidence array must include every metric cited
 
 Repositories:
@@ -547,7 +552,8 @@ async def generate_repo_briefs() -> dict:
                        COALESCE(ar.downloads_monthly, 0) AS monthly_downloads,
                        COALESCE(ar.forks, 0) AS forks,
                        COALESCE(ar.commits_30d, 0) AS commits_30d,
-                       ar.description,
+                       ar.description, ar.license,
+                       ar.last_pushed_at,
                        ROW_NUMBER() OVER (
                            PARTITION BY ar.domain, ar.subcategory
                            ORDER BY ar.stars DESC NULLS LAST
@@ -559,7 +565,8 @@ async def generate_repo_briefs() -> dict:
                   AND ar.description IS NOT NULL AND ar.description <> ''
             )
             SELECT r.id, r.full_name, r.name, r.domain, r.subcategory,
-                   r.stars, r.monthly_downloads, r.forks, r.commits_30d, r.description
+                   r.stars, r.monthly_downloads, r.forks, r.commits_30d,
+                   r.description, r.license, r.last_pushed_at
             FROM ranked r
             JOIN budget b ON r.domain = b.domain AND r.subcategory = b.subcategory
             WHERE r.rn <= b.row_limit
@@ -581,10 +588,12 @@ async def generate_repo_briefs() -> dict:
         # Format repo lines
         lines = []
         for r in batch:
+            last_push = str(r.get('last_pushed_at') or 'unknown')[:10]
             lines.append(
                 f"{r['id']} | {r['full_name']} | {r.get('domain', 'n/a')} | "
                 f"★{r['stars']} | ↓{r['monthly_downloads']} | "
                 f"forks:{r['forks']} | commits_30d:{r['commits_30d']} | "
+                f"last_commit:{last_push} | license:{r.get('license') or 'none'} | "
                 f"{(r.get('description') or '')[:100]}"
             )
         repos_text = "\n".join(lines)
