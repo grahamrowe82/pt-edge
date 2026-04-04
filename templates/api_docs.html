@@ -17,36 +17,15 @@
 <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
 
   <!-- Hero: live demo -->
-  <pre class="bg-gray-900 text-gray-100 rounded-lg p-5 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/quality?domain=agents&amp;subcategory=autonomous-research-labs&amp;limit=1"</pre>
-
-  <button onclick="tryHero()" id="hero-btn" class="mt-3 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors">Try it &mdash; no signup needed</button>
-
-  <pre id="hero-json" class="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-5 text-xs overflow-x-auto max-h-72 overflow-y-auto hidden"></pre>
-
-  <div id="hero-next" class="mt-4 hidden">
-    <p class="text-gray-600">That was a live API response. No API key. No signup.</p>
-    <p class="text-sm text-gray-500 mt-1">220,000+ AI repos scored daily across 18 domains. Open to everyone &mdash; 100 requests/day, no key needed. <a href="#get-a-key" class="text-blue-600 font-medium">Get a free key</a> for 1,000/day.</p>
+  <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+    <div class="flex items-center justify-between mb-3">
+      <p class="text-sm font-medium text-gray-700">Quality scores for 220,000+ AI repos</p>
+      <button onclick="pteFetch(this,'/api/v1/quality?domain=agents&amp;subcategory=autonomous-research-labs&amp;limit=1','hero-json')" class="fetch-btn fetch-btn--ready">&#9654; fetch()</button>
+    </div>
+    <pre id="hero-json" class="text-xs bg-white border border-gray-200 rounded p-3 overflow-x-auto max-h-72 overflow-y-auto hidden mb-2"></pre>
+    <pre class="text-xs bg-white border border-gray-200 rounded p-3 overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/quality?domain=agents&amp;subcategory=autonomous-research-labs&amp;limit=1"</pre>
+    <p class="mt-2 text-xs text-gray-500">Open to everyone &mdash; 100 requests/day, no key needed. <a href="#get-a-key" class="text-blue-600 hover:underline font-medium">Get a free key</a> for 1,000/day.</p>
   </div>
-
-  <script>
-  function tryHero() {
-    var btn = document.getElementById('hero-btn');
-    btn.disabled = true;
-    btn.textContent = 'Fetching...';
-    fetch('/api/v1/quality?domain=agents&subcategory=autonomous-research-labs&limit=1')
-      .then(function(r) { return r.json(); })
-      .then(function(d) {
-        document.getElementById('hero-json').textContent = JSON.stringify(d, null, 2);
-        document.getElementById('hero-json').classList.remove('hidden');
-        document.getElementById('hero-next').classList.remove('hidden');
-        btn.classList.add('hidden');
-      })
-      .catch(function() {
-        btn.textContent = 'Try it — no signup needed';
-        btn.disabled = false;
-      });
-  }
-  </script>
 
   <!-- Rate limits -->
   <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">Rate Limits</h2>
