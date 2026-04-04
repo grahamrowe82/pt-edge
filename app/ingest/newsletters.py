@@ -6,7 +6,7 @@ into many rows; single-topic blogs (Simon Willison) get one row.
 
 Deduplicates on (entry_url, topic_index).
 
-Gracefully degrades: if ANTHROPIC_API_KEY is not set, entries are stored
+Gracefully degrades: if GEMINI_API_KEY is not set, entries are stored
 as a single row without summaries, sentiment, or mention extraction.
 """
 import asyncio
@@ -193,7 +193,7 @@ async def _extract_topics(entry: dict) -> list[dict]:
     Returns a list of topic dicts, each with title/summary/sentiment/mentions.
     For single-topic entries this is a list of one.
     """
-    if not settings.ANTHROPIC_API_KEY:
+    if not settings.GEMINI_API_KEY:
         return []
 
     # Skip stubs — paywalled entries with too little content to extract from
@@ -205,47 +205,12 @@ async def _extract_topics(entry: dict) -> list[dict]:
         content=entry["content"],
     )
 
-    from app.ingest.rate_limit import ANTHROPIC_LIMITER
+    from app.ingest.llm import call_haiku
 
     try:
-        for _attempt in range(3):
-            await ANTHROPIC_LIMITER.acquire()
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": settings.ANTHROPIC_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": "claude-haiku-4-5-20251001",
-                        "max_tokens": 8192,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-
-            if resp.status_code == 429:
-                wait = min(2 ** _attempt * 15, 120)
-                logger.warning(f"Anthropic 429, backing off {wait}s (attempt {_attempt + 1}/3)")
-                await asyncio.sleep(wait)
-                continue
-            break  # success or non-retryable error
-
-        if resp.status_code != 200:
-            logger.warning(f"Anthropic API {resp.status_code}: {resp.text[:200]}")
+        result = await call_haiku(prompt, max_tokens=8192, timeout=120.0)
+        if result is None:
             return []
-
-        data = resp.json()
-        text_block = data.get("content", [{}])[0].get("text", "")
-
-        # Parse JSON — strip markdown fencing if present
-        text_clean = text_block.strip()
-        if text_clean.startswith("```"):
-            text_clean = re.sub(r"^```\w*\n?", "", text_clean)
-            text_clean = re.sub(r"\n?```$", "", text_clean)
-
-        result = json.loads(text_clean)
 
         if isinstance(result, dict) and "topics" in result:
             topics = result["topics"]
@@ -406,7 +371,7 @@ async def _resolve_mention_ids(
         resolved.append(entry)
 
     # LLM fallback for unresolved mentions
-    if unresolved and settings.ANTHROPIC_API_KEY:
+    if unresolved and settings.GEMINI_API_KEY:
         llm_resolved = await _resolve_mentions_llm(
             unresolved, project_name_to_id, lab_slug_to_id
         )
@@ -448,7 +413,7 @@ async def ingest_newsletters() -> dict:
     # ── Self-healing: re-extract hollow rows from previous failed runs ──
     # Hollow rows = topic_index 0, have raw_content, but no summary (LLM was unavailable)
     healed = 0
-    if settings.ANTHROPIC_API_KEY:
+    if settings.GEMINI_API_KEY:
         with engine.connect() as conn:
             hollow_rows = conn.execute(text("""
                 SELECT id, feed_slug, entry_url, title, published_at, raw_content

@@ -34,7 +34,6 @@ from app.ingest.downloads import (
     fetch_npm_downloads,
     fetch_crate_downloads,
 )
-from app.ingest.rate_limit import ANTHROPIC_LIMITER
 from app.models import SyncLog
 from app.settings import settings
 
@@ -64,55 +63,11 @@ Repos:
 
 
 async def _call_llm(repos_text: str) -> list[dict] | None:
-    """Call Anthropic to predict package names for a batch of repos."""
+    """Call LLM to predict package names for a batch of repos."""
+    from app.ingest.llm import call_haiku
+
     prompt = DETECT_PROMPT.format(repos_text=repos_text)
-
-    for attempt in range(3):
-        await ANTHROPIC_LIMITER.acquire()
-        try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": settings.ANTHROPIC_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": "claude-haiku-4-5-20251001",
-                        "max_tokens": 2048,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-        except httpx.HTTPError as e:
-            logger.warning(f"LLM HTTP error (attempt {attempt + 1}/3): {e}")
-            await asyncio.sleep(2 ** attempt * 5)
-            continue
-
-        if resp.status_code == 429:
-            wait = min(2 ** attempt * 15, 120)
-            logger.warning(f"Anthropic 429, backing off {wait}s (attempt {attempt + 1}/3)")
-            await asyncio.sleep(wait)
-            continue
-
-        if resp.status_code != 200:
-            logger.warning(f"Anthropic API {resp.status_code}: {resp.text[:200]}")
-            return None
-
-        try:
-            data = resp.json()
-            text_content = data.get("content", [{}])[0].get("text", "").strip()
-            # Extract JSON from response (may have markdown fences)
-            if "```" in text_content:
-                text_content = text_content.split("```")[1]
-                if text_content.startswith("json"):
-                    text_content = text_content[4:]
-            return json.loads(text_content)
-        except (json.JSONDecodeError, IndexError, KeyError) as e:
-            logger.warning(f"Failed to parse LLM response: {e}")
-            return None
-
-    return None
+    return await call_haiku(prompt, max_tokens=2048)
 
 
 async def _verify_and_fetch(
@@ -202,8 +157,8 @@ async def _verify_and_fetch(
 
 async def detect_packages_llm(limit: int = 500) -> dict:
     """Use LLM to detect package names for repos that syntactic detection missed."""
-    if not settings.ANTHROPIC_API_KEY:
-        logger.info("No ANTHROPIC_API_KEY — skipping LLM package detection")
+    if not settings.GEMINI_API_KEY:
+        logger.info("No GEMINI_API_KEY — skipping LLM package detection")
         return {"predicted": 0, "verified": 0, "skipped": "no API key"}
 
     started_at = datetime.now(timezone.utc)

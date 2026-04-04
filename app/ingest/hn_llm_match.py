@@ -48,8 +48,8 @@ Posts:
 
 async def match_hn_posts_llm(limit: int = 5000) -> dict:
     """Use LLM to match HN posts to labs and projects."""
-    if not settings.ANTHROPIC_API_KEY:
-        logger.info("No ANTHROPIC_API_KEY — skipping HN LLM matching")
+    if not settings.GEMINI_API_KEY:
+        logger.info("No GEMINI_API_KEY — skipping HN LLM matching")
         return {"matched_labs": 0, "matched_projects": 0, "skipped": "no API key"}
 
     started_at = datetime.now(timezone.utc)

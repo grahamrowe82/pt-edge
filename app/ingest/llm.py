@@ -1,7 +1,7 @@
 """Shared LLM call helper for ingest modules.
 
-Centralises the httpx -> Anthropic API pattern: rate limiting, retries,
-429 backoff, markdown fence stripping, JSON parsing.
+Centralises the httpx -> Gemini API pattern: rate limiting, retries,
+429 backoff, JSON parsing.
 
 Usage:
     result = await call_haiku(prompt, max_tokens=2048)
@@ -9,6 +9,9 @@ Usage:
 
     text = await call_haiku_text(prompt, max_tokens=20)
     # text is raw string or None on failure
+
+Note: function names kept as call_haiku/call_haiku_text for backwards
+compatibility with 18 call sites. Will be renamed in a cleanup PR.
 """
 import asyncio
 import json
@@ -16,12 +19,14 @@ import logging
 
 import httpx
 
-from app.ingest.rate_limit import ANTHROPIC_LIMITER
+from app.ingest.rate_limit import GEMINI_LIMITER
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-_MODEL = "claude-haiku-4-5-20251001"
+_GEMINI_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+)
 
 
 async def call_haiku(
@@ -31,25 +36,27 @@ async def call_haiku(
     retries: int = 3,
     timeout: float = 60.0,
 ) -> dict | list | None:
-    """Call Claude Haiku and return parsed JSON, or None on failure."""
-    if not settings.ANTHROPIC_API_KEY:
+    """Call Gemini and return parsed JSON, or None on failure."""
+    if not settings.GEMINI_API_KEY:
         return None
 
+    url = _GEMINI_URL.format(model=settings.GEMINI_MODEL)
+
     for attempt in range(retries):
-        await ANTHROPIC_LIMITER.acquire()
+        await GEMINI_LIMITER.acquire()
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": settings.ANTHROPIC_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
+                    url,
+                    params={"key": settings.GEMINI_API_KEY},
+                    headers={"content-type": "application/json"},
                     json={
-                        "model": _MODEL,
-                        "max_tokens": max_tokens,
-                        "messages": [{"role": "user", "content": prompt}],
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {
+                            "maxOutputTokens": max_tokens,
+                            "responseMimeType": "application/json",
+                            "thinkingConfig": {"thinkingBudget": 0},
+                        },
                     },
                 )
         except httpx.HTTPError as e:
@@ -59,23 +66,23 @@ async def call_haiku(
 
         if resp.status_code == 429:
             wait = min(2**attempt * 15, 120)
-            logger.warning(f"Anthropic 429, backing off {wait}s (attempt {attempt + 1}/{retries})")
+            logger.warning(f"Gemini 429, backing off {wait}s (attempt {attempt + 1}/{retries})")
             await asyncio.sleep(wait)
             continue
 
         if resp.status_code != 200:
-            logger.warning(f"Anthropic API {resp.status_code}: {resp.text[:200]}")
+            logger.warning(f"Gemini API {resp.status_code}: {resp.text[:200]}")
             return None
 
         try:
             data = resp.json()
-            text_content = data.get("content", [{}])[0].get("text", "").strip()
-            # Strip markdown fences
-            if "```" in text_content:
-                text_content = text_content.split("```")[1]
-                if text_content.startswith("json"):
-                    text_content = text_content[4:]
-                text_content = text_content.strip()
+            text_content = (
+                data.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "")
+                .strip()
+            )
             return json.loads(text_content)
         except (json.JSONDecodeError, IndexError, KeyError) as e:
             logger.warning(f"Failed to parse LLM response: {e}")
@@ -91,25 +98,26 @@ async def call_haiku_text(
     retries: int = 3,
     timeout: float = 60.0,
 ) -> str | None:
-    """Call Claude Haiku and return raw text (not JSON), or None on failure."""
-    if not settings.ANTHROPIC_API_KEY:
+    """Call Gemini and return raw text (not JSON), or None on failure."""
+    if not settings.GEMINI_API_KEY:
         return None
 
+    url = _GEMINI_URL.format(model=settings.GEMINI_MODEL)
+
     for attempt in range(retries):
-        await ANTHROPIC_LIMITER.acquire()
+        await GEMINI_LIMITER.acquire()
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": settings.ANTHROPIC_API_KEY,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
+                    url,
+                    params={"key": settings.GEMINI_API_KEY},
+                    headers={"content-type": "application/json"},
                     json={
-                        "model": _MODEL,
-                        "max_tokens": max_tokens,
-                        "messages": [{"role": "user", "content": prompt}],
+                        "contents": [{"parts": [{"text": prompt}]}],
+                        "generationConfig": {
+                            "maxOutputTokens": max_tokens,
+                            "thinkingConfig": {"thinkingBudget": 0},
+                        },
                     },
                 )
         except httpx.HTTPError as e:
@@ -119,17 +127,24 @@ async def call_haiku_text(
 
         if resp.status_code == 429:
             wait = min(2**attempt * 15, 120)
-            logger.warning(f"Anthropic 429, backing off {wait}s (attempt {attempt + 1}/{retries})")
+            logger.warning(f"Gemini 429, backing off {wait}s (attempt {attempt + 1}/{retries})")
             await asyncio.sleep(wait)
             continue
 
         if resp.status_code != 200:
-            logger.warning(f"Anthropic API {resp.status_code}: {resp.text[:200]}")
+            logger.warning(f"Gemini API {resp.status_code}: {resp.text[:200]}")
             return None
 
         try:
             data = resp.json()
-            return data.get("content", [{}])[0].get("text", "").strip() or None
+            text = (
+                data.get("candidates", [{}])[0]
+                .get("content", {})
+                .get("parts", [{}])[0]
+                .get("text", "")
+                .strip()
+            )
+            return text or None
         except (IndexError, KeyError) as e:
             logger.warning(f"Failed to parse LLM response: {e}")
             return None

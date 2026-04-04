@@ -227,8 +227,8 @@ def _batch_upsert_project_briefs(updates: list[dict]) -> int:
 
 async def generate_project_briefs(limit: int = 500) -> dict:
     """Generate or refresh LLM project briefs for stale/missing projects."""
-    if not settings.ANTHROPIC_API_KEY:
-        logger.info("No ANTHROPIC_API_KEY — skipping project briefs")
+    if not settings.GEMINI_API_KEY:
+        logger.info("No GEMINI_API_KEY — skipping project briefs")
         return {"generated": 0, "skipped": "no API key"}
 
     started_at = datetime.now(timezone.utc)
@@ -383,8 +383,8 @@ async def generate_project_briefs(limit: int = 500) -> dict:
 
 async def generate_domain_briefs() -> dict:
     """Generate LLM domain landscape briefs for each populated domain."""
-    if not settings.ANTHROPIC_API_KEY:
-        logger.info("No ANTHROPIC_API_KEY — skipping domain briefs")
+    if not settings.GEMINI_API_KEY:
+        logger.info("No GEMINI_API_KEY — skipping domain briefs")
         return {"generated": 0, "skipped": "no API key"}
 
     started_at = datetime.now(timezone.utc)
@@ -519,8 +519,8 @@ async def generate_repo_briefs() -> dict:
     Works against ai_repos directly (not the legacy projects table).
     Reads content_budget to determine which categories to prioritise.
     """
-    if not settings.ANTHROPIC_API_KEY:
-        logger.info("No ANTHROPIC_API_KEY — skipping repo briefs")
+    if not settings.GEMINI_API_KEY:
+        logger.info("No GEMINI_API_KEY — skipping repo briefs")
         return {"generated": 0, "skipped": "no API key"}
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
