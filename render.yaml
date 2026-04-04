@@ -78,6 +78,10 @@ services:
         sync: false
       - key: RENDER_API_KEY
         sync: false
+      - key: UMAMI_DATABASE_URL
+        sync: false
+      - key: UMAMI_WEBSITE_ID
+        sync: false
 
   - type: cron
     name: pt-edge-ai-repos-weekly
