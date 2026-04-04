@@ -124,6 +124,21 @@ async def ingest_ai_repo_commits() -> dict:
         "Authorization": f"Bearer {settings.GITHUB_TOKEN}",
     }
 
+    # Pre-flight: check GitHub API before sending GraphQL queries
+    try:
+        async with httpx.AsyncClient(headers=headers, timeout=10) as test_client:
+            resp = await test_client.get("https://api.github.com/rate_limit")
+            if resp.status_code == 403:
+                logger.error("GitHub rate-limited (403) — skipping ai_repo_commits")
+                return {"updated": 0, "errors": 0, "skipped": "github_rate_limited"}
+            if resp.status_code == 200:
+                remaining = resp.json().get("resources", {}).get("graphql", {}).get("remaining", 0)
+                if remaining < 50:
+                    logger.warning(f"GitHub GraphQL near limit ({remaining} remaining) — skipping")
+                    return {"updated": 0, "errors": 0, "skipped": "github_rate_limited"}
+    except Exception as e:
+        logger.warning(f"GitHub rate limit check failed: {e}")
+
     # Batch into groups of BATCH_SIZE
     batches = [repos[i:i + BATCH_SIZE] for i in range(0, len(repos), BATCH_SIZE)]
     semaphore = asyncio.Semaphore(CONCURRENCY)
