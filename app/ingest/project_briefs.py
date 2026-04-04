@@ -506,11 +506,16 @@ Output format — return valid JSON only:
 [{{"id": <repo_id>, "title": "<adoption signal + key fact, max 120 chars>", "summary": "<2 sentences, max 50 words. State facts, not speculation. Be direct.>", "evidence": [{{"type": "project", "slug": "<full_name>", "metric": "<metric_name>", "value": <number>, "as_of": "{today}"}}]}}]
 
 Rules:
-- Title must include the maturity signal and one specific number
-- Summary must reference specific numbers — state facts not speculation
+- Interpret the quality scores for a non-technical reader — don't repeat the numbers
+- The quality score (0-100) synthesises maintenance, adoption, maturity, and community
+- A high adoption score with low maintenance means "widely used but development is slowing"
+- 0 commits in 30 days does NOT mean stalled — many stable projects release infrequently. \
+Check last_commit date: if within 6 months, it's active or stable, not stalled
+- "Stalled" only when last commit is >1 year ago AND adoption is low
 - 0 downloads may mean untracked, not unused — check stars and forks
-- A project with thousands of stars from a named org is not experimental
+- A project created years ago with steady stars is more dependable than a recent one
 - Research paper implementations are valuable for research even with few stars
+- Title must include the maturity signal and one specific number
 - Do NOT describe what the project does — that's covered elsewhere on the page
 - Evidence array must include every metric cited
 
@@ -546,6 +551,27 @@ async def generate_repo_briefs() -> dict:
                 FROM content_budget
                 WHERE pipeline = 'repo_briefs'
             ),
+            all_quality AS (
+                SELECT id, quality_score, maintenance_score, adoption_score,
+                       maturity_score, community_score
+                FROM mv_mcp_quality UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_agents_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_rag_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_ai_coding_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_voice_ai_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_diffusion_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_vector_db_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_embeddings_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_prompt_eng_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_ml_frameworks_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_llm_tools_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_nlp_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_transformers_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_generative_ai_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_computer_vision_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_data_engineering_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_mlops_quality
+                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_perception_quality
+            ),
             ranked AS (
                 SELECT ar.id, ar.full_name, ar.name, ar.domain, ar.subcategory,
                        COALESCE(ar.stars, 0) AS stars,
@@ -553,20 +579,25 @@ async def generate_repo_briefs() -> dict:
                        COALESCE(ar.forks, 0) AS forks,
                        COALESCE(ar.commits_30d, 0) AS commits_30d,
                        ar.description, ar.license,
-                       ar.last_pushed_at,
+                       ar.last_pushed_at, ar.created_at,
+                       q.quality_score, q.maintenance_score, q.adoption_score,
+                       q.maturity_score, q.community_score,
                        ROW_NUMBER() OVER (
                            PARTITION BY ar.domain, ar.subcategory
                            ORDER BY ar.stars DESC NULLS LAST
                        ) AS rn
                 FROM ai_repos ar
                 JOIN budget b ON ar.domain = b.domain AND ar.subcategory = b.subcategory
+                LEFT JOIN all_quality q ON ar.id = q.id
                 LEFT JOIN repo_briefs rb ON rb.ai_repo_id = ar.id
                 WHERE rb.id IS NULL
                   AND ar.description IS NOT NULL AND ar.description <> ''
             )
             SELECT r.id, r.full_name, r.name, r.domain, r.subcategory,
                    r.stars, r.monthly_downloads, r.forks, r.commits_30d,
-                   r.description, r.license, r.last_pushed_at
+                   r.description, r.license, r.last_pushed_at, r.created_at,
+                   r.quality_score, r.maintenance_score, r.adoption_score,
+                   r.maturity_score, r.community_score
             FROM ranked r
             JOIN budget b ON r.domain = b.domain AND r.subcategory = b.subcategory
             WHERE r.rn <= b.row_limit
@@ -589,11 +620,19 @@ async def generate_repo_briefs() -> dict:
         lines = []
         for r in batch:
             last_push = str(r.get('last_pushed_at') or 'unknown')[:10]
+            created = str(r.get('created_at') or 'unknown')[:10]
+            qs = r.get('quality_score') or 0
+            ms = r.get('maintenance_score') or 0
+            ads = r.get('adoption_score') or 0
+            mats = r.get('maturity_score') or 0
+            cs = r.get('community_score') or 0
             lines.append(
                 f"{r['id']} | {r['full_name']} | {r.get('domain', 'n/a')} | "
                 f"★{r['stars']} | ↓{r['monthly_downloads']} | "
                 f"forks:{r['forks']} | commits_30d:{r['commits_30d']} | "
-                f"last_commit:{last_push} | license:{r.get('license') or 'none'} | "
+                f"created:{created} | last_commit:{last_push} | "
+                f"license:{r.get('license') or 'none'} | "
+                f"quality:{qs}/100 (maint:{ms}/25 adopt:{ads}/25 mature:{mats}/25 community:{cs}/25) | "
                 f"{(r.get('description') or '')[:100]}"
             )
         repos_text = "\n".join(lines)
