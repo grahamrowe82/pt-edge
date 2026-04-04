@@ -46,10 +46,12 @@ def seconds_until_next_run() -> float:
 
 
 def today_run_completed() -> bool:
-    """Check sync_log for an explicit 'daily_ingest' entry today.
+    """Check sync_log to decide if today's ingest should run.
 
-    ingest_all.py writes this entry only after the full pipeline completes.
-    No ambiguity about which phase counts as 'done'.
+    Logic:
+    - Any 'success' entry today → done, don't run
+    - 2+ 'partial'/'failed' entries today → gave up, don't run
+    - Otherwise → OK to run (allows one retry after a partial)
     """
     db_url = os.environ.get("DATABASE_URL", "")
     if not db_url:
@@ -61,15 +63,23 @@ def today_run_completed() -> bool:
         conn = psycopg2.connect(db_url)
         cur = conn.cursor()
         cur.execute("""
-            SELECT COUNT(*) FROM sync_log
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'success') AS successes,
+                COUNT(*) FILTER (WHERE status IN ('partial', 'failed')) AS attempts
+            FROM sync_log
             WHERE sync_type = 'daily_ingest'
-              AND status IN ('success', 'partial')
               AND started_at::date = CURRENT_DATE
         """)
-        count = cur.fetchone()[0]
+        row = cur.fetchone()
+        successes, attempts = row[0], row[1]
         cur.close()
         conn.close()
-        return count > 0
+        if successes > 0:
+            return True
+        if attempts >= 2:
+            logger.warning(f"Daily ingest attempted {attempts} times today — giving up")
+            return True
+        return False
     except Exception as e:
         logger.warning(f"Could not check sync_log: {e}")
         return True  # assume done to avoid accidental runs

@@ -62,8 +62,14 @@ def _github_headers():
     return headers
 
 
+_readme_rate_limited = False
+
+
 async def fetch_readme(client: httpx.AsyncClient, full_name: str) -> str | None:
     """Fetch raw README text from GitHub. Returns truncated text or None."""
+    global _readme_rate_limited
+    if _readme_rate_limited:
+        return None
     try:
         resp = await client.get(
             f"https://api.github.com/repos/{full_name}/readme",
@@ -75,6 +81,10 @@ async def fetch_readme(client: httpx.AsyncClient, full_name: str) -> str | None:
                 return None
             return text
         if resp.status_code == 404:
+            return None
+        if resp.status_code == 403:
+            _readme_rate_limited = True
+            logger.error(f"GitHub 403 for README {full_name} — aborting remaining fetches")
             return None
         logger.warning(f"GitHub README {resp.status_code} for {full_name}")
         return None
@@ -180,6 +190,26 @@ async def generate_ai_summaries(
     generated = 0
     skipped = 0
     sem = asyncio.Semaphore(5)  # max 5 concurrent GitHub fetches
+
+    # Pre-flight: check GitHub API before fetching thousands of READMEs
+    global _readme_rate_limited
+    _readme_rate_limited = False
+    async with httpx.AsyncClient(timeout=30) as test_client:
+        try:
+            resp = await test_client.get(
+                "https://api.github.com/rate_limit",
+                headers=_github_headers(),
+            )
+            if resp.status_code == 403:
+                logger.error("GitHub rate-limited (403) — skipping all README fetches")
+                return {"processed": 0, "generated": 0, "skipped": "github_rate_limited"}
+            if resp.status_code == 200:
+                remaining = resp.json().get("resources", {}).get("core", {}).get("remaining", 0)
+                if remaining < 100:
+                    logger.warning(f"GitHub near limit ({remaining} remaining) — skipping README fetches")
+                    return {"processed": 0, "generated": 0, "skipped": "github_rate_limited"}
+        except Exception as e:
+            logger.warning(f"GitHub rate limit check failed: {e}")
 
     async with httpx.AsyncClient(timeout=30) as client:
         for i, repo in enumerate(candidates):

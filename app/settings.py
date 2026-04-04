@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""  # for newsletter LLM extraction; empty = entries stored without summaries
     V2EX_TOKEN: str = ""  # Personal Access Token from v2ex.com; empty = V2EX ingest skipped
     RENDER_API_KEY: str = ""  # Render API key for MCP integration; not used by app code
+    RENDER_DEPLOY_HOOK_URL: str = ""  # Render deploy webhook for static site rebuilds
     SEMANTIC_SCHOLAR_API_KEY: str = ""  # optional; unauthenticated access works
     REDDIT_CLIENT_ID: str = ""  # empty = Reddit ingest skipped
     REDDIT_CLIENT_SECRET: str = ""

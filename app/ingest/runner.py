@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+from datetime import datetime, timezone
 
 from sqlalchemy.exc import OperationalError
 
@@ -20,7 +21,7 @@ from app.ingest.ai_repos import ingest_ai_repos
 from app.ingest.ai_repo_commits import ingest_ai_repo_commits
 from app.ingest.ai_repo_created_at import ingest_ai_repo_created_at
 from app.ingest.ai_repo_downloads import ingest_ai_repo_downloads
-from app.ingest.semantic_scholar import ingest_semantic_scholar
+
 from app.ingest.public_apis import ingest_public_apis
 from app.ingest.api_specs import ingest_api_specs
 from app.ingest.package_deps import ingest_package_deps
@@ -83,6 +84,46 @@ def _reset_pool():
     logger.info("DB connection pools disposed — next query will reconnect")
 
 
+# Jobs that write their own sync_log entries — don't double-log these
+_SELF_LOGGING_JOBS = {
+    'github', 'downloads', 'dockerhub', 'vscode', 'huggingface',
+    'hn', 'v2ex', 'trending', 'candidate_velocity', 'hf_datasets',
+    'hf_models', 'public_apis', 'package_deps', 'dep_velocity',
+    'builder_tools', 'npm_mcp', 'ai_repo_downloads', 'ai_repo_commits',
+    'ai_repo_package_detect', 'releases', 'newsletters',
+    'ai_repo_subcategory', 'domain_reassign', 'views',
+    'ai_repo_created_at', 'project_briefs', 'stack_layer',
+    'subcategory_llm', 'hn_llm_match',
+}
+
+
+def _log_job(name: str, result, job_started: datetime):
+    """Write sync_log for jobs that don't write their own."""
+    if name in _SELF_LOGGING_JOBS:
+        return
+    from app.db import SessionLocal
+    from app.models import SyncLog
+    is_error = isinstance(result, dict) and 'error' in result
+    records = 0
+    if isinstance(result, dict):
+        records = result.get('generated', result.get('linked', result.get('refreshed', 0)))
+    session = SessionLocal()
+    try:
+        session.add(SyncLog(
+            sync_type=name,
+            status='failed' if is_error else 'success',
+            records_written=records,
+            error_message=str(result.get('error', ''))[:500] if is_error else None,
+            started_at=job_started,
+            finished_at=datetime.now(timezone.utc),
+        ))
+        session.commit()
+    except Exception as e:
+        logger.warning(f"Could not log sync for {name}: {e}")
+    finally:
+        session.close()
+
+
 async def _run_with_retry(name: str, fn, retries: int = MAX_RETRIES):
     """Run an async ingest function with retry on DB connection errors.
 
@@ -134,7 +175,7 @@ async def run_all() -> dict:
         ("ai_repo_downloads", ingest_ai_repo_downloads),
         ("ai_repo_commits", ingest_ai_repo_commits),
         ("candidate_watchlist", refresh_candidate_watchlist),
-        ("semantic_scholar", ingest_semantic_scholar),
+        # semantic_scholar removed — 2.5h runtime for 0 records (2026-04-04 audit)
         # ai_repos removed — runs on its own weekly cron (Saturday 12:00 UTC)
         # Phase 3: LLM-dependent (rate-limited, at end so they don't block)
         ("ai_repo_package_detect", detect_packages_llm),
@@ -364,8 +405,7 @@ async def run_all() -> dict:
         results["project_briefs"] = {"error": str(e)}
 
     # Domain + landscape briefs weekly (Sunday)
-    from datetime import datetime as _dt, timezone as _tz
-    if _dt.now(_tz.utc).weekday() == 6:
+    if datetime.now(timezone.utc).weekday() == 6:
         try:
             from app.ingest.project_briefs import generate_domain_briefs
             results["domain_briefs"] = await _run_with_retry("domain_briefs", generate_domain_briefs)
@@ -416,6 +456,11 @@ async def run_all() -> dict:
     except Exception as e:
         logger.exception(f"ai_repo_created_at failed: {e}")
         results["ai_repo_created_at"] = {"error": str(e)}
+
+    # Log sync_log entries for jobs that don't write their own
+    run_started = datetime.now(timezone.utc)  # approximate; individual times not tracked for post-loop jobs
+    for name, result in results.items():
+        _log_job(name, result, run_started)
 
     # Summary
     errors = [k for k, v in results.items() if isinstance(v, dict) and "error" in v]

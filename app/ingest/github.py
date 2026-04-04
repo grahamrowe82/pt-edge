@@ -12,11 +12,44 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# Module-level flag: set to False when GitHub returns 403, checked by all fetchers
+_github_available = True
+
+
+async def check_github_rate_limit(client: httpx.AsyncClient) -> bool:
+    """Pre-flight check: is GitHub API available? Returns False if rate-limited."""
+    global _github_available
+    try:
+        resp = await client.get("https://api.github.com/rate_limit")
+        if resp.status_code == 403:
+            logger.error("GitHub API rate-limited (403 on /rate_limit) — skipping all GitHub calls")
+            _github_available = False
+            return False
+        if resp.status_code == 200:
+            data = resp.json()
+            remaining = data.get("resources", {}).get("core", {}).get("remaining", 0)
+            if remaining < 100:
+                logger.warning(f"GitHub API near limit ({remaining} remaining) — skipping to avoid 403")
+                _github_available = False
+                return False
+            _github_available = True
+            return True
+    except Exception as e:
+        logger.warning(f"GitHub rate limit check failed: {e}")
+    return True  # optimistic if check itself fails
+
 
 async def fetch_repo(client: httpx.AsyncClient, owner: str, repo: str) -> dict | None:
+    global _github_available
+    if not _github_available:
+        return None
     resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}")
     if resp.status_code == 200:
         return resp.json()
+    if resp.status_code == 403:
+        _github_available = False
+        logger.error(f"GitHub API 403 for {owner}/{repo} — aborting remaining requests")
+        return None
     logger.warning(f"GitHub API {resp.status_code} for {owner}/{repo}")
     return None
 
@@ -175,8 +208,22 @@ async def ingest_github() -> dict:
 
     semaphore = asyncio.Semaphore(5)
 
-    # Phase 1: collect all data from API (async, concurrent)
+    # Pre-flight: check if GitHub API is available before firing 784 requests
     async with httpx.AsyncClient(headers=headers, timeout=30.0, follow_redirects=True) as client:
+        if not await check_github_rate_limit(client):
+            session = SessionLocal()
+            try:
+                session.add(SyncLog(
+                    sync_type="github", status="partial", records_written=0,
+                    error_message="skipped: GitHub rate-limited",
+                    started_at=started_at, finished_at=datetime.now(timezone.utc),
+                ))
+                session.commit()
+            finally:
+                session.close()
+            return {"success": 0, "errors": 0, "skipped": "github_rate_limited"}
+
+        # Phase 1: collect all data from API (async, concurrent)
         tasks = [collect_project_data(client, p, semaphore) for p in projects]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
