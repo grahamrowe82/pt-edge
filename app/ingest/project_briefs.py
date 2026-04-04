@@ -551,27 +551,6 @@ async def generate_repo_briefs() -> dict:
                 FROM content_budget
                 WHERE pipeline = 'repo_briefs'
             ),
-            all_quality AS (
-                SELECT id, quality_score, maintenance_score, adoption_score,
-                       maturity_score, community_score
-                FROM mv_mcp_quality UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_agents_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_rag_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_ai_coding_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_voice_ai_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_diffusion_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_vector_db_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_embeddings_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_prompt_eng_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_ml_frameworks_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_llm_tools_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_nlp_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_transformers_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_generative_ai_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_computer_vision_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_data_engineering_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_mlops_quality
-                UNION ALL SELECT id, quality_score, maintenance_score, adoption_score, maturity_score, community_score FROM mv_perception_quality
-            ),
             ranked AS (
                 SELECT ar.id, ar.full_name, ar.name, ar.domain, ar.subcategory,
                        COALESCE(ar.stars, 0) AS stars,
@@ -580,24 +559,19 @@ async def generate_repo_briefs() -> dict:
                        COALESCE(ar.commits_30d, 0) AS commits_30d,
                        ar.description, ar.license,
                        ar.last_pushed_at, ar.created_at,
-                       q.quality_score, q.maintenance_score, q.adoption_score,
-                       q.maturity_score, q.community_score,
                        ROW_NUMBER() OVER (
                            PARTITION BY ar.domain, ar.subcategory
                            ORDER BY ar.stars DESC NULLS LAST
                        ) AS rn
                 FROM ai_repos ar
                 JOIN budget b ON ar.domain = b.domain AND ar.subcategory = b.subcategory
-                LEFT JOIN all_quality q ON ar.id = q.id
                 LEFT JOIN repo_briefs rb ON rb.ai_repo_id = ar.id
                 WHERE rb.id IS NULL
                   AND ar.description IS NOT NULL AND ar.description <> ''
             )
             SELECT r.id, r.full_name, r.name, r.domain, r.subcategory,
                    r.stars, r.monthly_downloads, r.forks, r.commits_30d,
-                   r.description, r.license, r.last_pushed_at, r.created_at,
-                   r.quality_score, r.maintenance_score, r.adoption_score,
-                   r.maturity_score, r.community_score
+                   r.description, r.license, r.last_pushed_at, r.created_at
             FROM ranked r
             JOIN budget b ON r.domain = b.domain AND r.subcategory = b.subcategory
             WHERE r.rn <= b.row_limit
@@ -609,8 +583,55 @@ async def generate_repo_briefs() -> dict:
 
     logger.info(f"Generating repo briefs for {len(rows)} repos")
 
-    # Batch into groups of BATCH_SIZE
+    # Fetch quality scores for selected repos.
+    # Each repo lives in exactly one domain-specific quality view.
+    # Query each view separately to avoid a brittle 18-way UNION ALL.
     all_rows = [dict(r._mapping) for r in rows]
+    repo_ids = [r["id"] for r in all_rows]
+
+    DOMAIN_VIEW_MAP = {
+        "mcp": "mv_mcp_quality", "agents": "mv_agents_quality",
+        "rag": "mv_rag_quality", "ai-coding": "mv_ai_coding_quality",
+        "voice-ai": "mv_voice_ai_quality", "diffusion": "mv_diffusion_quality",
+        "vector-db": "mv_vector_db_quality", "embeddings": "mv_embeddings_quality",
+        "prompt-engineering": "mv_prompt_eng_quality",
+        "ml-frameworks": "mv_ml_frameworks_quality",
+        "llm-tools": "mv_llm_tools_quality", "nlp": "mv_nlp_quality",
+        "transformers": "mv_transformers_quality",
+        "generative-ai": "mv_generative_ai_quality",
+        "computer-vision": "mv_computer_vision_quality",
+        "data-engineering": "mv_data_engineering_quality",
+        "mlops": "mv_mlops_quality", "perception": "mv_perception_quality",
+    }
+
+    # Group repo IDs by domain, query each view once
+    quality_scores = {}  # repo_id -> {quality_score, maintenance_score, ...}
+    domains_needed = set(r["domain"] for r in all_rows)
+    with engine.connect() as conn:
+        for domain in domains_needed:
+            view = DOMAIN_VIEW_MAP.get(domain)
+            if not view:
+                continue
+            domain_ids = [r["id"] for r in all_rows if r["domain"] == domain]
+            if not domain_ids:
+                continue
+            qrows = conn.execute(text(f"""
+                SELECT id, quality_score, maintenance_score, adoption_score,
+                       maturity_score, community_score
+                FROM {view} WHERE id = ANY(:ids)
+            """), {"ids": domain_ids}).fetchall()
+            for qr in qrows:
+                qm = qr._mapping
+                quality_scores[qm["id"]] = dict(qm)
+
+    # Merge quality scores into rows
+    for r in all_rows:
+        qs = quality_scores.get(r["id"], {})
+        r["quality_score"] = qs.get("quality_score", 0)
+        r["maintenance_score"] = qs.get("maintenance_score", 0)
+        r["adoption_score"] = qs.get("adoption_score", 0)
+        r["maturity_score"] = qs.get("maturity_score", 0)
+        r["community_score"] = qs.get("community_score", 0)
     batches = [all_rows[i:i + BATCH_SIZE] for i in range(0, len(all_rows), BATCH_SIZE)]
     total_generated = 0
     errors = 0
