@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.ingest.llm import call_haiku
+from app.ingest.llm import call_llm
 from app.models import SyncLog
 from app.settings import settings
 
@@ -87,7 +87,7 @@ async def classify_stack_layers(limit: int = 1000) -> dict:
             lines.append(f'{m["id"]}. {m["name"]} [{m["category"]}] — "{desc}" [topics: {topics_csv}]')
         projects_text = "\n".join(lines)
 
-        predictions = await call_haiku(
+        predictions = await call_llm(
             STACK_LAYER_PROMPT.format(projects_text=projects_text)
         )
         if not predictions:
@@ -256,7 +256,7 @@ async def classify_project_domains(limit: int = 500) -> dict:
             lines.append(f'{m["id"]}. {m["name"]} [{m["category"]}] — "{desc}" [topics: {topics_csv}]')
         projects_text = "\n".join(lines)
 
-        predictions = await call_haiku(
+        predictions = await call_llm(
             DOMAIN_PROMPT.format(projects_text=projects_text)
         )
         if not predictions:

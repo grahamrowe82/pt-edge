@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import engine
 from app.embeddings import embed_batch, is_enabled as embeddings_enabled
-from app.ingest.llm import call_haiku
+from app.ingest.llm import call_llm
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
@@ -242,7 +242,7 @@ async def score_disfluency(segments: list[Segment]) -> None:
             logger.info(f"  Disfluency scoring: {i}/{len(segments)}")
 
         prompt = DISFLUENCY_PROMPT.replace("{segment_text}", seg.text[:4000])
-        result = await call_haiku(prompt, max_tokens=512, timeout=30.0)
+        result = await call_llm(prompt, max_tokens=512, timeout=30.0)
 
         if result and isinstance(result, dict):
             seg.disfluency_score = result.get("overall_disfluency_score", 50)
@@ -289,7 +289,7 @@ async def extract_concepts(segments: list[Segment], top_n: int = 10) -> None:
     ranked = sorted(segments, key=lambda s: s.novelty_score, reverse=True)
     for seg in ranked[:top_n]:
         prompt = CONCEPT_PROMPT.replace("{segment_text}", seg.text[:4000])
-        result = await call_haiku(prompt, max_tokens=512, timeout=30.0)
+        result = await call_llm(prompt, max_tokens=512, timeout=30.0)
         if result and isinstance(result, dict):
             parts = []
             if result.get("provisional_name"):

@@ -5,7 +5,7 @@ MCP gateways, agent perception tools, etc. — including breakout projects,
 traction distribution, and structural findings.
 
 Follows the domain_briefs pattern: staleness via generation_hash,
-upsert into landscape_briefs table, call_haiku for generation.
+upsert into landscape_briefs table, call_llm for generation.
 
 Runs weekly on Sundays via the ingest pipeline.
 
@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.ingest.llm import call_haiku
+from app.ingest.llm import call_llm
 from app.models import SyncLog
 from app.settings import settings
 
@@ -197,7 +197,7 @@ async def generate_landscape_briefs() -> dict:
                 breakouts_text=breakouts_text,
             )
 
-            result = await call_haiku(prompt, max_tokens=2048)
+            result = await call_llm(prompt, max_tokens=2048)
             if not result or not isinstance(result, dict):
                 logger.warning(f"Landscape brief for '{layer_name}': LLM returned no valid result")
                 errors += 1

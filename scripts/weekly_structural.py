@@ -215,7 +215,7 @@ async def label_new_categories():
         return
 
     logger.info(f"Labelling {len(unlabelled)} new categories...")
-    from app.ingest.llm import call_haiku_text
+    from app.ingest.llm import call_llm_text
     from scripts.fix_category_labels import generate_labels, apply_labels, save_labels
 
     results = await generate_labels(unlabelled)

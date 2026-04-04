@@ -43,7 +43,7 @@ async def _summarise_release(body: str, project_name: str, version: str, title: 
     # Truncate very long release notes to avoid wasting tokens
     body_truncated = body[:8000] if len(body) > 8000 else body
 
-    from app.ingest.llm import call_haiku_text
+    from app.ingest.llm import call_llm_text
 
     prompt = SUMMARY_PROMPT.format(
         project_name=project_name,
@@ -51,7 +51,7 @@ async def _summarise_release(body: str, project_name: str, version: str, title: 
         title=title,
         body=body_truncated,
     )
-    return await call_haiku_text(prompt, max_tokens=512)
+    return await call_llm_text(prompt, max_tokens=512)
 
 
 async def fetch_releases(client: httpx.AsyncClient, owner: str, repo: str) -> list[dict]:

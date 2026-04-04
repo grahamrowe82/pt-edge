@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.ingest.llm import call_haiku
+from app.ingest.llm import call_llm
 from app.models import SyncLog
 from app.settings import settings
 
@@ -355,7 +355,7 @@ async def classify_subcategory_llm(limit: int = 7500) -> dict:
                 lines.append(f'{m["id"]}. {m["name"]} — "{desc}" [topics: {topics_csv}]')
             repos_text = "\n".join(lines)
 
-            predictions = await call_haiku(
+            predictions = await call_llm(
                 SUBCATEGORY_LLM_PROMPT.format(
                     domain_label=domain_label,
                     valid_subcategories=valid_subs,

@@ -32,7 +32,7 @@ import umap
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.db import engine, readonly_engine
-from app.ingest.llm import call_haiku_text
+from app.ingest.llm import call_llm_text
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ Example:
 voice-cloning
 Tools for cloning and synthesizing voices from audio samples. Does NOT include general text-to-speech or speech recognition."""
 
-    result = await call_haiku_text(prompt, max_tokens=150)
+    result = await call_llm_text(prompt, max_tokens=150)
     if not result:
         return "unknown", "Could not label"
     lines = result.strip().split("\n")
@@ -137,7 +137,7 @@ If everything is fine, output: OK
 
 Only output MERGE/RENAME/OK lines, nothing else."""
 
-    result = await call_haiku_text(prompt, max_tokens=300)
+    result = await call_llm_text(prompt, max_tokens=300)
     if not result or "OK" in result.upper().split("\n")[0]:
         return categories
 

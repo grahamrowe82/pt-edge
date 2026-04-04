@@ -13,7 +13,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.ingest.llm import call_haiku
+from app.ingest.llm import call_llm
 from app.models import SyncLog
 from app.settings import settings
 
@@ -327,7 +327,7 @@ async def _llm_match_mcp_repos(
             lines.append(f'{t["id"]}. {t["name"]} ({t.get("category", "")}) — "{desc}"')
         tools_text = "\n".join(lines)
 
-        predictions = await call_haiku(
+        predictions = await call_llm(
             MCP_MATCH_PROMPT.format(repo_names=repo_names, tools_text=tools_text)
         )
         if not predictions:

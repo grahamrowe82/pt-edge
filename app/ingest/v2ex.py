@@ -12,7 +12,7 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.ingest.llm import call_haiku_text
+from app.ingest.llm import call_llm_text
 from app.models import Project, Lab, SyncLog
 from app.settings import settings
 from app.ingest.hn import (
@@ -56,7 +56,7 @@ async def _llm_ai_filter(title: str, content: str) -> bool:
         title=title,
         content_preview=(content or "")[:500],
     )
-    result = await call_haiku_text(prompt, max_tokens=10)
+    result = await call_llm_text(prompt, max_tokens=10)
     return result is not None and result.strip().lower().startswith("yes")
 
 

@@ -23,7 +23,7 @@ from sqlalchemy import text
 
 from app.db import engine, SessionLocal
 from app.embeddings import is_enabled as embeddings_enabled, build_newsletter_text, embed_batch
-from app.ingest.llm import call_haiku
+from app.ingest.llm import call_llm
 from app.models import Project, Lab, SyncLog
 from app.settings import settings
 
@@ -205,10 +205,10 @@ async def _extract_topics(entry: dict) -> list[dict]:
         content=entry["content"],
     )
 
-    from app.ingest.llm import call_haiku
+    from app.ingest.llm import call_llm
 
     try:
-        result = await call_haiku(prompt, max_tokens=8192, timeout=120.0)
+        result = await call_llm(prompt, max_tokens=8192, timeout=120.0)
         if result is None:
             return []
 
@@ -303,7 +303,7 @@ async def _resolve_mentions_llm(
     valid_project_ids = set(project_name_to_id.values())
     valid_lab_ids = set(lab_slug_to_id.values())
 
-    predictions = await call_haiku(
+    predictions = await call_llm(
         RESOLVE_PROMPT.format(
             projects_text=projects_text,
             labs_text=labs_text,

@@ -29,7 +29,7 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine
-from app.ingest.llm import call_haiku
+from app.ingest.llm import call_llm
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -334,7 +334,7 @@ async def generate_ai_summaries(
                 description=repo["description"] or "No description provided",
                 readme_text=readme,
             )
-            result = await call_haiku(prompt, max_tokens=400)
+            result = await call_llm(prompt, max_tokens=400)
 
             if result and isinstance(result, dict) and result.get("summary"):
                 _save_problem_brief(

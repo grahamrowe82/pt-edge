@@ -15,7 +15,7 @@ from psycopg2.extras import execute_values
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.ingest.llm import call_haiku
+from app.ingest.llm import call_llm
 from app.models import SyncLog
 from app.settings import settings
 
@@ -103,7 +103,7 @@ async def match_hn_posts_llm(limit: int = 5000) -> dict:
             lines.append(f'{m["id"]}. "{m["title"]}"{url_part}')
         posts_text = "\n".join(lines)
 
-        predictions = await call_haiku(
+        predictions = await call_llm(
             HN_MATCH_PROMPT.format(
                 labs_text=labs_text,
                 projects_text=projects_text,

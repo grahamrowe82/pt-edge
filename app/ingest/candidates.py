@@ -17,7 +17,7 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.ingest.llm import call_haiku_text
+from app.ingest.llm import call_llm_text
 from app.models import Project, SyncLog
 from app.settings import settings
 
@@ -260,7 +260,7 @@ async def _classify_category_llm(
         language=language or "unknown",
         topics=", ".join(topics) if topics else "none",
     )
-    result = await call_haiku_text(prompt, max_tokens=20)
+    result = await call_llm_text(prompt, max_tokens=20)
     if result:
         cat = result.strip().lower()
         if cat in VALID_CATEGORIES:

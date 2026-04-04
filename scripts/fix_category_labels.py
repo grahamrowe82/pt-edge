@@ -18,7 +18,7 @@ from sqlalchemy import text as sql_text
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from app.db import engine, readonly_engine
-from app.ingest.llm import call_haiku_text
+from app.ingest.llm import call_llm_text
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ async def generate_labels(labels):
         chunk = labels[i:i + chunk_size]
         slugs = "\n".join(label for _, label in chunk)
 
-        result = await call_haiku_text(
+        result = await call_llm_text(
             PROMPT.format(slugs=slugs),
             max_tokens=2000,
         )
