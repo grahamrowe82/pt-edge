@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     GSC_PROPERTY: str = "sc-domain:mcp.phasetransitions.ai"  # GSC property URI
     UMAMI_DATABASE_URL: str = ""  # Umami analytics DB (external); empty = Umami signals skipped
     UMAMI_WEBSITE_ID: str = ""  # Umami website ID to filter events
-    LLM_BUDGET_MULTIPLIER: float = 2.0  # scales content pipeline LLM spend; 2.0 = double output
+    LLM_BUDGET_MULTIPLIER: float = 5.0  # scales content pipeline LLM spend; 5.0 = 20K summaries/day on Gemini
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 

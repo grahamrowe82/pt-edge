@@ -108,6 +108,13 @@
       {% if repo.ai_summary %}
       <p class="text-sm text-gray-600">{{ repo.ai_summary }}</p>
       {% endif %}
+      {% if repo.problem_domains and repo.problem_domains | length > 0 %}
+      <div class="flex flex-wrap gap-1 mt-2">
+        {% for tag in repo.problem_domains %}
+        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">{{ tag }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
     </div>
     {% endfor %}
   </div>

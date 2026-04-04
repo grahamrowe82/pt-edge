@@ -26,7 +26,7 @@ from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-MAX_PER_RUN = 2000
+MAX_PER_RUN = 25000
 MIN_QUALITY_SCORE = 0
 README_MAX_CHARS = 8000
 MIN_README_LENGTH = 100  # skip READMEs shorter than this

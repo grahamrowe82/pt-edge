@@ -398,7 +398,9 @@ def fetch_servers(view_name):
     """All qualifying repos from the given quality view."""
     with readonly_engine.connect() as conn:
         rows = conn.execute(text(f"""
-            SELECT full_name, name, description, ai_summary, stars, forks,
+            SELECT full_name, name, description, ai_summary,
+                   problem_domains, use_this_if, not_ideal_if,
+                   stars, forks,
                    language, license, archived, category, subcategory,
                    last_pushed_at, pypi_package, npm_package,
                    downloads_monthly, dependency_count, commits_30d,
