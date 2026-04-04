@@ -44,34 +44,15 @@
   {% endif %}
 
   {% set api_url = '/api/v1/datasets/quality?domain=' ~ domain ~ '&subcategory=' ~ subcategory %}
-  <details class="mb-6 rounded-lg border border-gray-200 bg-gray-50" id="api-details">
-    <summary class="px-4 py-3 text-sm font-medium text-gray-700 cursor-pointer hover:text-gray-900">Get all {{ servers|length }} projects as JSON</summary>
-    <div class="px-4 pb-4">
-      <div id="api-preview">
-        <pre class="text-xs bg-white border border-gray-200 rounded p-3 overflow-x-auto max-h-64 overflow-y-auto" id="preview-json">Loading...</pre>
-      </div>
-      <p class="mt-3 text-xs text-gray-500">Open to everyone &mdash; 100 requests/day, no key needed. <a href="/api/docs#get-a-key" class="text-blue-600 hover:underline font-medium">Get a free key</a> for 1,000/day. Showing first 3 results.</p>
-      <pre class="mt-2 text-xs bg-white border border-gray-200 rounded p-3 overflow-x-auto">curl "https://pt-edge.onrender.com{{ api_url }}&amp;limit=20"</pre>
+  <div class="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
+    <div class="flex items-center justify-between mb-2">
+      <p class="text-sm font-medium text-gray-700">Get all {{ servers|length }} projects as JSON</p>
+      <button onclick="pteFetch(this,'{{ api_url }}&amp;limit=3','cat-json')" class="fetch-btn fetch-btn--ready">&#9654; fetch()</button>
     </div>
-  </details>
-  <script>
-  (function() {
-    var loaded = false;
-    document.getElementById('api-details').addEventListener('toggle', function() {
-      if (this.open && !loaded) {
-        loaded = true;
-        fetch('{{ api_url }}&limit=3')
-          .then(function(r) { return r.json(); })
-          .then(function(d) {
-            document.getElementById('preview-json').textContent = JSON.stringify(d, null, 2);
-          })
-          .catch(function() {
-            document.getElementById('preview-json').textContent = 'Failed to load preview';
-          });
-      }
-    });
-  })();
-  </script>
+    <pre id="cat-json" class="text-xs bg-white border border-gray-200 rounded p-3 overflow-x-auto max-h-64 overflow-y-auto hidden mb-2"></pre>
+    <pre class="text-xs bg-white border border-gray-200 rounded p-3 overflow-x-auto">curl "https://pt-edge.onrender.com{{ api_url }}&amp;limit=20"</pre>
+    <p class="mt-2 text-xs text-gray-500">Open to everyone &mdash; 100 requests/day, no key needed. <a href="/api/docs#get-a-key" class="text-blue-600 hover:underline font-medium">Get a free key</a> for 1,000/day.</p>
+  </div>
 
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
