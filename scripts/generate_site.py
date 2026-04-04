@@ -760,6 +760,11 @@ def main():
     category_meta = fetch_category_meta(domain)
     categories = build_category_data(servers, category_meta)
     related_lookup = build_related_lookup(categories)
+    # Lookup for category label + count, used by detail pages
+    cat_meta_lookup = {
+        c["subcategory"]: {"label": c["label"], "count": c["count"]}
+        for c in categories
+    }
 
     tier_counts = {}
     for s in servers:
@@ -875,9 +880,12 @@ def main():
             for dd in deep_dive_cat_lookup.get(dd_cat_key, []):
                 if dd["slug"] not in {d["slug"] for d in dd_links}:
                     dd_links.append(dd)
+        cat_info = cat_meta_lookup.get(cat_key, {})
         write_file(path, detail_tpl.render(server=s, related_servers=related,
                                           comparisons=comparison_lookup.get(s["full_name"], [])[:10],
                                           deep_dive_links=dd_links,
+                                          category_label=cat_info.get("label", ""),
+                                          category_count=cat_info.get("count", 0),
                                           **ctx))
         lastmod = ""
         if s.get("last_pushed_at"):
