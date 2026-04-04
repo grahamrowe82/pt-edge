@@ -8,6 +8,14 @@ enrichment passes without re-fetching from GitHub.
 Processes repos prioritised by allocation budget. Uses cached README when
 available (re-fetches if cache is >90 days old).
 
+Safety features:
+- GitHub budget awareness: checks remaining rate limit every 200 fetches,
+  stops when remaining < GITHUB_SAFETY_FLOOR (default 1000)
+- Failure tracking: repos that fail LLM enrichment are marked with
+  ai_summary_at but problem_domains stays NULL, so they get retried.
+  After MAX_LLM_FAILURES consecutive failures, the run stops to avoid
+  burning budget on a broken API.
+
 Run standalone:  python -m app.ingest.ai_repo_summaries [--limit 200] [--min-score 0]
 """
 import asyncio
@@ -31,6 +39,9 @@ MIN_QUALITY_SCORE = 0
 README_MAX_CHARS = 8000
 MIN_README_LENGTH = 100  # skip READMEs shorter than this
 README_CACHE_DAYS = 90  # re-fetch README if cache is older than this
+GITHUB_SAFETY_FLOOR = 1000  # stop fetching when GitHub remaining < this
+GITHUB_CHECK_INTERVAL = 200  # check GitHub rate limit every N fetches
+MAX_LLM_FAILURES = 10  # stop run after this many consecutive LLM failures
 
 PROBLEM_BRIEF_PROMPT = """\
 You are writing a short problem brief for an open-source project. Your audience is NOT a developer — \
@@ -74,6 +85,20 @@ def _github_headers():
     return headers
 
 
+async def _check_github_budget(client: httpx.AsyncClient) -> int | None:
+    """Check GitHub API remaining budget. Returns remaining count or None on error."""
+    try:
+        resp = await client.get(
+            "https://api.github.com/rate_limit",
+            headers=_github_headers(),
+        )
+        if resp.status_code == 200:
+            return resp.json().get("resources", {}).get("core", {}).get("remaining", 0)
+    except Exception as e:
+        logger.warning(f"GitHub rate limit check failed: {e}")
+    return None
+
+
 _readme_rate_limited = False
 
 
@@ -88,10 +113,10 @@ async def fetch_readme(client: httpx.AsyncClient, full_name: str) -> str | None:
             headers=_github_headers(),
         )
         if resp.status_code == 200:
-            text = resp.text[:README_MAX_CHARS]
-            if len(text) < MIN_README_LENGTH:
+            readme_text = resp.text[:README_MAX_CHARS]
+            if len(readme_text) < MIN_README_LENGTH:
                 return None
-            return text
+            return readme_text
         if resp.status_code == 404:
             return None
         if resp.status_code == 403:
@@ -208,13 +233,15 @@ def _save_problem_brief(repo_id: int, summary: str, use_this_if: str,
         conn.commit()
 
 
-def _mark_skipped(repo_id: int):
-    """Mark as attempted so we don't retry every run. Use empty string."""
+def _mark_no_readme(repo_id: int):
+    """Mark repo as having no usable README. Sets ai_summary_at so it's
+    not retried every run, but leaves problem_domains NULL so a future
+    run with a cached README can still process it."""
     with engine.connect() as conn:
         conn.execute(text("""
             UPDATE ai_repos
             SET ai_summary_at = NOW()
-            WHERE id = :id AND ai_summary IS NULL
+            WHERE id = :id AND problem_domains IS NULL
         """), {"id": repo_id})
         conn.commit()
 
@@ -244,47 +271,64 @@ async def generate_ai_summaries(
     generated = 0
     skipped = 0
     cache_hits = 0
+    github_fetches = 0
+    consecutive_llm_failures = 0
+    stopped_reason = None
     sem = asyncio.Semaphore(5)  # max 5 concurrent GitHub fetches
 
-    # Pre-flight: check GitHub API before fetching thousands of READMEs
     global _readme_rate_limited
     _readme_rate_limited = False
-    async with httpx.AsyncClient(timeout=30) as test_client:
-        try:
-            resp = await test_client.get(
-                "https://api.github.com/rate_limit",
-                headers=_github_headers(),
-            )
-            if resp.status_code == 403:
-                logger.error("GitHub rate-limited (403) — skipping all README fetches")
-                return {"processed": 0, "generated": 0, "skipped": "github_rate_limited"}
-            if resp.status_code == 200:
-                remaining = resp.json().get("resources", {}).get("core", {}).get("remaining", 0)
-                if remaining < 100:
-                    logger.warning(f"GitHub near limit ({remaining} remaining) — skipping README fetches")
-                    return {"processed": 0, "generated": 0, "skipped": "github_rate_limited"}
-        except Exception as e:
-            logger.warning(f"GitHub rate limit check failed: {e}")
 
     async with httpx.AsyncClient(timeout=30) as client:
+        # Pre-flight: check GitHub budget
+        remaining = await _check_github_budget(client)
+        if remaining is not None and remaining < GITHUB_SAFETY_FLOOR:
+            logger.warning(
+                f"GitHub budget too low ({remaining} remaining, "
+                f"floor={GITHUB_SAFETY_FLOOR}) — skipping README fetches"
+            )
+            return {"processed": 0, "generated": 0, "skipped": "github_budget_low",
+                    "github_remaining": remaining}
+        if remaining is not None:
+            logger.info(f"GitHub budget: {remaining} remaining")
+
         for i, repo in enumerate(candidates):
-            # Use cached README if fresh, otherwise fetch from GitHub
+            # ── GitHub budget check every N fetches ──────────────────
+            if (github_fetches > 0
+                    and github_fetches % GITHUB_CHECK_INTERVAL == 0
+                    and not _readme_rate_limited):
+                remaining = await _check_github_budget(client)
+                if remaining is not None and remaining < GITHUB_SAFETY_FLOOR:
+                    logger.warning(
+                        f"GitHub budget low ({remaining} remaining) — "
+                        f"stopping README fetches after {github_fetches} fetches"
+                    )
+                    _readme_rate_limited = True
+                    stopped_reason = "github_budget_low"
+
+            # ── Use cached README or fetch from GitHub ───────────────
             fetched_readme = None
             if _readme_cache_fresh(repo):
                 readme = repo["readme_cache"]
                 cache_hits += 1
+            elif _readme_rate_limited:
+                # Can't fetch — skip repos without cached README
+                _mark_no_readme(repo["id"])
+                skipped += 1
+                continue
             else:
                 async with sem:
                     readme = await fetch_readme(client, repo["full_name"])
                     await asyncio.sleep(0.2)  # respect GitHub rate limits
-                fetched_readme = readme  # save to cache in the same transaction
+                github_fetches += 1
+                fetched_readme = readme
 
             if not readme:
-                _mark_skipped(repo["id"])
+                _mark_no_readme(repo["id"])
                 skipped += 1
                 continue
 
-            # Generate problem brief via Gemini
+            # ── Generate problem brief via Gemini ────────────────────
             prompt = PROBLEM_BRIEF_PROMPT.format(
                 full_name=repo["full_name"],
                 description=repo["description"] or "No description provided",
@@ -299,25 +343,39 @@ async def generate_ai_summaries(
                     use_this_if=result.get("use_this_if", ""),
                     not_ideal_if=result.get("not_ideal_if", ""),
                     domain_tags=result.get("domain_tags", []),
-                    readme=fetched_readme,  # cache in same transaction
+                    readme=fetched_readme,
                 )
                 generated += 1
+                consecutive_llm_failures = 0
             else:
-                _mark_skipped(repo["id"])
+                # LLM failed — don't mark as skipped (problem_domains stays NULL
+                # so it will be retried), but track consecutive failures
+                consecutive_llm_failures += 1
                 skipped += 1
+                if consecutive_llm_failures >= MAX_LLM_FAILURES:
+                    stopped_reason = f"llm_failures_{consecutive_llm_failures}"
+                    logger.error(
+                        f"Stopping: {consecutive_llm_failures} consecutive LLM failures — "
+                        f"Gemini may be down or rate-limited"
+                    )
+                    break
 
             if (i + 1) % 50 == 0:
                 logger.info(
                     f"  {i + 1}/{len(candidates)} processed "
-                    f"({generated} generated, {skipped} skipped, {cache_hits} cache hits)"
+                    f"({generated} generated, {skipped} skipped, "
+                    f"{cache_hits} cache hits, {github_fetches} github fetches)"
                 )
 
     result = {
-        "processed": len(candidates),
+        "processed": i + 1 if candidates else 0,
         "generated": generated,
         "skipped": skipped,
         "cache_hits": cache_hits,
+        "github_fetches": github_fetches,
     }
+    if stopped_reason:
+        result["stopped"] = stopped_reason
     logger.info(f"Problem briefs: {result}")
     return result
 

@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     ANTHROPIC_RPM: int = 120  # Anthropic rate limit (Tier 2 = 1000 RPM, use 120 for safety)
     OPENAI_RPM: int = 400  # OpenAI rate limit (500 RPM, use 400 for safety)
     GEMINI_API_KEY: str = ""  # Google Gemini API key; empty = Gemini disabled
-    GEMINI_RPM: int = 1000  # Gemini rate limit (paid tier supports 2000+, start conservative)
+    GEMINI_RPM: int = 800  # Gemini rate limit (paid tier = 1000 RPM, keep 20% headroom)
     GEMINI_MODEL: str = "gemini-2.5-flash"  # Gemini model ID
     SNAPSHOT_RETENTION_DAYS: int = 365  # how long to keep daily snapshots (not wired to pruning yet)
     GSC_CLIENT_ID: str = ""
