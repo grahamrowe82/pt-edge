@@ -232,18 +232,6 @@ def refresh_all_views():
     except Exception as e:
         logger.warning(f"Could not snapshot allocation scores: {e}")
 
-    # Clean up old HTTP access logs (90-day retention)
-    try:
-        with engine.connect() as conn:
-            result = conn.execute(text(
-                "DELETE FROM http_access_log WHERE created_at < NOW() - INTERVAL '90 days'"
-            ))
-            conn.commit()
-            if result.rowcount:
-                logger.info(f"Cleaned up {result.rowcount} old HTTP access log rows")
-    except Exception as e:
-        logger.warning(f"Could not clean up HTTP access logs: {e}")
-
     # Log sync
     session = SessionLocal()
     try:
