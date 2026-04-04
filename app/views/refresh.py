@@ -43,6 +43,7 @@ VIEWS_IN_ORDER = [
     "mv_data_engineering_quality",# standalone: quality scores for data-engineering-domain repos
     "mv_mlops_quality",          # standalone: quality scores for mlops-domain repos
     "mv_perception_quality",     # standalone: quality scores for perception-domain repos
+    "mv_access_bot_demand",      # standalone: bot crawl demand from http_access_log
     "mv_allocation_scores",      # depends on: all quality views + ai_repo_snapshots + gsc + umami
 ]
 
