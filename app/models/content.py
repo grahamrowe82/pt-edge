@@ -116,6 +116,11 @@ class AIRepo(Base):
     ai_summary_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     embedding_1536 = mapped_column(Vector(1536), nullable=True)
     category: Mapped[str | None] = mapped_column(String(50))
+    problem_domains: Mapped[list | None] = mapped_column(ARRAY(Text))
+    use_this_if: Mapped[str | None] = mapped_column(Text)
+    not_ideal_if: Mapped[str | None] = mapped_column(Text)
+    readme_cache: Mapped[str | None] = mapped_column(Text)
+    readme_cached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class PublicAPI(Base):
