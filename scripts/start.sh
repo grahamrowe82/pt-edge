@@ -21,6 +21,9 @@ python scripts/generate_site.py --domain data-engineering --output-dir site/data
 python scripts/generate_site.py --domain mlops --output-dir site/mlops
 python scripts/generate_site.py --domain perception --output-dir site/perception
 
+echo "Generating portal homepage..."
+python scripts/generate_site.py --portal --output-dir site
+
 echo "Generating deep dive pages..."
 python scripts/generate_deep_dives.py --output-dir site
 

@@ -255,7 +255,7 @@ TIER_RANGES = {
 }
 
 DIRECTORIES = [
-    {"path": "/", "label": "MCP", "domain": "mcp"},
+    {"path": "/servers/", "label": "MCP", "domain": "mcp"},
     {"path": "/agents/", "label": "Agents", "domain": "agents"},
     {"path": "/rag/", "label": "RAG", "domain": "rag"},
     {"path": "/ai-coding/", "label": "AI Coding", "domain": "ai-coding"},
@@ -692,6 +692,57 @@ def generate_robots(base_url, base_path, out_dir):
     write_file(os.path.join(out_dir, "robots.txt"), content)
 
 
+def generate_portal(output_dir, base_url):
+    """Generate the all-domains portal homepage."""
+    template_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
+    env = Environment(loader=FileSystemLoader(template_dir), autoescape=False)
+
+    global_total = fetch_global_total()
+
+    # Get per-domain counts
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT domain, COUNT(*) AS cnt
+            FROM ai_repos
+            WHERE domain <> 'uncategorized'
+              AND subcategory IS NOT NULL AND subcategory <> ''
+            GROUP BY domain
+        """)).fetchall()
+    domain_counts = {r.domain: r.cnt for r in rows}
+
+    # Build portal domain list
+    portal_domains = []
+    for d in DIRECTORIES:
+        dcfg = DOMAIN_CONFIG.get(d["domain"], {})
+        count = domain_counts.get(d["domain"], 0)
+        portal_domains.append({
+            "path": d["path"] if d["domain"] != "mcp" else "/servers/",
+            "label": dcfg.get("label", d["label"]),
+            "label_plural": dcfg.get("label_plural", d["label"]),
+            "description": dcfg.get("description", ""),
+            "count": count,
+            "domain": d["domain"],
+        })
+    portal_domains.sort(key=lambda x: x["count"], reverse=True)
+
+    write_file(
+        os.path.join(output_dir, "index.html"),
+        env.get_template("portal.html").render(
+            domains=portal_domains,
+            global_total=f"{global_total:,}",
+            directories=DIRECTORIES,
+            base_url=base_url.rstrip("/"),
+            base_path="",
+            domain="portal",
+            domain_label="AI Tools",
+            domain_label_plural="AI Tools",
+            noun="project",
+            noun_plural="projects",
+        ),
+    )
+    print(f"  Portal homepage generated ({len(portal_domains)} domains, {global_total:,} total)")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate static AI directory site")
     parser.add_argument("--domain", default="mcp", choices=list(DOMAIN_CONFIG.keys()),
@@ -701,7 +752,14 @@ def main():
                         help="Base URL for canonical links")
     parser.add_argument("--skip-comparisons", action="store_true",
                         help="Skip comparison page generation (faster startup)")
+    parser.add_argument("--portal", action="store_true",
+                        help="Generate all-domains portal homepage only")
     args = parser.parse_args()
+
+    if args.portal:
+        print("Generating portal homepage...")
+        generate_portal(args.output_dir, args.base_url)
+        return
 
     domain = args.domain
     cfg = DOMAIN_CONFIG[domain]

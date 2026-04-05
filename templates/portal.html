@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}PT-Edge — {{ global_total }} AI Open-Source Projects Scored Daily{% endblock %}
+
+{% block meta %}
+<meta name="description" content="Find the right open-source AI tool for your task. {{ global_total }} projects across {{ domains | length }} domains — ML frameworks, agents, RAG, voice AI, embeddings, and more — scored daily on quality, with practitioner-focused assessments.">
+<meta property="og:title" content="PT-Edge — AI Open-Source Project Directory">
+<meta property="og:description" content="{{ global_total }} projects across {{ domains | length }} domains, scored daily on maintenance, adoption, maturity, and community.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ base_url }}/">
+{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="{{ base_url }}/">{% endblock %}
+
+{% block jsonld %}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "PT-Edge",
+  "url": "{{ base_url }}/",
+  "description": "Quality-scored directory of {{ global_total }} open-source AI projects across {{ domains | length }} domains. Every project assessed for practitioners — scientists, engineers, analysts — not just developers.",
+  "publisher": {
+    "@type": "Organization",
+    "name": "PT-Edge",
+    "url": "https://phasetransitions.ai"
+  }
+}
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto px-4 sm:px-6">
+
+  <div class="py-10 sm:py-14">
+    <h1 class="text-3xl sm:text-4xl font-bold text-gray-900">AI Open-Source Project Directory</h1>
+    <p class="mt-4 text-lg text-gray-600 max-w-3xl">
+      PT-Edge tracks <strong>{{ global_total }}</strong> open-source AI projects across
+      {{ domains | length }} domains, scored daily on maintenance, adoption, maturity, and
+      community signals. Every project includes a practitioner-focused assessment — written
+      for the person who has the problem, not the developer who built the tool.
+    </p>
+    <p class="mt-3 text-sm text-gray-500 max-w-3xl">
+      Whether you're a scientist looking for a spectral analysis library, a trader evaluating
+      backtesting engines, or an operations engineer hunting for anomaly detection — find the
+      right tool, understand whether you can depend on it, and compare it against alternatives.
+    </p>
+  </div>
+
+  <div class="mb-12">
+    <h2 class="text-xl font-bold text-gray-900 mb-4">Browse by domain</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {% for d in domains %}
+      <a href="{{ d.path }}" class="block rounded-lg border border-gray-200 p-5 hover:border-blue-300 hover:shadow-sm transition-all">
+        <div class="flex items-center justify-between mb-2">
+          <p class="text-lg font-semibold text-gray-900">{{ d.label_plural }}</p>
+          <span class="text-sm font-medium text-gray-500">{{ "{:,}".format(d.count) }}</span>
+        </div>
+        <p class="text-sm text-gray-600">{{ d.description }}</p>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="mb-12">
+    <h2 class="text-xl font-bold text-gray-900 mb-4">How it works</h2>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="rounded-lg bg-gray-50 p-5">
+        <p class="font-semibold text-gray-900 mb-1">Quality scores</p>
+        <p class="text-sm text-gray-600">Every project scored 0-100 on maintenance, adoption, maturity, and community. Updated daily from live GitHub, PyPI, and npm data.</p>
+      </div>
+      <div class="rounded-lg bg-gray-50 p-5">
+        <p class="font-semibold text-gray-900 mb-1">Problem briefs</p>
+        <p class="text-sm text-gray-600">Each project assessed for what real-world problem it solves, who would use it, and when to choose it — written for practitioners, not developers.</p>
+      </div>
+      <div class="rounded-lg bg-gray-50 p-5">
+        <p class="font-semibold text-gray-900 mb-1">Adoption assessments</p>
+        <p class="text-sm text-gray-600">Dependability ratings from Production-ready to Stalled. Know whether you can bet your project on a tool before you invest time learning it.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="mb-12 flex flex-wrap gap-3">
+    <a href="/insights/" class="inline-flex items-center px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:border-blue-300 hover:text-blue-600 transition-colors">Insights &amp; analysis</a>
+    <a href="/api/docs" class="inline-flex items-center px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:border-blue-300 hover:text-blue-600 transition-colors">API access</a>
+    <a href="/servers/methodology/" class="inline-flex items-center px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium text-gray-700 hover:border-blue-300 hover:text-blue-600 transition-colors">Scoring methodology</a>
+  </div>
+
+</div>
+{% endblock %}
