@@ -48,7 +48,7 @@ def schedule_fetch_readmes() -> int:
                 AND cb.domain = ar.domain
                 AND cb.subcategory = ar.subcategory
             WHERE ar.problem_domains IS NULL
-              AND ar.is_active = true
+              AND ar.archived = false
               AND ar.description IS NOT NULL
               AND ar.description <> ''
               AND NOT EXISTS (
@@ -91,7 +91,7 @@ def schedule_enrich_summaries() -> int:
                 ON rc.source = 'github_readme'
                 AND rc.subject_id = ar.full_name
             WHERE ar.problem_domains IS NULL
-              AND ar.is_active = true
+              AND ar.archived = false
               AND ar.description IS NOT NULL
               AND ar.description <> ''
               AND rc.payload IS NOT NULL
@@ -225,7 +225,7 @@ def schedule_enrich_repo_briefs() -> int:
                 AND cb.subcategory = ar.subcategory
             LEFT JOIN repo_briefs rb ON rb.ai_repo_id = ar.id
             WHERE rb.id IS NULL
-              AND ar.is_active = true
+              AND ar.archived = false
               AND ar.description IS NOT NULL
               AND ar.description <> ''
             ON CONFLICT (task_type, subject_id)
