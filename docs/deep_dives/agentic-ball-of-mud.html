@@ -1,28 +1,56 @@
-<p>Most agentic AI systems today have the same fundamental architecture as a badly written cron job: a single ephemeral process, holding all state in local memory, executing steps sequentially, with no durable record of what it did or why.</p>
+<p>You already know something is off.</p>
 
-<p>The context window is the "memory." If it gets truncated, knowledge is lost. The LLM's next-token prediction is the "orchestrator." If it hallucinates a step, there's no checkpoint to roll back to. If the process crashes, you start from scratch. There's no idempotency, no separation of concerns, no observability beyond whatever the agent happens to print to stdout.</p>
+<p>You've lost a 45-minute Claude Code session to a context compaction that threw away the thing you needed. You've watched it redo work it already did because it can't remember across sessions. You've had a multi-agent run silently go sideways and only noticed when the output was wrong. You've tried to resume after a crash and realised there's nothing to resume from.</p>
 
-<p>This is not a new failure mode. Backend engineering identified and solved every one of these problems over the last two decades. The agent ecosystem is rediscovering them &mdash; slowly, out of order, and mostly by reinventing existing infrastructure badly.</p>
+<p>These aren't bugs. Claude Code is genuinely excellent &mdash; the most effective agentic tool anyone has shipped. When Anthropic's source code leaked in March 2026 via an npm source map, 512,000 lines of TypeScript revealed an architecture of striking simplicity: plain markdown files for memory, JSONL transcripts as the source of truth, a 914-line system prompt as the orchestrator. No vector database. No DAG scheduler. No checkpoint system. The simplicity <em>is</em> the architecture, and it's what makes the product fast, reliable, and intuitive.</p>
 
-<p>PT-Edge tracks {{ '{:,}'.format(24418) }} repos in the agents domain. We mapped them against four architectural problems to find who's building real solutions &mdash; and where the gaps are widest.</p>
+<p>But the frustrations you're feeling aren't about Claude Code being bad. They're about running into the edges of an architectural pattern &mdash; <strong>smart process, ephemeral state</strong> &mdash; that was designed for a human-in-the-loop, session-length world. And the instinct most people have ("I need better memory," "I need a bigger context window") is treating the symptom, not the cause.</p>
 
-<h2>The four problems</h2>
+<p>Backend engineering identified and solved every one of these problems over the last two decades. The agent ecosystem is rediscovering them &mdash; but in the wrong order, and mostly by reinventing existing infrastructure at the wrong level of abstraction.</p>
+
+<h2>What the source code actually reveals</h2>
+
+<p>The Claude Code leak is the best case study we have for understanding where agentic architecture works and where it breaks. Here's what's inside &mdash; and what it tells us about the ceiling of the current pattern.</p>
 
 <table>
   <thead>
-    <tr><th>Problem</th><th>Backend solution</th><th>Agent ecosystem status</th></tr>
+    <tr><th>Problem</th><th>How Claude Code handles it</th><th>Where it breaks</th></tr>
   </thead>
   <tbody>
-    <tr><td>Ephemeral state</td><td>Put the truth in a database</td><td>Active &mdash; real projects, but architecturally bolted on</td></tr>
-    <tr><td>Sequential coupling</td><td>Model dependencies as DAGs, parallelise</td><td>Emerging &mdash; best solutions come from outside agent world</td></tr>
-    <tr><td>No observability</td><td>Structured logging, tracing, dashboards</td><td>Emerging fast &mdash; driven by pain from long-running tasks</td></tr>
-    <tr><td>No crash recovery</td><td>Atomic steps, checkpoints, durable execution</td><td>Nearly empty &mdash; the biggest gap</td></tr>
+    <tr>
+      <td>Memory / state</td>
+      <td>Markdown files, 25KB cap, JSONL transcripts with visibility flags, three-tier compaction (full / session / micro), AutoDream background consolidation</td>
+      <td>Compaction discards context that's still relevant. No persistence across sessions without explicit memory saves. Memory is opt-in, not default.</td>
+    </tr>
+    <tr>
+      <td>Orchestration</td>
+      <td>System prompt directives ("research &rarr; synthesis &rarr; implementation &rarr; verification"). Subagents are full new chats with independent context. Shared task lists, Unix domain sockets.</td>
+      <td>No dependency graph &mdash; sequencing is via next-token prediction. Subagents can't share state. Coordination relies on the model getting it right, not on structure guaranteeing it.</td>
+    </tr>
+    <tr>
+      <td>Observability</td>
+      <td>Regex-based frustration detection, per-model cost tracking, JSONL transcripts you can grep</td>
+      <td>No distributed tracing of reasoning chains. No structured query over what the agent did or why. Visibility is "read the transcript."</td>
+    </tr>
+    <tr>
+      <td>Crash recovery</td>
+      <td>Nothing. Sessions are stateless &mdash; pass history in, get history out. If it crashes, you start over.</td>
+      <td>Breaks immediately for any task longer than a session. ULTRAPLAN (unreleased, 30-minute remote planning) hints that Anthropic knows this is a problem.</td>
+    </tr>
   </tbody>
 </table>
 
-<h2>Problem 1: Durable state</h2>
+<p>This architecture is brilliant for what it was designed for: an interactive coding session where a developer is watching, can hit ESC to correct course, and can restart if something goes wrong. The 914-line system prompt is a masterpiece of pragmatic engineering &mdash; coordinator mode, permission gating, tool escalation, all expressed as directives rather than code.</p>
 
-<p>The context window is process memory. It dies with the process. The fix has always been: put the truth in a database. The agent ecosystem knows this &mdash; memory is the most active infrastructure category.</p>
+<p>But look at what Anthropic is building next: ULTRAPLAN offloads complex tasks to remote containers running for 30 minutes. KAIROS is a proactive background assistant. Bridge mode enables cross-machine session handoff. Each of these pushes against the edges of the "smart process, ephemeral state" pattern. Anthropic knows what got them here won't get them there.</p>
+
+<h2>The four problems &mdash; and who's actually solving them</h2>
+
+<p>PT-Edge tracks {{ '{:,}'.format(24418) }} repos in the agents domain. We mapped the landscape against the four architectural gaps the Claude Code case study reveals.</p>
+
+<h2>1. Durable state: the right instinct at the wrong level</h2>
+
+<p>When your Claude Code session loses context to compaction, the natural response is "I need better memory." The ecosystem agrees &mdash; memory is the most active infrastructure category. But bolting a memory layer onto an ephemeral process doesn't make the process durable. It gives it a longer scratchpad.</p>
 
 <table>
   <thead>
@@ -44,15 +72,17 @@
   </tbody>
 </table>
 
-<p><a href="{{ domain_path('rag') }}/servers/mem0ai/mem0/">mem0</a> ({{ repos.get('mem0ai/mem0', {}).stars | intcomma }} stars, quality {{ repos.get('mem0ai/mem0', {}).quality_score }}/100) is the category leader &mdash; integrated as a dependency into <a href="{{ domain_path('agents') }}/servers/crewAIInc/crewAI/">CrewAI</a>, Agno, AgentScope, and Camel. <a href="{{ domain_path('vector-db') }}/servers/topoteretes/cognee/">Cognee</a> (quality {{ repos.get('topoteretes/cognee', {}).quality_score }}/100) has the highest development velocity in the category at 372 commits in 30 days.</p>
+<p><a href="{{ domain_path('rag') }}/servers/mem0ai/mem0/">mem0</a> ({{ repos.get('mem0ai/mem0', {}).stars | intcomma }} stars, quality {{ repos.get('mem0ai/mem0', {}).quality_score }}/100, 2.8M downloads/month) is the category leader &mdash; integrated into <a href="{{ domain_path('agents') }}/servers/crewAIInc/crewAI/">CrewAI</a>, Agno, AgentScope, and Camel. <a href="{{ domain_path('vector-db') }}/servers/topoteretes/cognee/">Cognee</a> (quality {{ repos.get('topoteretes/cognee', {}).quality_score }}/100, 372 commits in 30 days) has the highest development velocity in the category. These are genuinely good projects solving a real problem.</p>
 
-<p><strong>But here's the architectural question:</strong> is memory being integrated into the agent's core, or bolted on as a plugin? Looking at CrewAI's dependency list, <code>mem0ai</code> sits alongside <code>chromadb</code> and <code>qdrant-client</code> as an optional add-on. The context window is still the default state store. Memory is an afterthought you can opt into, not the architectural foundation.</p>
+<p>But consider what Claude Code actually uses for memory: plain markdown files with a 25KB cap. No vector database. No embeddings. An <code>ENTRYPOINT.md</code> index pointing to individual memory files, consolidated by a background subagent (AutoDream) that runs a four-phase cycle during idle time. The most widely adopted agent in the world solves memory with text files &mdash; and it works, because the real constraint isn't retrieval quality. It's that the process is ephemeral.</p>
 
-<p>The projects that get this right treat state as primary. <a href="{{ domain_path('agents') }}/servers/ayushmi/agentstate/">AgentState</a> (quality {{ repos.get('ayushmi/agentstate', {}).quality_score }}/100) provides WAL+snapshots, CRDTs, and idempotency guarantees &mdash; the same primitives databases use. It's small ({{ repos.get('ayushmi/agentstate', {}).stars | intcomma }} stars) but architecturally serious. The gap between "memory plugin" and "durable state layer" is where the real engineering lives.</p>
+<p>mem0's 2.8M monthly downloads solve a problem that Claude Code solves with a text file and a 25KB cap. That's not a criticism of mem0 &mdash; it's evidence that better retrieval isn't the bottleneck. The bottleneck is that the agent's truth dies with its process. <a href="{{ domain_path('agents') }}/servers/ayushmi/agentstate/">AgentState</a> (quality {{ repos.get('ayushmi/agentstate', {}).quality_score }}/100) is one of the few projects that understands this distinction &mdash; WAL+snapshots, CRDTs, and idempotency guarantees. Database primitives, not retrieval primitives.</p>
 
-<h2>Problem 2: Orchestration beyond sequential chains</h2>
+<h2>2. Orchestration: prompts work until they don't</h2>
 
-<p>Steps execute in order because that's how the prompt was written, not because there's a real dependency. The fix: model dependencies explicitly, execute in parallel where possible.</p>
+<p>Claude Code's coordinator mode is implemented as a system prompt, not as code. "Research phase &rarr; synthesis phase &rarr; implementation phase &rarr; verification phase" are directives like "Do not rubber-stamp weak work," not edges in a dependency graph. Subagents are full new chats spawned via the Task tool, communicating through shared task lists and Unix domain sockets.</p>
+
+<p>This is the opposite of what the orchestration ecosystem is building &mdash; and it works, because the model is good enough to self-sequence for interactive tasks, and a human is watching to correct mistakes. The question is what happens when the human isn't watching.</p>
 
 <table>
   <thead>
@@ -74,15 +104,15 @@
   </tbody>
 </table>
 
-<p>The pattern here is telling: the best orchestration solutions come from <em>outside</em> the agent ecosystem. <a href="{{ domain_path('agents') }}/servers/triggerdotdev/trigger.dev/">trigger.dev</a> ({{ repos.get('triggerdotdev/trigger.dev', {}).stars | intcomma }} stars, quality {{ repos.get('triggerdotdev/trigger.dev', {}).quality_score }}/100, {{ '{:,}'.format(767768) }} downloads/month) is a background jobs platform that agent developers are adopting. <a href="{{ domain_path('data-engineering') }}/servers/dagu-org/dagu/">dagu</a> (quality {{ repos.get('dagu-org/dagu', {}).quality_score }}/100) is a declarative workflow engine from the data engineering world. <a href="{{ domain_path('mlops') }}/servers/Netflix/maestro/">Netflix Maestro</a> is production-grade workflow orchestration that predates the agent era entirely.</p>
+<p>The telling pattern: the best orchestration solutions come from <em>outside</em> the agent ecosystem. <a href="{{ domain_path('agents') }}/servers/triggerdotdev/trigger.dev/">trigger.dev</a> ({{ repos.get('triggerdotdev/trigger.dev', {}).stars | intcomma }} stars, quality {{ repos.get('triggerdotdev/trigger.dev', {}).quality_score }}/100, {{ '{:,}'.format(767768) }} downloads/month) is a background jobs platform. <a href="{{ domain_path('data-engineering') }}/servers/dagu-org/dagu/">dagu</a> (quality {{ repos.get('dagu-org/dagu', {}).quality_score }}/100) is a declarative workflow engine from the data engineering world. <a href="{{ domain_path('mlops') }}/servers/Netflix/maestro/">Netflix Maestro</a> is production-grade orchestration that predates the agent era entirely. These tools model dependencies explicitly and execute in parallel where possible &mdash; the patterns that make backend systems reliable.</p>
 
-<p><a href="{{ domain_path('agents') }}/servers/ComposioHQ/agent-orchestrator/">Composio's agent-orchestrator</a> ({{ repos.get('ComposioHQ/agent-orchestrator', {}).stars | intcomma }} stars, {{ repos.get('ComposioHQ/agent-orchestrator', {}).commits_30d }} commits/30d) is the standout agent-native entry &mdash; DAG-based planning, parallel agent spawning, git worktrees for isolation, and automated CI fix loops. This is what "agent orchestration" should look like: a worker pulling tasks from a queue, not a prompt hoping for the best.</p>
+<p><a href="{{ domain_path('agents') }}/servers/ComposioHQ/agent-orchestrator/">Composio's agent-orchestrator</a> ({{ repos.get('ComposioHQ/agent-orchestrator', {}).stars | intcomma }} stars, {{ repos.get('ComposioHQ/agent-orchestrator', {}).commits_30d }} commits/30d) is the standout agent-native project &mdash; DAG-based planning, parallel agent spawning, git worktrees for isolation, automated CI fix loops. It looks like a worker pulling tasks from a queue, not a prompt hoping for the best. That's the shape of what comes next.</p>
 
-<p>Among the smaller projects, <a href="{{ domain_path('agents') }}/servers/rodmena-limited/stabilize/">Stabilize</a> is worth watching &mdash; a queue-based state machine that explicitly positions itself between simple task queues like Celery and heavy orchestrators like Airflow. That's exactly the abstraction level agents need.</p>
+<h2>3. Observability: you can't debug what you can't see</h2>
 
-<h2>Problem 3: Observability</h2>
+<p>Claude Code's observability consists of regex-based frustration detection ("wtf", "this sucks" &mdash; faster and cheaper than an LLM inference call), per-model cost tracking, and JSONL transcripts you can grep. That's it. No distributed tracing. No structured reasoning logs. No way to query "why did the agent make this decision at step 7?"</p>
 
-<p>When an agent runs for 6&ndash;8 hours (Latent Space reports this is now common), "whatever the agent happens to print to stdout" stops being acceptable. The observability category is emerging fast, driven by real pain.</p>
+<p>When your sessions are 15 minutes and you're watching, this is fine. When agents run for 6&ndash;8 hours (Latent Space reports this is now common) or operate in production without supervision, "grep the transcript" stops being an observability strategy.</p>
 
 <table>
   <thead>
@@ -104,15 +134,17 @@
   </tbody>
 </table>
 
-<p><a href="{{ domain_path('agents') }}/servers/coze-dev/coze-loop/">Cozeloop</a> ({{ repos.get('coze-dev/coze-loop', {}).stars | intcomma }} stars, quality {{ repos.get('coze-dev/coze-loop', {}).quality_score }}/100) from ByteDance's Coze team provides full-lifecycle management &mdash; development, debugging, evaluation, and monitoring in one platform. <a href="{{ domain_path('agents') }}/servers/AgentOps-AI/agentops/">AgentOps</a> ({{ repos.get('AgentOps-AI/agentops', {}).stars | intcomma }} stars) takes the integration approach, plugging into CrewAI, Agno, and the OpenAI Agents SDK. <a href="{{ domain_path('agents') }}/servers/truera/trulens/">TruLens</a> (quality {{ repos.get('truera/trulens', {}).quality_score }}/100) brings evaluation rigour from the ML experiment tracking tradition.</p>
+<p><a href="{{ domain_path('agents') }}/servers/coze-dev/coze-loop/">Cozeloop</a> ({{ repos.get('coze-dev/coze-loop', {}).stars | intcomma }} stars, quality {{ repos.get('coze-dev/coze-loop', {}).quality_score }}/100) from ByteDance's Coze team provides full-lifecycle management &mdash; development, debugging, evaluation, and monitoring in one platform. <a href="{{ domain_path('agents') }}/servers/AgentOps-AI/agentops/">AgentOps</a> ({{ repos.get('AgentOps-AI/agentops', {}).stars | intcomma }} stars) plugs into CrewAI, Agno, and the OpenAI Agents SDK. <a href="{{ domain_path('agents') }}/servers/Siddhant-K-code/agent-trace/">agent-trace</a> describes itself as "strace for AI agents" &mdash; capture and replay every tool call, prompt, and response. That's the right metaphor. Backend engineers don't debug by reading stdout; they use tracing.</p>
 
-<p>The smaller projects are where it gets interesting. <a href="{{ domain_path('agents') }}/servers/Siddhant-K-code/agent-trace/">agent-trace</a> describes itself as "strace for AI agents" &mdash; capture and replay every tool call, prompt, and response. That's the right metaphor. Backend engineers don't debug by reading stdout; they use tracing. The agent ecosystem is starting to figure this out.</p>
+<p><strong>Growth signal:</strong> February 2026 saw 14 new observability repos created in a single month, up from 0&ndash;4 in prior months. The pain from long-running tasks is making visibility non-optional. Sentrial (YC W26) raised money specifically to "catch AI agent failures before your users do." When Y Combinator is funding the observability gap, it's real.</p>
 
-<p><strong>Growth signal:</strong> February 2026 saw 14 new observability repos created in a single month, up from 0&ndash;4 in prior months. Something is making the pain acute &mdash; likely the emergence of multi-hour agent tasks where failure without visibility is intolerable.</p>
+<h2>4. Crash recovery: the void that explains the frustration</h2>
 
-<h2>Problem 4: Crash recovery &mdash; the void</h2>
+<p>Here's the finding that reframes everything else. If step 7 of 12 fails, you rerun 1&ndash;12. If your session crashes, you lose everything since your last explicit save. If a multi-agent swarm goes sideways at hour 3, there's no checkpoint to roll back to.</p>
 
-<p>If step 7 of 12 fails, you rerun 1&ndash;12. The fix in backend engineering: make each step atomic, record completion, resume from where you left off. In the agent ecosystem, this problem is almost completely unaddressed.</p>
+<p>Claude Code has no crash recovery infrastructure. None. The source code confirms it: sessions are stateless &mdash; pass history in, get history out. The only resilience is a circuit breaker on compaction failures (<code>MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3</code>). If the process dies, the JSONL transcript survives on disk, but there's no mechanism to resume mid-conversation.</p>
+
+<p>And this is fine &mdash; for interactive sessions. You're there. You can restart. But it's <em>not</em> fine for the direction the industry is heading: autonomous agents running for hours, multi-agent production deployments, tasks where "start over" means losing real work.</p>
 
 <table>
   <thead>
@@ -134,13 +166,11 @@
   </tbody>
 </table>
 
-<p>That's it. Three projects, all early-stage, none with significant adoption. Compare that to the memory category (top 7 repos with quality scores above 70 and real community engagement) or orchestration (projects with hundreds of thousands of monthly downloads).</p>
+<p>That's the entire crash recovery landscape for AI agents. Three projects, all early-stage, none with significant adoption.</p>
 
-<p><a href="{{ domain_path('agents') }}/servers/azender1/SafeAgent/">SafeAgent</a> targets exactly-once execution with finality gating and request-ID deduplication &mdash; the same patterns that payment systems use to prevent double-charging. <a href="{{ domain_path('agents') }}/servers/deepansh-saxena/DuraLang/">DuraLang</a> takes the developer-ergonomics approach: one decorator to make an agent function durable. Both are under 10 stars.</p>
+<p>Meanwhile, backend engineering solved this decades ago. Temporal, Inngest, DBOS, and Restate are proven, production-grade durable execution runtimes. So why aren't agent developers using them?</p>
 
-<h2>The dependency gap</h2>
-
-<p>Backend engineering solved crash recovery decades ago. Temporal, Inngest, DBOS, and Restate are proven, production-grade durable execution runtimes. So why aren't agent developers using them?</p>
+<h2>The dependency gap: the structural diagnosis</h2>
 
 <table>
   <thead>
@@ -158,40 +188,45 @@
   </tbody>
 </table>
 
-<p>The agent ecosystem has 273 repos depending on LangChain and 133 depending on ChromaDB. It has <strong>2 total repos</strong> depending on durable execution runtimes. The infrastructure that prevents crashes, enables recovery, and guarantees exactly-once execution has near-zero penetration.</p>
+<p>273 repos depend on LangChain. 133 depend on ChromaDB. <strong>2 total repos</strong> depend on any durable execution runtime. The infrastructure that prevents crashes, enables recovery, and guarantees exactly-once execution has near-zero penetration into the AI agent ecosystem.</p>
 
-<p>The first bridge appeared in March 2026: LlamaIndex announced DBOS integration for durable agent workflows. Whether this is the start of adoption or a one-off integration remains to be seen.</p>
+<p>This is the structural diagnosis behind every frustration you've had with agentic tools. It's not that Claude Code needs better memory. It's not that you need a bigger context window. It's that the entire pattern of "smart process, ephemeral state" can't do crash recovery, because there's nothing to recover <em>to</em>. The process IS the state. Kill the process, lose the state.</p>
 
-<h2>What good looks like</h2>
+<p>The first bridge appeared in March 2026: LlamaIndex announced DBOS integration for durable agent workflows. Whether this is the start of real adoption or a one-off experiment remains to be seen.</p>
 
-<p>The projects that actually work well tend to rediscover backend patterns by accident. Using git as the source of truth. Writing intermediate results to files or databases. Structuring work as discrete tasks rather than one long chain of thought. They're reinventing the work queue &mdash; they just don't call it that because the marketing says "agent."</p>
+<h2>What got us here won't get us there</h2>
 
-<p>The bridge projects are the ones to watch:</p>
+<p>Claude Code's architecture is proof that a well-built simple system beats a complex one &mdash; for interactive work. Markdown memory, JSONL transcripts, prompt-driven orchestration, and a human in the loop. It's elegant, fast, and it ships.</p>
+
+<p>But Anthropic themselves are building past it. The leaked source reveals unreleased features that push against every edge of the current pattern:</p>
 
 <ul>
-  <li><a href="{{ domain_path('agents') }}/servers/triggerdotdev/trigger.dev/">trigger.dev</a> &mdash; background jobs infrastructure being adopted by agent developers ({{ '{:,}'.format(767768) }} downloads/month)</li>
-  <li><a href="{{ domain_path('agents') }}/servers/sayiir/sayiir/">Sayiir</a> &mdash; "simplified Temporal" in Rust, explicitly targeting AI agent workflows</li>
-  <li><a href="{{ domain_path('agents') }}/servers/rodmena-limited/stabilize/">Stabilize</a> &mdash; queue-based state machine sitting at exactly the right abstraction level</li>
-  <li><strong>DBOS + LlamaIndex</strong> &mdash; the first integration between a durable execution runtime and an agent framework</li>
-  <li><a href="{{ domain_path('agents') }}/servers/AxmeAI/axme/">AxmeAI</a> &mdash; pre-launch company building durable execution "where agents, services, and humans coordinate as equals"</li>
+  <li><strong>ULTRAPLAN</strong> &mdash; offloads complex tasks to remote containers with 30-minute thinking windows. That's not an interactive session any more.</li>
+  <li><strong>KAIROS</strong> &mdash; a proactive background assistant with append-only logs and cron scheduling. That's a daemon, not a chat.</li>
+  <li><strong>Bridge mode</strong> &mdash; cross-machine session handoff. That requires state that survives the process.</li>
+  <li><strong>Coordinator mode</strong> &mdash; multi-agent swarms with research, synthesis, implementation, and verification phases. That requires orchestration guarantees beyond "the model will figure it out."</li>
 </ul>
 
-<p>The interesting research question: is there something inherent in the LLM-as-orchestrator pattern that resists these fixes? Can you have a durable, observable, crash-recoverable agent that still benefits from LLM reasoning at each step? Probably yes &mdash; but it looks much more like a worker pulling tasks from a queue than an "autonomous agent" with a system prompt and a dream.</p>
+<p>Each of these is a step away from "smart process, ephemeral state" and towards something that looks more like a worker pulling tasks from a durable queue. The direction is clear. The infrastructure isn't there yet.</p>
 
-<h2>The signal from the pain</h2>
+<p>The projects that will define the next generation of agent infrastructure are the ones building that bridge:</p>
 
-<p>The industry is feeling this. Amazon's Kiro agent deleted and recreated environments, causing a 13-hour AWS outage (Pragmatic Engineer, March 2026). Latent Space reports agents now run 6&ndash;8 hour tasks. Anthropic published guidance on "harness engineering for long-running tasks." On Hacker News, a developer asks <em>"How do you cope with the broken rhythm of agentic coding?"</em> while another builds <em>"Agent Kernel &mdash; Three Markdown files that make any AI agent stateful."</em></p>
+<ul>
+  <li><a href="{{ domain_path('agents') }}/servers/triggerdotdev/trigger.dev/">trigger.dev</a> &mdash; background jobs infrastructure already being adopted by agent developers ({{ '{:,}'.format(767768) }} downloads/month)</li>
+  <li><a href="{{ domain_path('agents') }}/servers/sayiir/sayiir/">Sayiir</a> &mdash; "simplified Temporal" in Rust, explicitly targeting AI agent workflows</li>
+  <li><a href="{{ domain_path('agents') }}/servers/rodmena-limited/stabilize/">Stabilize</a> &mdash; queue-based state machine at exactly the right abstraction level</li>
+  <li><strong>DBOS + LlamaIndex</strong> &mdash; the first integration between a durable execution runtime and an agent framework</li>
+  <li><a href="{{ domain_path('agents') }}/servers/AxmeAI/axme/">AxmeAI</a> &mdash; building durable execution "where agents, services, and humans coordinate as equals"</li>
+</ul>
 
-<p>Sentrial (YC W26) raised money specifically to "catch AI agent failures before your users do." When Y Combinator is funding the observability gap, it's real.</p>
-
-<p>The agent ecosystem is solving these problems in the wrong order &mdash; from the easiest (memory) to the hardest (crash recovery) &mdash; and the projects that will define the next generation of agent infrastructure are the ones that bring proven backend engineering patterns into the LLM world. Not smarter orchestration within the process. The fix is killing the process as the locus of truth and putting the truth somewhere that survives it.</p>
+<p>The fix isn't smarter orchestration within the process. It's killing the process as the locus of truth and putting the truth somewhere that survives it.</p>
 
 <h2>Explore the data</h2>
 
 <p>Every project in this analysis has a quality-scored page in the PT-Edge directory, updated daily. Browse the <a href="{{ domain_path('agents') }}/categories/">agent categories</a>, check <a href="{{ domain_path('agents') }}/trending/">what's trending</a>, or explore:</p>
 <ul>
-  <li><a href="{{ domain_path('agents') }}/categories/agent-memory-systems/">Agent memory systems</a> &mdash; {{ '{:,}'.format(629) }} repos</li>
-  <li><a href="{{ domain_path('agents') }}/categories/agent-orchestration-platforms/">Agent orchestration platforms</a> &mdash; {{ '{:,}'.format(289) }} repos</li>
-  <li><a href="{{ domain_path('agents') }}/categories/agent-observability-debugging/">Agent observability &amp; debugging</a> &mdash; {{ '{:,}'.format(124) }} repos</li>
-  <li><a href="{{ domain_path('agents') }}/categories/agentic-workflow-builders/">Agentic workflow builders</a> &mdash; {{ '{:,}'.format(173) }} repos</li>
+  <li><a href="{{ domain_path('agents') }}/categories/agent-memory-systems/">Agent memory systems</a></li>
+  <li><a href="{{ domain_path('agents') }}/categories/agent-orchestration-platforms/">Agent orchestration platforms</a></li>
+  <li><a href="{{ domain_path('agents') }}/categories/agent-observability-debugging/">Agent observability &amp; debugging</a></li>
+  <li><a href="{{ domain_path('agents') }}/categories/agentic-workflow-builders/">Agentic workflow builders</a></li>
 </ul>

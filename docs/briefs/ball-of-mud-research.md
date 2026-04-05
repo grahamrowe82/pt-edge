@@ -4,7 +4,7 @@
 
 ## Thesis
 
-Most agentic AI systems repeat the same architectural mistakes backend engineering solved decades ago: ephemeral state, sequential coupling, no crash recovery, orchestration by vibes. The agent ecosystem is solving these problems in the wrong order — from easiest (memory) to hardest (crash recovery) — and mostly by reinventing what backend engineering already built, badly.
+The frustrations developers already feel with agentic tools — lost context, repeated work, silent failures, no resume after crashes — aren't bugs. They're the edges of an architectural pattern ("smart process, ephemeral state") that was designed for interactive, session-length, human-in-the-loop work. Claude Code is the best product in the market, and its leaked source code (512K lines of TypeScript, March 2026) confirms the pattern: markdown memory, JSONL transcripts, prompt-driven orchestration, zero crash recovery. Brilliant for what it was designed for. But what got us here won't get us there — and the instinct to fix it with "better memory" is treating the symptom, not the cause.
 
 ## The ecosystem that matters
 
@@ -141,14 +141,59 @@ Amazon Kiro agent deleted and recreated environments, causing a 13-hour outage. 
 - `agent-memory-systems` (rag domain): ES 30
 - Most subcategories show zero GSC impressions — the deep dive itself would create the demand
 
+## Claude Code case study (source leak, March 2026)
+
+512,000 lines of TypeScript leaked via npm source map on 2026-03-31. Key architectural findings:
+
+### Memory/State
+- Plain markdown files, 25KB cap, ENTRYPOINT.md index
+- JSONL transcripts with visibility flags (isCompactSummary, isVisibleInTranscriptOnly, isMeta)
+- Three-tier compaction: full / session memory / micro (micro triggered on 1h idle)
+- AutoDream: background subagent for idle-time memory consolidation (4 phases: orient → gather → consolidate → prune)
+- No vector DB, no embeddings, no RAG
+
+### Orchestration
+- Coordinator mode implemented as system prompt directives, not code
+- Subagents are full new chats (Task tool), independent context, sidechain JSONL files
+- Communication via shared task lists, Unix domain sockets, Bridge protocol
+- Phases: research → synthesis → implementation → verification (prompt-driven, not DAG-driven)
+
+### Observability
+- Regex-based frustration detection (userPromptKeywords.ts)
+- Per-model cost tracking
+- JSONL transcripts (grep-able, not queryable)
+- No distributed tracing of reasoning chains
+
+### Crash recovery
+- Nothing. Sessions stateless �� pass history in, get history out
+- Circuit breaker on compaction failures (MAX_CONSECUTIVE_AUTOCOMPACT_FAILURES = 3)
+- JSONL survives on disk but no resume mechanism
+
+### Unreleased features (pushing past the pattern)
+- ULTRAPLAN: 30-minute remote planning in cloud containers (Opus 4.6)
+- KAIROS: proactive background assistant, append-only logs, cron scheduling
+- Bridge mode: cross-machine session handoff
+- Coordinator mode: multi-agent swarms with verification phases
+
+### HN discussion (from leak)
+- Main thread: 1,957 points, 959 comments (2026-03-31)
+- Analysis thread: 1,079 points, 419 comments (2026-03-31)
+- "How I use Claude Code: Separation of planning and execution" — 976 points
+- Key insight from HN user: "Using messages as the state of the memory for the system is OK...as context windows grow, messages should be ok"
+- Key insight: "Try using opus with cline in vs code. Then use Claude code...same model, different orchestration, different results"
+
+### What this means for the thesis
+Claude Code proves the "smart process, ephemeral state" pattern works brilliantly for interactive work. The simplicity IS the product. But Anthropic's own roadmap (ULTRAPLAN, KAIROS, Bridge) shows they know the pattern has a ceiling. The frustrations developers feel aren't Claude Code being bad — they're the architectural ceiling being hit.
+
 ## Proposed article structure
 
-1. **The problem** — agentic AI repeats backend engineering's solved mistakes (from the original idea doc)
-2. **Memory (durable state)** — most activity, real projects, but architecturally bolted on as plugins
-3. **Orchestration (dependency graphs)** — the best solutions come from outside the agent world
-4. **Observability** — emerging fast, driven by real pain from long-running tasks
-5. **Crash recovery (the void)** — the hardest problem, the biggest opportunity, almost nobody working on it
-6. **The dependency gap** — Temporal/Inngest/DBOS have near-zero adoption in agents despite solving these problems for backend. Why?
-7. **What good looks like** — the bridge projects (DBOS+LlamaIndex, trigger.dev, Temporal wrappers) and the architectural pattern that would actually fix it
+1. **The frustration you already feel** — lost context, repeated work, no resume. These aren't bugs.
+2. **What the source code reveals** — Claude Code as case study. Brilliant simplicity for interactive work. Markdown memory, prompt orchestration, zero crash recovery.
+3. **Memory (durable state)** — the right instinct at the wrong level. mem0 solves what Claude Code solves with a text file.
+4. **Orchestration** — prompts work until they don't. Best solutions come from outside.
+5. **Observability** — emerging fast, driven by pain from long-running tasks
+6. **Crash recovery (the void)** — the finding that reframes everything. Near-zero durable execution adoption.
+7. **The dependency gap** — 273 langchain dependents, 2 temporal/inngest dependents
+8. **What got us here won't get us there** — Anthropic's own roadmap proves the ceiling. Bridge projects to watch.
 
-**Editorial hook:** The agent ecosystem is solving these problems in the wrong order, and mostly by reinventing what backend engineering already built. The projects that will win are the ones bridging the gap.
+**Editorial hook:** You already know something is off. The frustrations you feel with agentic tools are real, but "better memory" isn't the fix. The fix is killing the process as the locus of truth.
