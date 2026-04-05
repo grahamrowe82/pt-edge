@@ -90,21 +90,27 @@ def _buffer_access(path, method, status_code, user_agent, client_ip, duration_ms
         "ip": client_ip,
         "dur": duration_ms,
     }
-    should_flush = False
     with _buffer_lock:
         _buffer.append(entry)
-        if len(_buffer) >= _BUFFER_SIZE:
-            should_flush = True
-
-    if should_flush:
-        _flush_buffer()
+    # Never flush in the request path — the background task handles it.
+    # This ensures a dead DB never blocks request handlers.
 
 
 async def _periodic_flush():
-    """Flush the buffer every _FLUSH_INTERVAL seconds."""
+    """Flush the buffer every _FLUSH_INTERVAL seconds, or sooner if full.
+
+    Checks every second so large bursts don't accumulate unbounded,
+    but only writes to DB on the interval or when buffer exceeds threshold.
+    """
+    last_flush = time.time()
     while True:
-        await asyncio.sleep(_FLUSH_INTERVAL)
-        _flush_buffer()
+        await asyncio.sleep(1.0)
+        with _buffer_lock:
+            buf_len = len(_buffer)
+        elapsed = time.time() - last_flush
+        if buf_len >= _BUFFER_SIZE or (buf_len > 0 and elapsed >= _FLUSH_INTERVAL):
+            _flush_buffer()
+            last_flush = time.time()
 
 
 def _flush_buffer():
