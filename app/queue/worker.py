@@ -1,13 +1,14 @@
-"""Stateless task queue worker.
+"""Stateless task queue worker with resource-aware concurrency.
 
-Claims the highest-priority affordable task, executes it, writes the
-result back to the database. Repeat. If there's no work, sleep briefly.
+Runs multiple tasks concurrently when they use different resources.
+A GitHub task and a Gemini task don't compete — they run in parallel.
+Tasks sharing a resource type are serialised by the claim query.
 
-The worker is stateless — it reads inputs from the database and writes
-outputs to the database. If it crashes, uncompleted tasks are reclaimed
-by the scheduler's stale task reaper.
+The worker maintains one active task per resource type. When a task
+completes, it immediately claims the next one for that resource slot.
 """
 import asyncio
+import json
 import logging
 import os
 import socket
@@ -22,10 +23,39 @@ WORKER_ID = f"worker-{os.getpid()}-{socket.gethostname()}"
 POLL_INTERVAL = 5       # seconds between claim attempts when idle
 HEARTBEAT_INTERVAL = 60  # seconds between heartbeats during execution
 
-# SQL: claim the highest-priority pending task with available budget.
-# Uses FOR UPDATE SKIP LOCKED so multiple workers don't block each other.
-# Handles budget period expiry inline.
-_CLAIM_SQL = text("""
+# SQL: claim the highest-priority pending task for a specific resource type.
+_CLAIM_FOR_RESOURCE_SQL = text("""
+    WITH budget_check AS (
+        SELECT resource_type,
+               CASE WHEN now() >= period_start + (period_hours || ' hours')::interval
+                    THEN budget
+                    ELSE budget - consumed
+               END AS remaining
+        FROM resource_budgets
+    ),
+    next_task AS (
+        SELECT t.id
+        FROM tasks t
+        LEFT JOIN budget_check bc ON bc.resource_type = t.resource_type
+        WHERE t.state = 'pending'
+          AND t.resource_type = :target_resource
+          AND bc.remaining > 0
+        ORDER BY t.priority DESC, t.created_at ASC
+        LIMIT 1
+        FOR UPDATE OF t SKIP LOCKED
+    )
+    UPDATE tasks
+    SET state = 'claimed',
+        claimed_by = :worker_id,
+        claimed_at = now(),
+        heartbeat_at = now()
+    WHERE id = (SELECT id FROM next_task)
+    RETURNING id, task_type, subject_id, priority, resource_type,
+              retry_count, max_retries
+""")
+
+# SQL: claim any pending task (for tasks with NULL resource_type, or fallback)
+_CLAIM_ANY_SQL = text("""
     WITH budget_check AS (
         SELECT resource_type,
                CASE WHEN now() >= period_start + (period_hours || ' hours')::interval
@@ -55,7 +85,6 @@ _CLAIM_SQL = text("""
 """)
 
 # SQL: decrement resource budget after claiming a task.
-# Resets the period if it has expired.
 _DECREMENT_BUDGET_SQL = text("""
     UPDATE resource_budgets
     SET consumed = CASE
@@ -72,10 +101,18 @@ _DECREMENT_BUDGET_SQL = text("""
 """)
 
 
-def claim_next_task(worker_id: str) -> dict | None:
-    """Claim the next available task. Returns task dict or None."""
+def claim_next_task(worker_id: str, resource_type: str | None = None) -> dict | None:
+    """Claim the next available task, optionally for a specific resource type."""
     with engine.connect() as conn:
-        row = conn.execute(_CLAIM_SQL, {"worker_id": worker_id}).mappings().fetchone()
+        if resource_type:
+            row = conn.execute(
+                _CLAIM_FOR_RESOURCE_SQL,
+                {"worker_id": worker_id, "target_resource": resource_type},
+            ).mappings().fetchone()
+        else:
+            row = conn.execute(
+                _CLAIM_ANY_SQL, {"worker_id": worker_id},
+            ).mappings().fetchone()
         if row is None:
             conn.commit()
             return None
@@ -88,7 +125,6 @@ def claim_next_task(worker_id: str) -> dict | None:
 
 def mark_done(task_id: int, result: dict | None = None) -> None:
     """Mark a task as successfully completed."""
-    import json
     result_json = json.dumps(result) if result is not None else None
     with engine.connect() as conn:
         conn.execute(text("""
@@ -142,53 +178,110 @@ async def _heartbeat_loop(task_id: int) -> None:
         try:
             heartbeat(task_id)
         except Exception:
-            pass  # non-fatal — if DB is down, the main task will fail anyway
+            pass
+
+
+async def _execute_task(task: dict, handlers: dict) -> None:
+    """Execute a single task with heartbeating, error handling, and logging."""
+    task_id = task["id"]
+    task_type = task["task_type"]
+    subject = task.get("subject_id", "")
+
+    handler = handlers.get(task_type)
+    if handler is None:
+        mark_failed(task_id, f"Unknown task type: {task_type}")
+        logger.error(f"Unknown task type: {task_type}")
+        return
+
+    hb_task = asyncio.create_task(_heartbeat_loop(task_id))
+    try:
+        result = await handler(task)
+        mark_done(task_id, result)
+        logger.info(f"Completed task {task_id}: {task_type} {subject} -> {result}")
+    except Exception as e:
+        error_msg = f"{type(e).__name__}: {e}"
+        if task["retry_count"] < task["max_retries"]:
+            requeue(task_id, error_msg)
+            logger.warning(
+                f"Task {task_id} failed (attempt {task['retry_count'] + 1}/"
+                f"{task['max_retries']}), requeued: {error_msg}"
+            )
+        else:
+            mark_failed(task_id, error_msg)
+            logger.error(
+                f"Task {task_id} permanently failed after "
+                f"{task['max_retries']} attempts: {error_msg}"
+            )
+    finally:
+        hb_task.cancel()
+
+
+# Resource types that can run concurrently. Each gets its own slot.
+# Tasks sharing a resource type are serialised (only one active at a time).
+CONCURRENT_RESOURCES = [
+    "github_api",
+    "gemini",
+    "openai",
+    "pypi",
+    "npm",
+    "huggingface",
+    "dockerhub",
+    "hn_algolia",
+    "db_only",
+]
 
 
 async def worker_loop() -> None:
-    """Main worker loop. Claims and executes tasks continuously."""
+    """Main worker loop with resource-aware concurrency.
+
+    Maintains one active task per resource type. When a resource slot
+    is free, claims the highest-priority task for that resource.
+    Different resources run in parallel.
+    """
     from app.queue.handlers import TASK_HANDLERS
 
-    logger.info(f"Task queue worker starting: {WORKER_ID}")
+    logger.info(f"Task queue worker starting: {WORKER_ID} "
+                f"({len(CONCURRENT_RESOURCES)} resource slots)")
+
+    # Track running tasks: resource_type -> asyncio.Task
+    running: dict[str, asyncio.Task] = {}
 
     while True:
-        task = claim_next_task(WORKER_ID)
-        if task is None:
+        # Try to fill empty resource slots
+        claimed_any = False
+        for resource in CONCURRENT_RESOURCES:
+            if resource in running and not running[resource].done():
+                continue  # slot occupied
+
+            # Clean up finished slot
+            if resource in running:
+                del running[resource]
+
+            task = claim_next_task(WORKER_ID, resource_type=resource)
+            if task:
+                logger.info(
+                    f"Claimed task {task['id']}: {task['task_type']} "
+                    f"{task.get('subject_id', '')} [resource={resource}]"
+                )
+                running[resource] = asyncio.create_task(
+                    _execute_task(task, TASK_HANDLERS)
+                )
+                claimed_any = True
+
+        if not claimed_any and not running:
+            # Nothing running, nothing to claim — sleep
             await asyncio.sleep(POLL_INTERVAL)
-            continue
-
-        task_id = task["id"]
-        task_type = task["task_type"]
-        subject = task.get("subject_id", "")
-        logger.info(f"Claimed task {task_id}: {task_type} {subject}")
-
-        handler = TASK_HANDLERS.get(task_type)
-        if handler is None:
-            mark_failed(task_id, f"Unknown task type: {task_type}")
-            logger.error(f"Unknown task type: {task_type}")
-            continue
-
-        # Start background heartbeating so the reaper doesn't reclaim
-        # long-running tasks
-        hb_task = asyncio.create_task(_heartbeat_loop(task_id))
-
-        try:
-            result = await handler(task)
-            mark_done(task_id, result)
-            logger.info(f"Completed task {task_id}: {task_type} {subject} -> {result}")
-        except Exception as e:
-            error_msg = f"{type(e).__name__}: {e}"
-            if task["retry_count"] < task["max_retries"]:
-                requeue(task_id, error_msg)
-                logger.warning(
-                    f"Task {task_id} failed (attempt {task['retry_count'] + 1}/"
-                    f"{task['max_retries']}), requeued: {error_msg}"
-                )
-            else:
-                mark_failed(task_id, error_msg)
-                logger.error(
-                    f"Task {task_id} permanently failed after "
-                    f"{task['max_retries']} attempts: {error_msg}"
-                )
-        finally:
-            hb_task.cancel()
+        elif running:
+            # Wait for any task to complete, then loop to refill slots
+            done, _ = await asyncio.wait(
+                running.values(),
+                timeout=POLL_INTERVAL,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            # Clean up completed slots
+            for resource in list(running):
+                if running[resource].done():
+                    del running[resource]
+        else:
+            # Nothing running but we claimed something — tasks are starting
+            await asyncio.sleep(0.1)
