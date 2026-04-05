@@ -174,6 +174,71 @@ def cleanup_old_tasks() -> int:
         return count
 
 
+def schedule_enrich_comparisons() -> int:
+    """Create enrich_comparison tasks for pairs without sentences.
+
+    Only creates tasks for pairs that:
+    - Have no sentence yet (sentence IS NULL)
+    - Are in the content_budget allocation for comparison_sentences
+    - Don't already have a pending/claimed task (dedup index)
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type,
+                               estimated_cost_usd)
+            SELECT 'enrich_comparison', cs.id::text, 9, 'gemini', 0.0001
+            FROM comparison_sentences cs
+            JOIN content_budget cb
+                ON cb.pipeline = 'comparison_sentences'
+                AND cb.domain = cs.domain
+                AND cb.subcategory = cs.subcategory
+            WHERE cs.sentence IS NULL
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info(f"Scheduled {count} enrich_comparison tasks")
+        return count
+
+
+def schedule_enrich_repo_briefs() -> int:
+    """Create enrich_repo_brief tasks for repos without briefs.
+
+    Only creates tasks for repos that:
+    - Have a description
+    - Are in the content_budget allocation for repo_briefs
+    - Don't already have a repo_briefs row
+    - Don't already have a pending/claimed task (dedup index)
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type,
+                               estimated_cost_usd)
+            SELECT 'enrich_repo_brief', ar.id::text, 9, 'gemini', 0.0005
+            FROM ai_repos ar
+            JOIN content_budget cb
+                ON cb.pipeline = 'repo_briefs'
+                AND cb.domain = ar.domain
+                AND cb.subcategory = ar.subcategory
+            LEFT JOIN repo_briefs rb ON rb.ai_repo_id = ar.id
+            WHERE rb.id IS NULL
+              AND ar.is_active = true
+              AND ar.description IS NOT NULL
+              AND ar.description <> ''
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info(f"Scheduled {count} enrich_repo_brief tasks")
+        return count
+
+
 def schedule_all() -> dict:
     """Run all scheduling rules. Returns counts of tasks created."""
     counts = {}
@@ -187,6 +252,8 @@ def schedule_all() -> dict:
     if _budget_is_fresh():
         counts["fetch_readme"] = schedule_fetch_readmes()
         counts["enrich_summary"] = schedule_enrich_summaries()
+        counts["enrich_comparison"] = schedule_enrich_comparisons()
+        counts["enrich_repo_brief"] = schedule_enrich_repo_briefs()
     else:
         logger.info("Skipping task scheduling — content_budget not computed today")
 
