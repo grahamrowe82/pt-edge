@@ -88,12 +88,14 @@ def claim_next_task(worker_id: str) -> dict | None:
 
 def mark_done(task_id: int, result: dict | None = None) -> None:
     """Mark a task as successfully completed."""
+    import json
+    result_json = json.dumps(result) if result is not None else None
     with engine.connect() as conn:
         conn.execute(text("""
             UPDATE tasks
-            SET state = 'done', completed_at = now(), result = :result
+            SET state = 'done', completed_at = now(), result = :result::jsonb
             WHERE id = :id
-        """), {"id": task_id, "result": result})
+        """), {"id": task_id, "result": result_json})
         conn.commit()
 
 
