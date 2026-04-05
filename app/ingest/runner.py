@@ -387,32 +387,16 @@ async def run_all() -> dict:
         logger.warning(f"dataset_export failed: {e}")
         results["dataset_export"] = {"error": str(e)}
 
-    # Generate LLM project briefs (needs fresh MV data)
-    try:
-        from app.ingest.project_briefs import generate_project_briefs, generate_domain_briefs
-        results["project_briefs"] = await _run_with_retry("project_briefs", generate_project_briefs)
-        logger.info(f"project_briefs: {results['project_briefs']}")
-    except Exception as e:
-        logger.exception(f"project_briefs failed: {e}")
-        results["project_briefs"] = {"error": str(e)}
+    # project_briefs — now handled by the task queue worker (enrich_project_brief)
+    results["project_briefs"] = {"status": "handled_by_task_queue"}
+    logger.info("project_briefs: delegated to task queue worker")
 
-    # Domain + landscape briefs weekly (Sunday)
-    if datetime.now(timezone.utc).weekday() == 6:
-        try:
-            from app.ingest.project_briefs import generate_domain_briefs
-            results["domain_briefs"] = await _run_with_retry("domain_briefs", generate_domain_briefs)
-            logger.info(f"domain_briefs: {results['domain_briefs']}")
-        except Exception as e:
-            logger.exception(f"domain_briefs failed: {e}")
-            results["domain_briefs"] = {"error": str(e)}
-
-        try:
-            from app.ingest.landscape_briefs import generate_landscape_briefs
-            results["landscape_briefs"] = await _run_with_retry("landscape_briefs", generate_landscape_briefs)
-            logger.info(f"landscape_briefs: {results['landscape_briefs']}")
-        except Exception as e:
-            logger.exception(f"landscape_briefs failed: {e}")
-            results["landscape_briefs"] = {"error": str(e)}
+    # domain_briefs + landscape_briefs — now handled by the task queue worker
+    # Previously gated by weekday() == 6 (Sunday). Now staleness-driven.
+    results["domain_briefs"] = {"status": "handled_by_task_queue"}
+    logger.info("domain_briefs: delegated to task queue worker (staleness-driven, no Sunday gate)")
+    results["landscape_briefs"] = {"status": "handled_by_task_queue"}
+    logger.info("landscape_briefs: delegated to task queue worker (staleness-driven, no Sunday gate)")
 
     # Refresh briefing evidence values against current data
     try:
