@@ -448,6 +448,162 @@ def schedule_fetch_releases() -> int:
         return count
 
 
+def schedule_compute_embeddings() -> int:
+    """Create a compute_embeddings task if the last run was >24h ago."""
+    with engine.connect() as conn:
+        recent = conn.execute(text("""
+            SELECT 1 FROM sync_log
+            WHERE sync_type IN ('embed_projects', 'embed_ai_repos')
+              AND status = 'success'
+              AND started_at > now() - interval '24 hours'
+            LIMIT 1
+        """)).fetchone()
+
+        if recent:
+            return 0
+
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type)
+            SELECT 'compute_embeddings', 'all', 5, 'openai'
+            WHERE NOT EXISTS (
+                SELECT 1 FROM tasks
+                WHERE task_type = 'compute_embeddings'
+                  AND state IN ('pending', 'claimed')
+            )
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info("Scheduled compute_embeddings task")
+        return count
+
+
+def schedule_compute_mv_refresh() -> int:
+    """Create a compute_mv_refresh task if the last refresh was >6h ago."""
+    with engine.connect() as conn:
+        recent = conn.execute(text("""
+            SELECT 1 FROM sync_log
+            WHERE sync_type = 'views'
+              AND status IN ('success', 'partial')
+              AND started_at > now() - interval '6 hours'
+            LIMIT 1
+        """)).fetchone()
+
+        if recent:
+            return 0
+
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type)
+            SELECT 'compute_mv_refresh', 'all', 5, NULL
+            WHERE NOT EXISTS (
+                SELECT 1 FROM tasks
+                WHERE task_type = 'compute_mv_refresh'
+                  AND state IN ('pending', 'claimed')
+            )
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info("Scheduled compute_mv_refresh task")
+        return count
+
+
+def schedule_compute_content_budget() -> int:
+    """Create a compute_content_budget task if the budget is stale.
+
+    Depends on MV refresh having run — checks that views were refreshed
+    more recently than the current content_budget computation.
+    """
+    with engine.connect() as conn:
+        # Only schedule if MVs were refreshed today but budget is stale
+        mv_fresh = conn.execute(text("""
+            SELECT 1 FROM sync_log
+            WHERE sync_type = 'views'
+              AND status IN ('success', 'partial')
+              AND started_at::date = CURRENT_DATE
+            LIMIT 1
+        """)).fetchone()
+
+        if not mv_fresh:
+            return 0
+
+        if _budget_is_fresh():
+            return 0
+
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type)
+            SELECT 'compute_content_budget', 'all', 5, NULL
+            WHERE NOT EXISTS (
+                SELECT 1 FROM tasks
+                WHERE task_type = 'compute_content_budget'
+                  AND state IN ('pending', 'claimed')
+            )
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info("Scheduled compute_content_budget task")
+        return count
+
+
+def schedule_export_static_site() -> int:
+    """Create an export_static_site task if MVs were refreshed today
+    but the site hasn't been deployed since.
+    """
+    with engine.connect() as conn:
+        # Check if MVs were refreshed today
+        mv_refresh = conn.execute(text("""
+            SELECT started_at FROM sync_log
+            WHERE sync_type = 'views'
+              AND status IN ('success', 'partial')
+              AND started_at::date = CURRENT_DATE
+            ORDER BY started_at DESC
+            LIMIT 1
+        """)).fetchone()
+
+        if not mv_refresh:
+            return 0
+
+        # Check if site was already deployed after this refresh
+        last_deploy = conn.execute(text("""
+            SELECT 1 FROM sync_log
+            WHERE sync_type = 'static_site'
+              AND status = 'success'
+              AND started_at > :mv_time
+            LIMIT 1
+        """), {"mv_time": mv_refresh[0]}).fetchone()
+
+        if last_deploy:
+            return 0
+
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type)
+            SELECT 'export_static_site', 'all', 4, NULL
+            WHERE NOT EXISTS (
+                SELECT 1 FROM tasks
+                WHERE task_type = 'export_static_site'
+                  AND state IN ('pending', 'claimed')
+            )
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info("Scheduled export_static_site task")
+        return count
+
+
 def schedule_all() -> dict:
     """Run all scheduling rules. Returns counts of tasks created."""
     counts = {}
@@ -456,6 +612,12 @@ def schedule_all() -> dict:
     reap_stale_tasks()
     reset_expired_budgets()
     cleanup_old_tasks()
+
+    # Infrastructure (embeddings before MVs, MVs before budget, budget before enrichment)
+    counts["compute_embeddings"] = schedule_compute_embeddings()
+    counts["compute_mv_refresh"] = schedule_compute_mv_refresh()
+    counts["compute_content_budget"] = schedule_compute_content_budget()
+    counts["export_static_site"] = schedule_export_static_site()
 
     # Budget-gated enrichment (needs content_budget computed today)
     if _budget_is_fresh():

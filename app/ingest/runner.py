@@ -37,10 +37,9 @@ from app.ingest.hn_llm_match import match_hn_posts_llm
 # generate_ai_summaries — now handled by task queue (app/queue/handlers/)
 from app.ingest.domain_reassign import reassign_domains
 # generate_comparison_sentences — now handled by task queue (app/queue/handlers/)
-from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis, backfill_hf_datasets, backfill_hf_models
+# backfill_embeddings — now handled by task queue (app/queue/handlers/compute_embeddings.py)
 from app.briefing_refresh import refresh_briefing_evidence
-from app.embeddings import is_enabled
-from app.views.refresh import refresh_all_views
+# embeddings + views — now handled by task queue (compute_embeddings, compute_mv_refresh)
 
 logger = logging.getLogger(__name__)
 
@@ -323,44 +322,17 @@ async def run_all() -> dict:
         logger.exception(f"models ingest failed: {e}")
         results["models"] = {"error": str(e)}
 
-    # Backfill embeddings for new projects/methodology (before view refresh)
-    if is_enabled():
-        try:
-            proj_count = await _run_with_retry("embed_projects", backfill_projects)
-            meth_count = await _run_with_retry("embed_methodology", backfill_methodology)
-            ai_repo_count = await _run_with_retry("embed_ai_repos", backfill_ai_repos)
-            api_count = await _run_with_retry("embed_public_apis", backfill_public_apis)
-            hf_ds_count = await _run_with_retry("embed_hf_datasets", backfill_hf_datasets)
-            hf_model_count = await _run_with_retry("embed_hf_models", backfill_hf_models)
-            results["embeddings"] = {
-                "projects": proj_count, "methodology": meth_count,
-                "ai_repos": ai_repo_count, "public_apis": api_count,
-                "hf_datasets": hf_ds_count, "hf_models": hf_model_count,
-            }
-            logger.info(f"embeddings: {results['embeddings']}")
-        except Exception as e:
-            logger.exception(f"embeddings failed: {e}")
-            results["embeddings"] = {"error": str(e)}
-    else:
-        results["embeddings"] = "skipped (no OPENAI_API_KEY)"
+    # embeddings — now handled by task queue (compute_embeddings, priority 5)
+    results["embeddings"] = {"status": "handled_by_task_queue"}
+    logger.info("embeddings: delegated to task queue worker")
 
-    # Refresh materialized views after all ingest jobs complete
-    try:
-        results["views"] = refresh_all_views()
-        logger.info(f"views: {results['views']}")
-    except Exception as e:
-        logger.exception(f"views failed: {e}")
-        results["views"] = {"error": str(e)}
+    # views (MV refresh) — now handled by task queue (compute_mv_refresh, priority 5)
+    results["views"] = {"status": "handled_by_task_queue"}
+    logger.info("views: delegated to task queue worker")
 
-    # Compute content budget from allocation scores (must run after MV refresh)
-    try:
-        from app.allocation.budget import compute_and_write_budget
-        from app.settings import settings as _settings
-        results["content_budget"] = compute_and_write_budget(_settings.LLM_BUDGET_MULTIPLIER)
-        logger.info(f"content_budget: {results['content_budget']}")
-    except Exception as e:
-        logger.exception(f"content_budget failed: {e}")
-        results["content_budget"] = {"error": str(e)}
+    # content_budget — now handled by task queue (compute_content_budget, priority 5)
+    results["content_budget"] = {"status": "handled_by_task_queue"}
+    logger.info("content_budget: delegated to task queue worker")
 
     # Content pipelines (allocation-driven — consume content_budget table)
 
@@ -415,19 +387,9 @@ async def run_all() -> dict:
         logger.exception(f"briefing_refresh failed: {e}")
         results["briefing_refresh"] = {"error": str(e)}
 
-    # Trigger static directory site rebuild
-    try:
-        import httpx
-        deploy_hook = os.environ.get("RENDER_DEPLOY_HOOK_URL")
-        if deploy_hook:
-            resp = httpx.post(deploy_hook, timeout=30)
-            results["static_site"] = {"status": "deploy_triggered", "code": resp.status_code}
-            logger.info(f"static_site: deploy triggered ({resp.status_code})")
-        else:
-            results["static_site"] = "skipped (no RENDER_DEPLOY_HOOK_URL)"
-    except Exception as e:
-        logger.warning(f"static_site deploy trigger failed: {e}")
-        results["static_site"] = {"error": str(e)}
+    # static_site — now handled by task queue (export_static_site, priority 4)
+    results["static_site"] = {"status": "handled_by_task_queue"}
+    logger.info("static_site: delegated to task queue worker")
 
     # ai_repo_created_at — now handled by task queue (backfill_created_at, priority 2)
     # Fine-grained: one task per repo, naturally yields to higher-priority work
