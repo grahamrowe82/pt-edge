@@ -92,7 +92,8 @@ _SELF_LOGGING_JOBS = {
     'builder_tools', 'npm_mcp', 'ai_repo_downloads', 'ai_repo_commits',
     'ai_repo_package_detect', 'releases', 'newsletters',
     'ai_repo_subcategory', 'domain_reassign', 'views',
-    'ai_repo_created_at', 'project_briefs', 'stack_layer',
+    'ai_repo_created_at', 'project_briefs', 'domain_briefs',
+    'landscape_briefs', 'stack_layer',
     'subcategory_llm', 'hn_llm_match',
 }
 
@@ -394,32 +395,14 @@ async def run_all() -> dict:
         logger.warning(f"dataset_export failed: {e}")
         results["dataset_export"] = {"error": str(e)}
 
-    # Generate LLM project briefs (needs fresh MV data)
-    try:
-        from app.ingest.project_briefs import generate_project_briefs, generate_domain_briefs
-        results["project_briefs"] = await _run_with_retry("project_briefs", generate_project_briefs)
-        logger.info(f"project_briefs: {results['project_briefs']}")
-    except Exception as e:
-        logger.exception(f"project_briefs failed: {e}")
-        results["project_briefs"] = {"error": str(e)}
-
-    # Domain + landscape briefs weekly (Sunday)
-    if datetime.now(timezone.utc).weekday() == 6:
-        try:
-            from app.ingest.project_briefs import generate_domain_briefs
-            results["domain_briefs"] = await _run_with_retry("domain_briefs", generate_domain_briefs)
-            logger.info(f"domain_briefs: {results['domain_briefs']}")
-        except Exception as e:
-            logger.exception(f"domain_briefs failed: {e}")
-            results["domain_briefs"] = {"error": str(e)}
-
-        try:
-            from app.ingest.landscape_briefs import generate_landscape_briefs
-            results["landscape_briefs"] = await _run_with_retry("landscape_briefs", generate_landscape_briefs)
-            logger.info(f"landscape_briefs: {results['landscape_briefs']}")
-        except Exception as e:
-            logger.exception(f"landscape_briefs failed: {e}")
-            results["landscape_briefs"] = {"error": str(e)}
+    # project_briefs, domain_briefs, landscape_briefs — now handled by the task queue
+    # See app/queue/handlers/enrich_project_brief.py, enrich_domain_brief.py, enrich_landscape_brief.py
+    results["project_briefs"] = {"status": "handled_by_task_queue"}
+    logger.info("project_briefs: delegated to task queue worker")
+    results["domain_briefs"] = {"status": "handled_by_task_queue"}
+    logger.info("domain_briefs: delegated to task queue worker")
+    results["landscape_briefs"] = {"status": "handled_by_task_queue"}
+    logger.info("landscape_briefs: delegated to task queue worker")
 
     # Refresh briefing evidence values against current data
     try:

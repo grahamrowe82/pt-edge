@@ -174,6 +174,100 @@ def cleanup_old_tasks() -> int:
         return count
 
 
+def schedule_enrich_project_briefs() -> int:
+    """Create enrich_project_brief tasks for projects with stale or missing briefs.
+
+    Only creates tasks for active projects where:
+    - No brief exists, OR
+    - Brief generation_hash differs from current metrics, OR
+    - Brief is >30 days old
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type,
+                               estimated_cost_usd)
+            SELECT 'enrich_project_brief', s.project_id::text, 7, 'gemini', 0.0005
+            FROM mv_project_summary s
+            JOIN projects p ON s.project_id = p.id
+            LEFT JOIN project_briefs pb ON s.project_id = pb.project_id
+            WHERE p.is_active = true
+              AND (
+                  pb.project_id IS NULL
+                  OR pb.generated_at < now() - interval '30 days'
+              )
+            ORDER BY s.stars DESC NULLS LAST
+            LIMIT 100
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info(f"Scheduled {count} enrich_project_brief tasks")
+        return count
+
+
+def schedule_enrich_domain_briefs() -> int:
+    """Create enrich_domain_brief tasks for domains with stale or missing briefs.
+
+    Staleness-driven: >7 days old or missing. NOT gated by day of week.
+    """
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type,
+                               estimated_cost_usd)
+            SELECT 'enrich_domain_brief', s.domain, 3, 'gemini', 0.001
+            FROM (
+                SELECT DISTINCT domain
+                FROM mv_project_summary
+                WHERE domain IS NOT NULL
+            ) s
+            LEFT JOIN domain_briefs db ON db.domain = s.domain
+            WHERE db.domain IS NULL
+               OR db.generated_at < now() - interval '7 days'
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info(f"Scheduled {count} enrich_domain_brief tasks")
+        return count
+
+
+def schedule_enrich_landscape_briefs() -> int:
+    """Create enrich_landscape_brief tasks for layers with stale or missing briefs.
+
+    Staleness-driven: >7 days old or missing. NOT gated by day of week.
+    """
+    from app.queue.handlers.enrich_landscape_brief import LANDSCAPE_LAYERS
+
+    layer_names = list(LANDSCAPE_LAYERS.keys())
+    if not layer_names:
+        return 0
+
+    with engine.connect() as conn:
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type,
+                               estimated_cost_usd)
+            SELECT 'enrich_landscape_brief', layer_name, 3, 'gemini', 0.001
+            FROM unnest(:layers::text[]) AS layer_name
+            LEFT JOIN landscape_briefs lb ON lb.layer = layer_name
+            WHERE lb.layer IS NULL
+               OR lb.generated_at < now() - interval '7 days'
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """), {"layers": layer_names})
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info(f"Scheduled {count} enrich_landscape_brief tasks")
+        return count
+
+
 def schedule_all() -> dict:
     """Run all scheduling rules. Returns counts of tasks created."""
     counts = {}
@@ -187,8 +281,13 @@ def schedule_all() -> dict:
     if _budget_is_fresh():
         counts["fetch_readme"] = schedule_fetch_readmes()
         counts["enrich_summary"] = schedule_enrich_summaries()
+        counts["enrich_project_brief"] = schedule_enrich_project_briefs()
     else:
-        logger.info("Skipping task scheduling — content_budget not computed today")
+        logger.info("Skipping budget-gated task scheduling — content_budget not computed today")
+
+    # Domain and landscape briefs are staleness-driven, not budget-gated
+    counts["enrich_domain_brief"] = schedule_enrich_domain_briefs()
+    counts["enrich_landscape_brief"] = schedule_enrich_landscape_briefs()
 
     return counts
 
