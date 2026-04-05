@@ -135,6 +135,16 @@ def heartbeat(task_id: int) -> None:
         conn.commit()
 
 
+async def _heartbeat_loop(task_id: int) -> None:
+    """Background coroutine that heartbeats a task every 60 seconds."""
+    while True:
+        await asyncio.sleep(HEARTBEAT_INTERVAL)
+        try:
+            heartbeat(task_id)
+        except Exception:
+            pass  # non-fatal — if DB is down, the main task will fail anyway
+
+
 async def worker_loop() -> None:
     """Main worker loop. Claims and executes tasks continuously."""
     from app.queue.handlers import TASK_HANDLERS
@@ -158,6 +168,10 @@ async def worker_loop() -> None:
             logger.error(f"Unknown task type: {task_type}")
             continue
 
+        # Start background heartbeating so the reaper doesn't reclaim
+        # long-running tasks
+        hb_task = asyncio.create_task(_heartbeat_loop(task_id))
+
         try:
             result = await handler(task)
             mark_done(task_id, result)
@@ -176,3 +190,5 @@ async def worker_loop() -> None:
                     f"Task {task_id} permanently failed after "
                     f"{task['max_retries']} attempts: {error_msg}"
                 )
+        finally:
+            hb_task.cancel()
