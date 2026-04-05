@@ -7,6 +7,7 @@ from app.models.meta import ToolUsage, SyncLog, Methodology, Briefing, ProjectBr
 from app.models.api import APIKey, APIUsage
 from app.models.access import HTTPAccessLog
 from app.models.gsc import GSCSearchData
+from app.models.queue import Task, ResourceBudget, RawCache
 
 __all__ = [
     "Base",
@@ -44,4 +45,7 @@ __all__ = [
     "APIUsage",
     "HTTPAccessLog",
     "GSCSearchData",
+    "Task",
+    "ResourceBudget",
+    "RawCache",
 ]
