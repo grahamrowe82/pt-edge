@@ -12,6 +12,10 @@ from app.queue.handlers.compute_mv_refresh import handle_compute_mv_refresh
 from app.queue.handlers.compute_content_budget import handle_compute_content_budget
 from app.queue.handlers.compute_embeddings import handle_compute_embeddings
 from app.queue.handlers.export_static_site import handle_export_static_site
+from app.queue.handlers.enrich_subcategory import handle_enrich_subcategory
+from app.queue.handlers.enrich_stack_layer import handle_enrich_stack_layer
+from app.queue.handlers.enrich_hn_match import handle_enrich_hn_match
+from app.queue.handlers.enrich_package_detect import handle_enrich_package_detect
 
 TASK_HANDLERS: dict = {
     "fetch_readme": handle_fetch_readme,
@@ -28,4 +32,8 @@ TASK_HANDLERS: dict = {
     "compute_content_budget": handle_compute_content_budget,
     "compute_embeddings": handle_compute_embeddings,
     "export_static_site": handle_export_static_site,
+    "enrich_subcategory": handle_enrich_subcategory,
+    "enrich_stack_layer": handle_enrich_stack_layer,
+    "enrich_hn_match": handle_enrich_hn_match,
+    "enrich_package_detect": handle_enrich_package_detect,
 }
