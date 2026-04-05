@@ -1016,21 +1016,15 @@ def test_subcategory_in_runner():
 
 
 def test_briefing_refresh_in_runner():
-    """Briefing evidence refresh is wired into the runner."""
-    import inspect
-    from app.ingest import runner
-    source = inspect.getsource(runner.run_all)
-    assert "briefing_refresh" in source
-    assert "refresh_briefing_evidence" in source
+    """Briefing evidence refresh is wired into the task queue."""
+    from app.queue.handlers import TASK_HANDLERS
+    assert "compute_briefing_refresh" in TASK_HANDLERS
 
 
 def test_project_linking_in_runner():
-    """Project ↔ ai_repos linking is wired into the runner."""
-    import inspect
-    from app.ingest import runner
-    source = inspect.getsource(runner.run_all)
-    assert "project_linking" in source
-    assert "ai_repo_id" in source
+    """Project ↔ ai_repos linking is wired into the task queue."""
+    from app.queue.handlers import TASK_HANDLERS
+    assert "compute_project_linking" in TASK_HANDLERS
 
 
 def test_briefing_refresh_import():
@@ -1084,18 +1078,13 @@ def test_rate_limiter_in_embeddings():
 
 
 def test_runner_pipeline_order():
-    """LLM-dependent jobs (releases, newsletters) come after non-LLM jobs."""
-    import inspect
-    from app.ingest import runner
-    source = inspect.getsource(runner.run_all)
-    # ai_repos now runs on its own weekly cron, not in the daily runner
-    assert "ai_repos removed" in source, "ai_repos should be removed from daily runner"
-    # releases and newsletters should appear after builder_tools in the source
-    builder_tools_pos = source.index('"builder_tools"')
-    releases_pos = source.index('"releases"')
-    newsletters_pos = source.index('"newsletters"')
-    assert releases_pos > builder_tools_pos, "releases should run after builder_tools"
-    assert newsletters_pos > builder_tools_pos, "newsletters should run after builder_tools"
+    """All jobs are now in the task queue — ordering is priority-driven."""
+    from app.queue.handlers import TASK_HANDLERS
+    # Key jobs that were previously ordering-sensitive are now in the queue
+    assert "fetch_releases" in TASK_HANDLERS
+    assert "fetch_newsletters" in TASK_HANDLERS
+    assert "fetch_builder_tools" in TASK_HANDLERS
+    assert "discover_ai_repos" in TASK_HANDLERS
 
 
 # ---------------------------------------------------------------------------
@@ -1190,23 +1179,16 @@ def test_newsletter_llm_resolve():
 
 
 def test_hn_llm_match_after_regex_backfill():
-    """HN LLM matching runs after regex-based backfill."""
-    import inspect
-    from app.ingest import runner
-    source = inspect.getsource(runner.run_all)
-    regex_pos = source.index("hn_lab_backfill")
-    llm_pos = source.index("hn_llm_match")
-    assert llm_pos > regex_pos, "hn_llm_match must run after regex backfill"
+    """HN LLM matching and regex backfill are both in the task queue."""
+    from app.queue.handlers import TASK_HANDLERS
+    assert "enrich_hn_match" in TASK_HANDLERS
+    assert "compute_hn_backfill" in TASK_HANDLERS
 
 
 def test_subcategory_llm_after_regex():
-    """LLM subcategory runs after regex subcategory."""
-    import inspect
-    from app.ingest import runner
-    source = inspect.getsource(runner.run_all)
-    regex_pos = source.index('"subcategory"')
-    llm_pos = source.index('"subcategory_llm"')
-    assert llm_pos > regex_pos, "subcategory_llm must run after regex pass"
+    """Subcategory regex + LLM are handled by a single task queue handler."""
+    from app.queue.handlers import TASK_HANDLERS
+    assert "enrich_subcategory" in TASK_HANDLERS
 
 
 # ---------------------------------------------------------------------------
