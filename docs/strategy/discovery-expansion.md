@@ -2,6 +2,8 @@
 
 *5 April 2026*
 
+**Implementation plan:** [discovery-expansion-implementation.md](discovery-expansion-implementation.md) — PR sequence, file-level scope, and dependency graph.
+
 ## The Problem
 
 PT-Edge tracks 248,000 AI repos. The addressable universe on GitHub alone is 1.5-2 million. We cover 12-20% of what exists. Every repo we're missing is a page we can't serve to an AI agent, a comparison we can't make, a trend we can't detect.
