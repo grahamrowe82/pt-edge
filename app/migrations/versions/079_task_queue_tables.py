@@ -87,7 +87,7 @@ def upgrade() -> None:
     op.execute("""
         INSERT INTO resource_budgets (resource_type, period_hours, budget) VALUES
             ('github_api', 1, 4500),
-            ('gemini', 1, 48000),
+            ('gemini', 24, 10000),
             ('openai', 1, 24000)
     """)
 
