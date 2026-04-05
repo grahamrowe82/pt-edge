@@ -339,6 +339,45 @@ def schedule_enrich_landscape_briefs() -> int:
         return count
 
 
+def _schedule_coarse_task(task_type: str, sync_type: str, priority: int,
+                          resource_type: str | None) -> int:
+    """Generic scheduler for coarse-grained tasks: create one task if last
+    sync_log entry for sync_type is >24h old and no task is pending."""
+    with engine.connect() as conn:
+        recent = conn.execute(text("""
+            SELECT 1 FROM sync_log
+            WHERE sync_type = :sync_type
+              AND status IN ('success', 'partial')
+              AND started_at > now() - interval '24 hours'
+            LIMIT 1
+        """), {"sync_type": sync_type}).fetchone()
+
+        if recent:
+            return 0
+
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type)
+            SELECT :task_type, 'all', :priority, :resource_type
+            WHERE NOT EXISTS (
+                SELECT 1 FROM tasks
+                WHERE task_type = :task_type
+                  AND state IN ('pending', 'claimed')
+            )
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """), {
+            "task_type": task_type,
+            "priority": priority,
+            "resource_type": resource_type,
+        })
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info(f"Scheduled {task_type} task")
+        return count
+
+
 def schedule_backfill_created_at() -> int:
     """Create backfill_created_at tasks for repos missing created_at.
 
@@ -632,6 +671,12 @@ def schedule_all() -> dict:
     # Staleness-driven enrichment (no budget gate, no day-of-week gate)
     counts["enrich_domain_brief"] = schedule_enrich_domain_briefs()
     counts["enrich_landscape_brief"] = schedule_enrich_landscape_briefs()
+
+    # LLM classification tasks (sync_log staleness)
+    counts["enrich_subcategory"] = _schedule_coarse_task("enrich_subcategory", "subcategory_llm", 4, "gemini")
+    counts["enrich_stack_layer"] = _schedule_coarse_task("enrich_stack_layer", "stack_layer", 4, "gemini")
+    counts["enrich_hn_match"] = _schedule_coarse_task("enrich_hn_match", "hn_llm_match", 4, "gemini")
+    counts["enrich_package_detect"] = _schedule_coarse_task("enrich_package_detect", "ai_repo_package_detect", 4, "gemini")
 
     # Data freshness (sync_log staleness)
     counts["fetch_github"] = schedule_fetch_github()

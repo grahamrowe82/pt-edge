@@ -30,10 +30,9 @@ from app.ingest.hf_datasets import ingest_hf_datasets
 from app.ingest.hf_models import ingest_hf_models
 from app.ingest.npm_mcp import ingest_npm_mcp
 from app.ingest.builder_tools import ingest_builder_tools
-from app.ingest.ai_repo_package_detect import detect_packages_llm
-from app.ingest.ai_repo_subcategory import ingest_subcategories, classify_subcategory_llm
-from app.ingest.stack_layer import classify_stack_layers
-from app.ingest.hn_llm_match import match_hn_posts_llm
+# LLM classification tasks — now handled by task queue (Wave 6)
+# detect_packages_llm, ingest_subcategories, classify_subcategory_llm,
+# classify_stack_layers, match_hn_posts_llm
 # generate_ai_summaries — now handled by task queue (app/queue/handlers/)
 from app.ingest.domain_reassign import reassign_domains
 # generate_comparison_sentences — now handled by task queue (app/queue/handlers/)
@@ -180,7 +179,7 @@ async def run_all() -> dict:
         # semantic_scholar removed — 2.5h runtime for 0 records (2026-04-04 audit)
         # ai_repos removed — runs on its own weekly cron (Saturday 12:00 UTC)
         # Phase 3: LLM-dependent (rate-limited, at end so they don't block)
-        ("ai_repo_package_detect", detect_packages_llm),
+        # ai_repo_package_detect — now handled by task queue (enrich_package_detect)
         ("newsletters", ingest_newsletters),
         # releases — now handled by task queue (fetch_releases, priority 6)
     ]:
@@ -242,13 +241,9 @@ async def run_all() -> dict:
         logger.exception(f"hn_lab_backfill failed: {e}")
         results["hn_lab_backfill"] = {"error": str(e)}
 
-    # LLM-assisted HN matching (residual NULLs after regex backfill)
-    try:
-        results["hn_llm_match"] = await _run_with_retry("hn_llm_match", match_hn_posts_llm)
-        logger.info(f"hn_llm_match: {results['hn_llm_match']}")
-    except Exception as e:
-        logger.exception(f"hn_llm_match failed: {e}")
-        results["hn_llm_match"] = {"error": str(e)}
+    # hn_llm_match — now handled by task queue (enrich_hn_match, priority 4)
+    results["hn_llm_match"] = {"status": "handled_by_task_queue"}
+    logger.info("hn_llm_match: delegated to task queue worker")
 
     # Match unlinked V2EX posts to labs
     try:
@@ -259,28 +254,14 @@ async def run_all() -> dict:
         logger.exception(f"v2ex_lab_backfill failed: {e}")
         results["v2ex_lab_backfill"] = {"error": str(e)}
 
-    # Classify MCP repos by subcategory (regex first, then LLM fallback)
-    try:
-        results["subcategory"] = await _run_with_retry("subcategory", ingest_subcategories)
-        logger.info(f"subcategory: {results['subcategory']}")
-    except Exception as e:
-        logger.exception(f"subcategory failed: {e}")
-        results["subcategory"] = {"error": str(e)}
+    # subcategory + subcategory_llm — now handled by task queue (enrich_subcategory, priority 4)
+    results["subcategory"] = {"status": "handled_by_task_queue"}
+    results["subcategory_llm"] = {"status": "handled_by_task_queue"}
+    logger.info("subcategory: delegated to task queue worker")
 
-    try:
-        results["subcategory_llm"] = await _run_with_retry("subcategory_llm", classify_subcategory_llm)
-        logger.info(f"subcategory_llm: {results['subcategory_llm']}")
-    except Exception as e:
-        logger.exception(f"subcategory_llm failed: {e}")
-        results["subcategory_llm"] = {"error": str(e)}
-
-    # Classify projects by AI stack layer
-    try:
-        results["stack_layer"] = await _run_with_retry("stack_layer", classify_stack_layers)
-        logger.info(f"stack_layer: {results['stack_layer']}")
-    except Exception as e:
-        logger.exception(f"stack_layer failed: {e}")
-        results["stack_layer"] = {"error": str(e)}
+    # stack_layer — now handled by task queue (enrich_stack_layer, priority 4)
+    results["stack_layer"] = {"status": "handled_by_task_queue"}
+    logger.info("stack_layer: delegated to task queue worker")
 
     # NOTE: ai_summaries + comparison_sentences moved after MV refresh (allocation-driven)
 
