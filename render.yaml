@@ -83,36 +83,6 @@ services:
       - key: UMAMI_WEBSITE_ID
         sync: false
 
-  - type: cron
-    name: pt-edge-ai-repos-weekly
-    runtime: docker
-    region: oregon
-    schedule: "0 12 * * 6"
-    dockerCommand: python scripts/ingest_ai_repos.py
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: pt-edge-db
-          property: connectionString
-      - key: GITHUB_TOKEN
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-
-  - type: cron
-    name: pt-edge-weekly
-    runtime: docker
-    region: oregon
-    schedule: "0 3 * * 0"
-    dockerCommand: python scripts/weekly_structural.py
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: pt-edge-db
-          property: connectionString
-      - key: GITHUB_TOKEN
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: ANTHROPIC_API_KEY
-        sync: false
+  # Saturday and Sunday cron jobs removed — all work now handled by
+  # the task queue worker (discover_ai_repos and compute_structural
+  # are scheduled based on staleness, not day of week).
