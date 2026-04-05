@@ -1,5 +1,7 @@
+import asyncio
 import logging
 import time
+import threading
 
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -17,9 +19,23 @@ _SKIP_EXTENSIONS = (
     ".xml", ".txt", ".woff", ".woff2", ".ttf", ".eot", ".map", ".json",
 )
 
+# Buffer settings: flush when buffer hits this size OR this many seconds elapse
+_BUFFER_SIZE = 100
+_FLUSH_INTERVAL = 5.0  # seconds
+
+# In-memory buffer + lock for thread safety
+_buffer: list[dict] = []
+_buffer_lock = threading.Lock()
+_flush_task_started = False
+
 
 class AccessLogMiddleware(BaseHTTPMiddleware):
-    """Log HTTP requests to static directory pages (HTML only)."""
+    """Log HTTP requests to static directory pages (HTML only).
+
+    Buffers log entries in memory and flushes to the database in batches
+    (every 100 rows or 5 seconds, whichever comes first). This reduces
+    DB transactions by ~99% compared to per-request writes.
+    """
 
     async def dispatch(self, request, call_next):
         path = request.url.path
@@ -42,7 +58,7 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
                 request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
                 or raw_ip
             )
-            _log_access(
+            _buffer_access(
                 path=path[:200],
                 method=request.method,
                 status_code=response.status_code,
@@ -51,11 +67,54 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
                 duration_ms=duration_ms,
             )
 
+        # Start the periodic flush task on first request
+        global _flush_task_started
+        if not _flush_task_started:
+            _flush_task_started = True
+            try:
+                loop = asyncio.get_event_loop()
+                loop.create_task(_periodic_flush())
+            except RuntimeError:
+                pass  # no event loop — flush will happen on buffer-full only
+
         return response
 
 
-def _log_access(path, method, status_code, user_agent, client_ip, duration_ms):
-    """Fire-and-forget access logging -- never breaks a request."""
+def _buffer_access(path, method, status_code, user_agent, client_ip, duration_ms):
+    """Add a log entry to the in-memory buffer. Flushes when full."""
+    entry = {
+        "path": path,
+        "method": method,
+        "sc": status_code,
+        "ua": user_agent,
+        "ip": client_ip,
+        "dur": duration_ms,
+    }
+    should_flush = False
+    with _buffer_lock:
+        _buffer.append(entry)
+        if len(_buffer) >= _BUFFER_SIZE:
+            should_flush = True
+
+    if should_flush:
+        _flush_buffer()
+
+
+async def _periodic_flush():
+    """Flush the buffer every _FLUSH_INTERVAL seconds."""
+    while True:
+        await asyncio.sleep(_FLUSH_INTERVAL)
+        _flush_buffer()
+
+
+def _flush_buffer():
+    """Write all buffered entries to the database in a single transaction."""
+    with _buffer_lock:
+        if not _buffer:
+            return
+        entries = list(_buffer)
+        _buffer.clear()
+
     try:
         session = SessionLocal()
         session.execute(
@@ -64,16 +123,9 @@ def _log_access(path, method, status_code, user_agent, client_ip, duration_ms):
                     (path, method, status_code, user_agent, client_ip, duration_ms)
                 VALUES (:path, :method, :sc, :ua, :ip, :dur)
             """),
-            {
-                "path": path,
-                "method": method,
-                "sc": status_code,
-                "ua": user_agent,
-                "ip": client_ip,
-                "dur": duration_ms,
-            },
+            entries,
         )
         session.commit()
         session.close()
     except Exception:
-        logger.debug("Failed to log HTTP access", exc_info=True)
+        logger.debug(f"Failed to flush {len(entries)} access log entries", exc_info=True)
