@@ -1010,12 +1010,9 @@ def test_mv_ai_repo_ecosystem_in_refresh():
 
 
 def test_subcategory_in_runner():
-    """Subcategory inference is wired into the runner."""
-    import inspect
-    from app.ingest import runner
-    source = inspect.getsource(runner.run_all)
-    assert "subcategory" in source
-    assert "ingest_subcategories" in source
+    """Subcategory inference is wired into the task queue."""
+    from app.queue.handlers import TASK_HANDLERS
+    assert "enrich_subcategory" in TASK_HANDLERS
 
 
 def test_briefing_refresh_in_runner():
@@ -1049,12 +1046,9 @@ def test_ai_repo_package_detect_import():
 
 
 def test_ai_repo_package_detect_in_runner():
-    """LLM package detection is wired into the runner."""
-    import inspect
-    from app.ingest import runner
-    source = inspect.getsource(runner.run_all)
-    assert "ai_repo_package_detect" in source
-    assert "detect_packages_llm" in source
+    """LLM package detection is wired into the task queue."""
+    from app.queue.handlers import TASK_HANDLERS
+    assert "enrich_package_detect" in TASK_HANDLERS
 
 
 def test_rate_limiter_in_package_detect():
@@ -1130,12 +1124,9 @@ def test_subcategory_llm_import():
 
 
 def test_subcategory_llm_in_runner():
-    """LLM subcategory classification is wired into the runner."""
-    import inspect
-    from app.ingest import runner
-    source = inspect.getsource(runner.run_all)
-    assert "subcategory_llm" in source
-    assert "classify_subcategory_llm" in source
+    """LLM subcategory classification is wired into the task queue."""
+    from app.queue.handlers import TASK_HANDLERS
+    assert "enrich_subcategory" in TASK_HANDLERS
 
 
 def test_subcategory_llm_uses_call_llm():
@@ -1153,12 +1144,9 @@ def test_hn_llm_match_import():
 
 
 def test_hn_llm_match_in_runner():
-    """HN LLM matching is wired into the runner."""
-    import inspect
-    from app.ingest import runner
-    source = inspect.getsource(runner.run_all)
-    assert "hn_llm_match" in source
-    assert "match_hn_posts_llm" in source
+    """HN LLM matching is wired into the task queue."""
+    from app.queue.handlers import TASK_HANDLERS
+    assert "enrich_hn_match" in TASK_HANDLERS
 
 
 def test_hn_llm_match_uses_call_llm():
