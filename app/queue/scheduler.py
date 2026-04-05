@@ -28,17 +28,28 @@ def _budget_is_fresh() -> bool:
         return row is not None
 
 
+PENDING_CAP = 500       # max pending fine-grained tasks before scheduler stops adding
+BATCH_LIMIT = 1000      # max tasks to create per scheduler pass
+
+
+def _pending_count(conn, task_type: str) -> int:
+    """Count pending tasks for a given type."""
+    row = conn.execute(text("""
+        SELECT count(*) FROM tasks
+        WHERE task_type = :tt AND state IN ('pending', 'claimed')
+    """), {"tt": task_type}).fetchone()
+    return row[0] if row else 0
+
+
 def schedule_fetch_readmes() -> int:
     """Create fetch_readme tasks for repos needing READMEs for enrichment.
 
-    Only creates tasks for repos that:
-    - Have no summary yet (problem_domains IS NULL)
-    - Have a description
-    - Are in the content_budget allocation
-    - Don't have a fresh README in raw_cache (< 90 days)
-    - Don't already have a pending/claimed fetch_readme task (dedup index)
+    Caps at PENDING_CAP pending tasks, creates up to BATCH_LIMIT per pass.
     """
     with engine.connect() as conn:
+        if _pending_count(conn, "fetch_readme") >= PENDING_CAP:
+            return 0
+
         result = conn.execute(text("""
             INSERT INTO tasks (task_type, subject_id, priority, resource_type)
             SELECT 'fetch_readme', ar.full_name, 8, 'github_api'
@@ -57,10 +68,12 @@ def schedule_fetch_readmes() -> int:
                     AND rc.subject_id = ar.full_name
                     AND rc.fetched_at > now() - interval '90 days'
               )
+            ORDER BY ar.stars DESC NULLS LAST
+            LIMIT :lim
             ON CONFLICT (task_type, subject_id)
                 WHERE state IN ('pending', 'claimed')
             DO NOTHING
-        """))
+        """), {"lim": BATCH_LIMIT})
         conn.commit()
         count = result.rowcount
         if count > 0:
@@ -71,13 +84,12 @@ def schedule_fetch_readmes() -> int:
 def schedule_enrich_summaries() -> int:
     """Create enrich_summary tasks for repos with cached READMEs but no summary.
 
-    Only creates tasks for repos that:
-    - Have a fresh README in raw_cache with non-null payload >= 100 chars
-    - Have no summary yet (problem_domains IS NULL)
-    - Are in the content_budget allocation
-    - Don't already have a pending/claimed enrich_summary task (dedup index)
+    Caps at PENDING_CAP pending tasks, creates up to BATCH_LIMIT per pass.
     """
     with engine.connect() as conn:
+        if _pending_count(conn, "enrich_summary") >= PENDING_CAP:
+            return 0
+
         result = conn.execute(text("""
             INSERT INTO tasks (task_type, subject_id, priority, resource_type,
                                estimated_cost_usd)
@@ -96,10 +108,12 @@ def schedule_enrich_summaries() -> int:
               AND ar.description <> ''
               AND rc.payload IS NOT NULL
               AND length(rc.payload) >= 100
+            ORDER BY ar.stars DESC NULLS LAST
+            LIMIT :lim
             ON CONFLICT (task_type, subject_id)
                 WHERE state IN ('pending', 'claimed')
             DO NOTHING
-        """))
+        """), {"lim": BATCH_LIMIT})
         conn.commit()
         count = result.rowcount
         if count > 0:
@@ -177,12 +191,12 @@ def cleanup_old_tasks() -> int:
 def schedule_enrich_comparisons() -> int:
     """Create enrich_comparison tasks for pairs without sentences.
 
-    Only creates tasks for pairs that:
-    - Have no sentence yet (sentence IS NULL)
-    - Are in the content_budget allocation for comparison_sentences
-    - Don't already have a pending/claimed task (dedup index)
+    Caps at PENDING_CAP pending tasks, creates up to BATCH_LIMIT per pass.
     """
     with engine.connect() as conn:
+        if _pending_count(conn, "enrich_comparison") >= PENDING_CAP:
+            return 0
+
         result = conn.execute(text("""
             INSERT INTO tasks (task_type, subject_id, priority, resource_type,
                                estimated_cost_usd)
@@ -193,10 +207,12 @@ def schedule_enrich_comparisons() -> int:
                 AND cb.domain = cs.domain
                 AND cb.subcategory = cs.subcategory
             WHERE cs.sentence IS NULL
+            ORDER BY GREATEST(cs.repo_a_id, cs.repo_b_id) DESC
+            LIMIT :lim
             ON CONFLICT (task_type, subject_id)
                 WHERE state IN ('pending', 'claimed')
             DO NOTHING
-        """))
+        """), {"lim": BATCH_LIMIT})
         conn.commit()
         count = result.rowcount
         if count > 0:
@@ -207,13 +223,13 @@ def schedule_enrich_comparisons() -> int:
 def schedule_enrich_repo_briefs() -> int:
     """Create enrich_repo_brief tasks for repos without briefs.
 
-    Only creates tasks for repos that:
-    - Have a description
-    - Are in the content_budget allocation for repo_briefs
-    - Don't already have a repo_briefs row
-    - Don't already have a pending/claimed task (dedup index)
+    Requires ai_summary to exist (prerequisite — briefs need enriched data).
+    Caps at PENDING_CAP pending tasks, creates up to BATCH_LIMIT per pass.
     """
     with engine.connect() as conn:
+        if _pending_count(conn, "enrich_repo_brief") >= PENDING_CAP:
+            return 0
+
         result = conn.execute(text("""
             INSERT INTO tasks (task_type, subject_id, priority, resource_type,
                                estimated_cost_usd)
@@ -228,10 +244,13 @@ def schedule_enrich_repo_briefs() -> int:
               AND ar.archived = false
               AND ar.description IS NOT NULL
               AND ar.description <> ''
+              AND ar.ai_summary IS NOT NULL
+            ORDER BY ar.stars DESC NULLS LAST
+            LIMIT :lim
             ON CONFLICT (task_type, subject_id)
                 WHERE state IN ('pending', 'claimed')
             DO NOTHING
-        """))
+        """), {"lim": BATCH_LIMIT})
         conn.commit()
         count = result.rowcount
         if count > 0:
