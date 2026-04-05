@@ -36,7 +36,7 @@ from app.ingest.stack_layer import classify_stack_layers
 from app.ingest.hn_llm_match import match_hn_posts_llm
 # generate_ai_summaries — now handled by task queue (app/queue/handlers/)
 from app.ingest.domain_reassign import reassign_domains
-from app.ingest.comparison_sentences import generate_comparison_sentences
+# generate_comparison_sentences — now handled by task queue (app/queue/handlers/)
 from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis, backfill_hf_datasets, backfill_hf_models
 from app.briefing_refresh import refresh_briefing_evidence
 from app.embeddings import is_enabled
@@ -362,20 +362,13 @@ async def run_all() -> dict:
     results["ai_summaries"] = {"status": "handled_by_task_queue"}
     logger.info("ai_summaries: delegated to task queue worker")
 
-    try:
-        results["comparison_sentences"] = await _run_with_retry("comparison_sentences", generate_comparison_sentences)
-        logger.info(f"comparison_sentences: {results['comparison_sentences']}")
-    except Exception as e:
-        logger.exception(f"comparison_sentences failed: {e}")
-        results["comparison_sentences"] = {"error": str(e)}
+    # comparison_sentences — now handled by the task queue worker (enrich_comparison)
+    results["comparison_sentences"] = {"status": "handled_by_task_queue"}
+    logger.info("comparison_sentences: delegated to task queue worker")
 
-    try:
-        from app.ingest.project_briefs import generate_repo_briefs
-        results["repo_briefs"] = await _run_with_retry("repo_briefs", generate_repo_briefs)
-        logger.info(f"repo_briefs: {results['repo_briefs']}")
-    except Exception as e:
-        logger.exception(f"repo_briefs failed: {e}")
-        results["repo_briefs"] = {"error": str(e)}
+    # repo_briefs — now handled by the task queue worker (enrich_repo_brief)
+    results["repo_briefs"] = {"status": "handled_by_task_queue"}
+    logger.info("repo_briefs: delegated to task queue worker")
 
     # Export dataset to GitHub repo
     try:
