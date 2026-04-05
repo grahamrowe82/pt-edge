@@ -200,7 +200,7 @@ def schedule_enrich_comparisons() -> int:
         result = conn.execute(text("""
             INSERT INTO tasks (task_type, subject_id, priority, resource_type,
                                estimated_cost_usd)
-            SELECT 'enrich_comparison', cs.id::text, 9, 'gemini', 0.0001
+            SELECT 'enrich_comparison', cs.id::text, 7, 'gemini', 0.0001
             FROM comparison_sentences cs
             JOIN content_budget cb
                 ON cb.pipeline = 'comparison_sentences'
@@ -233,7 +233,7 @@ def schedule_enrich_repo_briefs() -> int:
         result = conn.execute(text("""
             INSERT INTO tasks (task_type, subject_id, priority, resource_type,
                                estimated_cost_usd)
-            SELECT 'enrich_repo_brief', ar.id::text, 9, 'gemini', 0.0005
+            SELECT 'enrich_repo_brief', ar.id::text, 10, 'gemini', 0.0005
             FROM ai_repos ar
             JOIN content_budget cb
                 ON cb.pipeline = 'repo_briefs'
@@ -268,7 +268,7 @@ def schedule_enrich_project_briefs() -> int:
         result = conn.execute(text("""
             INSERT INTO tasks (task_type, subject_id, priority, resource_type,
                                estimated_cost_usd)
-            SELECT 'enrich_project_brief', 'all', 7, 'gemini', 0.05
+            SELECT 'enrich_project_brief', 'all', 8, 'gemini', 0.05
             WHERE NOT EXISTS (
                 SELECT 1 FROM tasks
                 WHERE task_type = 'enrich_project_brief'
