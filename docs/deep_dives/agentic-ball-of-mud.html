@@ -1,0 +1,197 @@
+<p>Most agentic AI systems today have the same fundamental architecture as a badly written cron job: a single ephemeral process, holding all state in local memory, executing steps sequentially, with no durable record of what it did or why.</p>
+
+<p>The context window is the "memory." If it gets truncated, knowledge is lost. The LLM's next-token prediction is the "orchestrator." If it hallucinates a step, there's no checkpoint to roll back to. If the process crashes, you start from scratch. There's no idempotency, no separation of concerns, no observability beyond whatever the agent happens to print to stdout.</p>
+
+<p>This is not a new failure mode. Backend engineering identified and solved every one of these problems over the last two decades. The agent ecosystem is rediscovering them &mdash; slowly, out of order, and mostly by reinventing existing infrastructure badly.</p>
+
+<p>PT-Edge tracks {{ '{:,}'.format(24418) }} repos in the agents domain. We mapped them against four architectural problems to find who's building real solutions &mdash; and where the gaps are widest.</p>
+
+<h2>The four problems</h2>
+
+<table>
+  <thead>
+    <tr><th>Problem</th><th>Backend solution</th><th>Agent ecosystem status</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Ephemeral state</td><td>Put the truth in a database</td><td>Active &mdash; real projects, but architecturally bolted on</td></tr>
+    <tr><td>Sequential coupling</td><td>Model dependencies as DAGs, parallelise</td><td>Emerging &mdash; best solutions come from outside agent world</td></tr>
+    <tr><td>No observability</td><td>Structured logging, tracing, dashboards</td><td>Emerging fast &mdash; driven by pain from long-running tasks</td></tr>
+    <tr><td>No crash recovery</td><td>Atomic steps, checkpoints, durable execution</td><td>Nearly empty &mdash; the biggest gap</td></tr>
+  </tbody>
+</table>
+
+<h2>Problem 1: Durable state</h2>
+
+<p>The context window is process memory. It dies with the process. The fix has always been: put the truth in a database. The agent ecosystem knows this &mdash; memory is the most active infrastructure category.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set memory_repos = ['mem0ai/mem0', 'topoteretes/cognee', 'ayushmi/agentstate', 'Thinklanceai/agentkeeper', 'choihyunsus/soul'] %}
+    {% for name in memory_repos %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if 'mem0' in name %}Multi-level memory: user, session, agent state. 2.8M downloads/month{% elif 'cognee' in name %}Graph-vector hybrid retrieval with ontology grounding. 372 commits/30d{% elif 'agentstate' in name %}Cloud-native durable state: WAL+snapshots, CRDTs, idempotency, Kubernetes-native{% elif 'agentkeeper' in name %}Cross-model memory continuity &mdash; survives provider switches and crashes{% elif 'soul' in name %}SQLite KV-cache for MCP sessions. Persistent memory layer{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('rag') }}/servers/mem0ai/mem0/">mem0</a> ({{ repos.get('mem0ai/mem0', {}).stars | intcomma }} stars, quality {{ repos.get('mem0ai/mem0', {}).quality_score }}/100) is the category leader &mdash; integrated as a dependency into <a href="{{ domain_path('agents') }}/servers/crewAIInc/crewAI/">CrewAI</a>, Agno, AgentScope, and Camel. <a href="{{ domain_path('vector-db') }}/servers/topoteretes/cognee/">Cognee</a> (quality {{ repos.get('topoteretes/cognee', {}).quality_score }}/100) has the highest development velocity in the category at 372 commits in 30 days.</p>
+
+<p><strong>But here's the architectural question:</strong> is memory being integrated into the agent's core, or bolted on as a plugin? Looking at CrewAI's dependency list, <code>mem0ai</code> sits alongside <code>chromadb</code> and <code>qdrant-client</code> as an optional add-on. The context window is still the default state store. Memory is an afterthought you can opt into, not the architectural foundation.</p>
+
+<p>The projects that get this right treat state as primary. <a href="{{ domain_path('agents') }}/servers/ayushmi/agentstate/">AgentState</a> (quality {{ repos.get('ayushmi/agentstate', {}).quality_score }}/100) provides WAL+snapshots, CRDTs, and idempotency guarantees &mdash; the same primitives databases use. It's small ({{ repos.get('ayushmi/agentstate', {}).stars | intcomma }} stars) but architecturally serious. The gap between "memory plugin" and "durable state layer" is where the real engineering lives.</p>
+
+<h2>Problem 2: Orchestration beyond sequential chains</h2>
+
+<p>Steps execute in order because that's how the prompt was written, not because there's a real dependency. The fix: model dependencies explicitly, execute in parallel where possible.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set orch_repos = ['triggerdotdev/trigger.dev', 'ComposioHQ/agent-orchestrator', 'dagu-org/dagu', 'Netflix/maestro', 'rodmena-limited/stabilize', 'sayiir/sayiir', 'orra-dev/orra', 'dagengine/dagengine'] %}
+    {% for name in orch_repos %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if 'trigger.dev' in name %}Background jobs and workflows. 768K downloads/month{% elif 'agent-orchestrator' in name %}Parallel coding agents with DAG planning and git worktrees{% elif 'dagu' in name %}Declarative, file-based DAG engine. One binary{% elif 'maestro' in name %}Netflix's production workflow orchestrator{% elif 'stabilize' in name %}Queue-based state machine with DAG orchestration{% elif 'sayiir' in name %}Rust durable workflow engine. Checkpoint-based, no deterministic replay{% elif 'orra' in name %}Plan engine for dynamic planning and reliable execution{% elif 'dagengine' in name %}Type-safe DAG execution engine for AI workflows{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>The pattern here is telling: the best orchestration solutions come from <em>outside</em> the agent ecosystem. <a href="{{ domain_path('agents') }}/servers/triggerdotdev/trigger.dev/">trigger.dev</a> ({{ repos.get('triggerdotdev/trigger.dev', {}).stars | intcomma }} stars, quality {{ repos.get('triggerdotdev/trigger.dev', {}).quality_score }}/100, {{ '{:,}'.format(767768) }} downloads/month) is a background jobs platform that agent developers are adopting. <a href="{{ domain_path('data-engineering') }}/servers/dagu-org/dagu/">dagu</a> (quality {{ repos.get('dagu-org/dagu', {}).quality_score }}/100) is a declarative workflow engine from the data engineering world. <a href="{{ domain_path('mlops') }}/servers/Netflix/maestro/">Netflix Maestro</a> is production-grade workflow orchestration that predates the agent era entirely.</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/ComposioHQ/agent-orchestrator/">Composio's agent-orchestrator</a> ({{ repos.get('ComposioHQ/agent-orchestrator', {}).stars | intcomma }} stars, {{ repos.get('ComposioHQ/agent-orchestrator', {}).commits_30d }} commits/30d) is the standout agent-native entry &mdash; DAG-based planning, parallel agent spawning, git worktrees for isolation, and automated CI fix loops. This is what "agent orchestration" should look like: a worker pulling tasks from a queue, not a prompt hoping for the best.</p>
+
+<p>Among the smaller projects, <a href="{{ domain_path('agents') }}/servers/rodmena-limited/stabilize/">Stabilize</a> is worth watching &mdash; a queue-based state machine that explicitly positions itself between simple task queues like Celery and heavy orchestrators like Airflow. That's exactly the abstraction level agents need.</p>
+
+<h2>Problem 3: Observability</h2>
+
+<p>When an agent runs for 6&ndash;8 hours (Latent Space reports this is now common), "whatever the agent happens to print to stdout" stops being acceptable. The observability category is emerging fast, driven by real pain.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set obs_repos = ['coze-dev/coze-loop', 'AgentOps-AI/agentops', 'truera/trulens', 'TracecatHQ/tracecat', 'Rxflex/agenttrace', 'Siddhant-K-code/agent-trace'] %}
+    {% for name in obs_repos %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if 'coze-loop' in name %}Full-lifecycle agent optimization: dev, debug, eval, monitoring{% elif 'agentops' in name %}SDK for agent monitoring. Integrates with CrewAI, Agno, OpenAI SDK{% elif 'trulens' in name %}Evaluation and tracking for LLM experiments{% elif 'tracecat' in name %}AI-native automation for security teams. 223 commits/30d{% elif 'agenttrace' in name and 'Rxflex' in name %}Open-source local-first step debugger with web UI{% elif 'agent-trace' in name %}strace for AI agents &mdash; capture and replay every tool call{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p><a href="{{ domain_path('agents') }}/servers/coze-dev/coze-loop/">Cozeloop</a> ({{ repos.get('coze-dev/coze-loop', {}).stars | intcomma }} stars, quality {{ repos.get('coze-dev/coze-loop', {}).quality_score }}/100) from ByteDance's Coze team provides full-lifecycle management &mdash; development, debugging, evaluation, and monitoring in one platform. <a href="{{ domain_path('agents') }}/servers/AgentOps-AI/agentops/">AgentOps</a> ({{ repos.get('AgentOps-AI/agentops', {}).stars | intcomma }} stars) takes the integration approach, plugging into CrewAI, Agno, and the OpenAI Agents SDK. <a href="{{ domain_path('agents') }}/servers/truera/trulens/">TruLens</a> (quality {{ repos.get('truera/trulens', {}).quality_score }}/100) brings evaluation rigour from the ML experiment tracking tradition.</p>
+
+<p>The smaller projects are where it gets interesting. <a href="{{ domain_path('agents') }}/servers/Siddhant-K-code/agent-trace/">agent-trace</a> describes itself as "strace for AI agents" &mdash; capture and replay every tool call, prompt, and response. That's the right metaphor. Backend engineers don't debug by reading stdout; they use tracing. The agent ecosystem is starting to figure this out.</p>
+
+<p><strong>Growth signal:</strong> February 2026 saw 14 new observability repos created in a single month, up from 0&ndash;4 in prior months. Something is making the pain acute &mdash; likely the emergence of multi-hour agent tasks where failure without visibility is intolerable.</p>
+
+<h2>Problem 4: Crash recovery &mdash; the void</h2>
+
+<p>If step 7 of 12 fails, you rerun 1&ndash;12. The fix in backend engineering: make each step atomic, record completion, resume from where you left off. In the agent ecosystem, this problem is almost completely unaddressed.</p>
+
+<table>
+  <thead>
+    <tr><th>Project</th><th>Score</th><th>Stars</th><th>Approach</th></tr>
+  </thead>
+  <tbody>
+    {% set crash_repos = ['azender1/SafeAgent', 'deepansh-saxena/DuraLang', 'verist-ai/verist'] %}
+    {% for name in crash_repos %}
+    {% set r = repos.get(name, {}) %}
+    {% if r %}
+    <tr>
+      <td><a href="{{ domain_path(r.domain) }}/servers/{{ name }}/">{{ r.name | default(name) }}</a></td>
+      <td>{{ r.quality_score }}/100</td>
+      <td>{{ r.stars | intcomma }}</td>
+      <td>{% if 'SafeAgent' in name %}Finality gating + request-id dedup. Exactly-once execution{% elif 'DuraLang' in name %}"Make stochastic AI systems durable with one decorator"{% elif 'verist' in name %}Replay + diff for AI decisions. Audit-first workflow kernel{% endif %}</td>
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+
+<p>That's it. Three projects, all early-stage, none with significant adoption. Compare that to the memory category (top 7 repos with quality scores above 70 and real community engagement) or orchestration (projects with hundreds of thousands of monthly downloads).</p>
+
+<p><a href="{{ domain_path('agents') }}/servers/azender1/SafeAgent/">SafeAgent</a> targets exactly-once execution with finality gating and request-ID deduplication &mdash; the same patterns that payment systems use to prevent double-charging. <a href="{{ domain_path('agents') }}/servers/deepansh-saxena/DuraLang/">DuraLang</a> takes the developer-ergonomics approach: one decorator to make an agent function durable. Both are under 10 stars.</p>
+
+<h2>The dependency gap</h2>
+
+<p>Backend engineering solved crash recovery decades ago. Temporal, Inngest, DBOS, and Restate are proven, production-grade durable execution runtimes. So why aren't agent developers using them?</p>
+
+<table>
+  <thead>
+    <tr><th>Package</th><th>Dependents in AI ecosystem</th><th>Context</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>langchain</td><td>273</td><td>LLM abstraction layer</td></tr>
+    <tr><td>chromadb</td><td>133</td><td>Vector store</td></tr>
+    <tr><td>crewai</td><td>34</td><td>Agent orchestration</td></tr>
+    <tr><td>mem0ai</td><td>15</td><td>Agent memory</td></tr>
+    <tr><td><strong>temporalio</strong></td><td><strong>1</strong></td><td>Durable execution (proven)</td></tr>
+    <tr><td><strong>inngest</strong></td><td><strong>1</strong></td><td>Durable execution (proven)</td></tr>
+    <tr><td><strong>dbos-transact</strong></td><td><strong>0</strong></td><td>Durable execution (proven)</td></tr>
+    <tr><td><strong>restate-sdk</strong></td><td><strong>0</strong></td><td>Durable execution (proven)</td></tr>
+  </tbody>
+</table>
+
+<p>The agent ecosystem has 273 repos depending on LangChain and 133 depending on ChromaDB. It has <strong>2 total repos</strong> depending on durable execution runtimes. The infrastructure that prevents crashes, enables recovery, and guarantees exactly-once execution has near-zero penetration.</p>
+
+<p>The first bridge appeared in March 2026: LlamaIndex announced DBOS integration for durable agent workflows. Whether this is the start of adoption or a one-off integration remains to be seen.</p>
+
+<h2>What good looks like</h2>
+
+<p>The projects that actually work well tend to rediscover backend patterns by accident. Using git as the source of truth. Writing intermediate results to files or databases. Structuring work as discrete tasks rather than one long chain of thought. They're reinventing the work queue &mdash; they just don't call it that because the marketing says "agent."</p>
+
+<p>The bridge projects are the ones to watch:</p>
+
+<ul>
+  <li><a href="{{ domain_path('agents') }}/servers/triggerdotdev/trigger.dev/">trigger.dev</a> &mdash; background jobs infrastructure being adopted by agent developers ({{ '{:,}'.format(767768) }} downloads/month)</li>
+  <li><a href="{{ domain_path('agents') }}/servers/sayiir/sayiir/">Sayiir</a> &mdash; "simplified Temporal" in Rust, explicitly targeting AI agent workflows</li>
+  <li><a href="{{ domain_path('agents') }}/servers/rodmena-limited/stabilize/">Stabilize</a> &mdash; queue-based state machine sitting at exactly the right abstraction level</li>
+  <li><strong>DBOS + LlamaIndex</strong> &mdash; the first integration between a durable execution runtime and an agent framework</li>
+  <li><a href="{{ domain_path('agents') }}/servers/AxmeAI/axme/">AxmeAI</a> &mdash; pre-launch company building durable execution "where agents, services, and humans coordinate as equals"</li>
+</ul>
+
+<p>The interesting research question: is there something inherent in the LLM-as-orchestrator pattern that resists these fixes? Can you have a durable, observable, crash-recoverable agent that still benefits from LLM reasoning at each step? Probably yes &mdash; but it looks much more like a worker pulling tasks from a queue than an "autonomous agent" with a system prompt and a dream.</p>
+
+<h2>The signal from the pain</h2>
+
+<p>The industry is feeling this. Amazon's Kiro agent deleted and recreated environments, causing a 13-hour AWS outage (Pragmatic Engineer, March 2026). Latent Space reports agents now run 6&ndash;8 hour tasks. Anthropic published guidance on "harness engineering for long-running tasks." On Hacker News, a developer asks <em>"How do you cope with the broken rhythm of agentic coding?"</em> while another builds <em>"Agent Kernel &mdash; Three Markdown files that make any AI agent stateful."</em></p>
+
+<p>Sentrial (YC W26) raised money specifically to "catch AI agent failures before your users do." When Y Combinator is funding the observability gap, it's real.</p>
+
+<p>The agent ecosystem is solving these problems in the wrong order &mdash; from the easiest (memory) to the hardest (crash recovery) &mdash; and the projects that will define the next generation of agent infrastructure are the ones that bring proven backend engineering patterns into the LLM world. Not smarter orchestration within the process. The fix is killing the process as the locus of truth and putting the truth somewhere that survives it.</p>
+
+<h2>Explore the data</h2>
+
+<p>Every project in this analysis has a quality-scored page in the PT-Edge directory, updated daily. Browse the <a href="{{ domain_path('agents') }}/categories/">agent categories</a>, check <a href="{{ domain_path('agents') }}/trending/">what's trending</a>, or explore:</p>
+<ul>
+  <li><a href="{{ domain_path('agents') }}/categories/agent-memory-systems/">Agent memory systems</a> &mdash; {{ '{:,}'.format(629) }} repos</li>
+  <li><a href="{{ domain_path('agents') }}/categories/agent-orchestration-platforms/">Agent orchestration platforms</a> &mdash; {{ '{:,}'.format(289) }} repos</li>
+  <li><a href="{{ domain_path('agents') }}/categories/agent-observability-debugging/">Agent observability &amp; debugging</a> &mdash; {{ '{:,}'.format(124) }} repos</li>
+  <li><a href="{{ domain_path('agents') }}/categories/agentic-workflow-builders/">Agentic workflow builders</a> &mdash; {{ '{:,}'.format(173) }} repos</li>
+</ul>

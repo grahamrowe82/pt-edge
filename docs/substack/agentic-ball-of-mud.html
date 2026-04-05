@@ -1,0 +1,43 @@
+<p>Most agentic AI systems today have the same fundamental architecture as a badly written cron job: a single ephemeral process, holding all state in local memory, executing steps sequentially, with no durable record of what it did or why.</p>
+
+<p>The context window is the "memory." The LLM's next-token prediction is the "orchestrator." If the process crashes, you start from scratch. Backend engineering identified and solved every one of these problems over the last two decades. The agent ecosystem is rediscovering them — slowly, out of order, and mostly by reinventing existing infrastructure badly.</p>
+
+<p>PT-Edge tracks 24,000+ repos in the agents domain. We mapped them against four architectural problems to find who's building real solutions — and where the gaps are.</p>
+
+<h2>Memory: active but bolted on</h2>
+
+<p>The most actively addressed problem. <a href="https://mcp.phasetransitions.ai/rag/servers/mem0ai/mem0/">mem0</a> (52,000+ stars, 2.8M downloads/month) is integrated into CrewAI, Agno, AgentScope, and Camel. <a href="https://mcp.phasetransitions.ai/vector-db/servers/topoteretes/cognee/">Cognee</a> (quality 80/100) has the highest development velocity — 372 commits in 30 days.</p>
+
+<p>But memory is a plugin, not a foundation. In CrewAI's dependency list, mem0ai sits alongside chromadb as an optional add-on. The context window is still the default state store. <a href="https://mcp.phasetransitions.ai/agents/servers/ayushmi/agentstate/">AgentState</a> gets this right — WAL+snapshots, CRDTs, and idempotency guarantees. The gap between "memory plugin" and "durable state layer" is where the real engineering lives.</p>
+
+<h2>Orchestration: the best solutions come from outside</h2>
+
+<p><a href="https://mcp.phasetransitions.ai/agents/servers/triggerdotdev/trigger.dev/">trigger.dev</a> (14,000 stars, 768K downloads/month) is a background jobs platform that agent developers are adopting. <a href="https://mcp.phasetransitions.ai/data-engineering/servers/dagu-org/dagu/">dagu</a> (quality 70/100) is a declarative workflow engine from the data engineering world. Netflix Maestro is production-grade orchestration that predates the agent era entirely.</p>
+
+<p><a href="https://mcp.phasetransitions.ai/agents/servers/ComposioHQ/agent-orchestrator/">Composio's agent-orchestrator</a> (4,300 stars, 445 commits/30d) is the standout agent-native entry — DAG-based planning, parallel agents, git worktrees for isolation. This is what "agent orchestration" should look like: a worker pulling tasks from a queue, not a prompt hoping for the best.</p>
+
+<h2>Observability: emerging fast</h2>
+
+<p>When agents run 6–8 hour tasks, stdout stops being acceptable. <a href="https://mcp.phasetransitions.ai/agents/servers/coze-dev/coze-loop/">Cozeloop</a> (5,400 stars) from ByteDance provides full-lifecycle management. <a href="https://mcp.phasetransitions.ai/agents/servers/AgentOps-AI/agentops/">AgentOps</a> (5,400 stars) integrates with CrewAI, Agno, and the OpenAI SDK. <a href="https://mcp.phasetransitions.ai/agents/servers/Siddhant-K-code/agent-trace/">agent-trace</a> describes itself as "strace for AI agents" — the right metaphor.</p>
+
+<p>February 2026 saw 14 new observability repos in a single month, up from 0–4 in prior months. The pain from long-running tasks is making visibility non-optional.</p>
+
+<h2>Crash recovery: the void</h2>
+
+<p>If step 7 of 12 fails, you rerun 1–12. Backend engineering solved this decades ago — Temporal, Inngest, DBOS, Restate are proven durable execution runtimes. The agent ecosystem has almost completely ignored them.</p>
+
+<p>The dependency gap is stark: 273 repos depend on LangChain. 133 depend on ChromaDB. <strong>2 total repos</strong> depend on any durable execution runtime. The infrastructure that prevents crashes and guarantees exactly-once execution has near-zero penetration.</p>
+
+<p><a href="https://mcp.phasetransitions.ai/agents/servers/azender1/SafeAgent/">SafeAgent</a> targets exactly-once execution. <a href="https://mcp.phasetransitions.ai/agents/servers/deepansh-saxena/DuraLang/">DuraLang</a> makes agents durable with one decorator. Both are under 10 stars. The first bridge appeared in March 2026: LlamaIndex announced DBOS integration for durable agent workflows.</p>
+
+<h2>Where this is heading</h2>
+
+<p>The agent ecosystem is solving these problems in the wrong order — from the easiest (memory) to the hardest (crash recovery). The projects that will define the next generation of agent infrastructure are the ones bridging the gap: trigger.dev, Sayiir ("simplified Temporal" in Rust), Stabilize (queue-based state machine), and the DBOS+LlamaIndex integration.</p>
+
+<p>Amazon's Kiro agent deleted and recreated environments, causing a 13-hour AWS outage. Sentrial (YC W26) raised money to catch agent failures. When Y Combinator is funding the observability gap, it's real.</p>
+
+<h2>Explore the data</h2>
+
+<p>Every project has a quality-scored page updated daily. Browse the <a href="https://mcp.phasetransitions.ai/agents/categories/">agent categories</a>, <a href="https://mcp.phasetransitions.ai/agents/trending/">trending agents</a>, or explore <a href="https://mcp.phasetransitions.ai/agents/categories/agent-memory-systems/">agent memory</a>, <a href="https://mcp.phasetransitions.ai/agents/categories/agent-orchestration-platforms/">orchestration</a>, and <a href="https://mcp.phasetransitions.ai/agents/categories/agent-observability-debugging/">observability</a>.</p>
+
+<p>The full deep dive with all repos and live quality scores is at <a href="https://mcp.phasetransitions.ai/insights/agentic-ball-of-mud/">mcp.phasetransitions.ai/insights/agentic-ball-of-mud</a>.</p>
