@@ -313,11 +313,9 @@ def test_docker_image_field():
 
 
 def test_dockerhub_in_runner():
-    """Docker Hub ingest is registered in the runner pipeline."""
-    import inspect
-    from app.ingest import runner
-    source = inspect.getsource(runner.run_all)
-    assert "dockerhub" in source
+    """Docker Hub ingest is registered in the task queue."""
+    from app.queue.handlers import TASK_HANDLERS
+    assert "fetch_dockerhub" in TASK_HANDLERS
 
 
 # ---------------------------------------------------------------------------
@@ -629,11 +627,9 @@ def test_npm_mcp_ingest_imports():
 
 
 def test_npm_mcp_in_runner():
-    """npm MCP ingest is registered in the runner pipeline."""
-    import inspect
-    from app.ingest import runner
-    source = inspect.getsource(runner.run_all)
-    assert "npm_mcp" in source
+    """npm MCP ingest is registered in the task queue."""
+    from app.queue.handlers import TASK_HANDLERS
+    assert "fetch_npm_mcp" in TASK_HANDLERS
 
 
 class TestExtractGithubSlug:
@@ -760,11 +756,9 @@ def test_builder_tools_ingest_imports():
 
 
 def test_builder_tools_in_runner():
-    """Builder tools ingest is registered in the runner pipeline."""
-    import inspect
-    from app.ingest import runner
-    source = inspect.getsource(runner.run_all)
-    assert "builder_tools" in source
+    """Builder tools ingest is registered in the task queue."""
+    from app.queue.handlers import TASK_HANDLERS
+    assert "fetch_builder_tools" in TASK_HANDLERS
 
 
 def test_mcp_coverage_registered():
