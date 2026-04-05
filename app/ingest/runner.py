@@ -34,7 +34,7 @@ from app.ingest.ai_repo_package_detect import detect_packages_llm
 from app.ingest.ai_repo_subcategory import ingest_subcategories, classify_subcategory_llm
 from app.ingest.stack_layer import classify_stack_layers
 from app.ingest.hn_llm_match import match_hn_posts_llm
-from app.ingest.ai_repo_summaries import generate_ai_summaries
+# generate_ai_summaries — now handled by task queue (app/queue/handlers/)
 from app.ingest.domain_reassign import reassign_domains
 from app.ingest.comparison_sentences import generate_comparison_sentences
 from app.backfill_embeddings import backfill_projects, backfill_methodology, backfill_ai_repos, backfill_public_apis, backfill_hf_datasets, backfill_hf_models
@@ -356,12 +356,11 @@ async def run_all() -> dict:
         results["content_budget"] = {"error": str(e)}
 
     # Content pipelines (allocation-driven — consume content_budget table)
-    try:
-        results["ai_summaries"] = await _run_with_retry("ai_summaries", generate_ai_summaries)
-        logger.info(f"ai_summaries: {results['ai_summaries']}")
-    except Exception as e:
-        logger.exception(f"ai_summaries failed: {e}")
-        results["ai_summaries"] = {"error": str(e)}
+
+    # ai_summaries — now handled by the task queue worker (fetch_readme + enrich_summary)
+    # See app/queue/handlers/ and docs/design/worker-architecture.md
+    results["ai_summaries"] = {"status": "handled_by_task_queue"}
+    logger.info("ai_summaries: delegated to task queue worker")
 
     try:
         results["comparison_sentences"] = await _run_with_retry("comparison_sentences", generate_comparison_sentences)

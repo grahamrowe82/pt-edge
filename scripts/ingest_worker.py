@@ -1,25 +1,31 @@
-"""Background scheduler for daily ingest — replaces Render cron job.
+"""Background worker: task queue + legacy daily ingest.
 
-Render cron jobs have a hard 12-hour timeout that cannot be changed.
-This worker runs permanently with no timeout, sleeping until 6 AM UTC
-each day before spawning ingest_all.py as a subprocess.
+Two systems run side by side during migration:
 
-The subprocess gets a clean process with fresh memory, replicating the
-cron's process-per-run semantics while removing the timeout constraint.
+1. Task queue (always running): a scheduler creates tasks in the
+   database, a worker loop claims and executes them continuously.
+   This handles fetch_readme and enrich_summary (more task types
+   will be added as the migration progresses).
 
-On startup, checks whether today's run has already completed. If not,
-runs immediately before entering the normal sleep loop. This makes the
-worker self-healing after crashes and allows manual triggering via a
-service restart.
+2. Legacy daily ingest (06:00 UTC): spawns ingest_all.py as a
+   subprocess, which runs all remaining non-migrated jobs via
+   runner.py. As task types are ported, jobs are removed from
+   runner.py until it is empty and can be deleted.
+
+The task queue runs in a background thread with its own asyncio
+event loop. The legacy daily ingest remains synchronous in the
+main thread.
 
 Auto-deploy is disabled (render.yaml) so code pushes don't interrupt
 running jobs. After each successful ingest, the worker triggers its own
 redeploy via the Render API to pick up any code changes from the day.
 """
+import asyncio
 import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -130,8 +136,38 @@ def trigger_self_deploy():
         logger.warning(f"Self-deploy failed (non-fatal): {e}")
 
 
+def _start_task_queue():
+    """Start the task queue worker + scheduler in a background thread.
+
+    Runs an asyncio event loop with both coroutines. If the task queue
+    crashes, the legacy ingest continues unaffected.
+    """
+    async def _run():
+        from app.queue.worker import worker_loop
+        from app.queue.scheduler import scheduler_loop
+        await asyncio.gather(
+            worker_loop(),
+            scheduler_loop(),
+        )
+
+    def _thread_target():
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(_run())
+        except Exception:
+            logger.exception("Task queue thread crashed — will restart on next deploy")
+
+    thread = threading.Thread(target=_thread_target, daemon=True, name="task-queue")
+    thread.start()
+    logger.info("Task queue started in background thread")
+
+
 def main_loop():
-    logger.info("Ingest worker started (subprocess mode)")
+    logger.info("Ingest worker started (task queue + legacy subprocess mode)")
+
+    # Start the task queue worker + scheduler in background
+    _start_task_queue()
 
     # Self-healing: if today's run hasn't completed, run immediately
     if not today_run_completed():
@@ -141,7 +177,7 @@ def main_loop():
     while True:
         wait = seconds_until_next_run()
         logger.info(
-            f"Next ingest in {wait / 3600:.1f}h "
+            f"Next legacy ingest in {wait / 3600:.1f}h "
             f"(at {TARGET_HOUR_UTC:02d}:00 UTC)"
         )
 
