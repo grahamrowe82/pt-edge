@@ -1,6 +1,6 @@
 {
     "slug": "agentic-ball-of-mud",
-    "title": "Your Agent Framework Is a Ball of Mud — Who's Actually Fixing It",
+    "title": "Your Agent is Hitting its Ceiling — Who's Actually Fixing It",
     "subtitle": "You've lost sessions to compaction, watched agents redo work, and restarted after crashes with nothing to resume from. Claude Code's leaked source reveals why: brilliant simplicity designed for interactive work, hitting an architectural ceiling as agents go autonomous. Here's who's building what comes next.",
     "author": "Graham Rowe",
     "primary_domain": "agents",
