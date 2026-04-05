@@ -340,17 +340,19 @@ def schedule_enrich_landscape_briefs() -> int:
 
 
 def _schedule_coarse_task(task_type: str, sync_type: str, priority: int,
-                          resource_type: str | None) -> int:
+                          resource_type: str | None,
+                          staleness_hours: int = 24) -> int:
     """Generic scheduler for coarse-grained tasks: create one task if last
-    sync_log entry for sync_type is >24h old and no task is pending."""
+    sync_log entry for sync_type is older than staleness_hours and no task
+    is pending."""
     with engine.connect() as conn:
         recent = conn.execute(text("""
             SELECT 1 FROM sync_log
             WHERE sync_type = :sync_type
               AND status IN ('success', 'partial')
-              AND started_at > now() - interval '24 hours'
+              AND started_at > now() - (:hours || ' hours')::interval
             LIMIT 1
-        """), {"sync_type": sync_type}).fetchone()
+        """), {"sync_type": sync_type, "hours": staleness_hours}).fetchone()
 
         if recent:
             return 0
@@ -678,9 +680,48 @@ def schedule_all() -> dict:
     counts["enrich_hn_match"] = _schedule_coarse_task("enrich_hn_match", "hn_llm_match", 4, "gemini")
     counts["enrich_package_detect"] = _schedule_coarse_task("enrich_package_detect", "ai_repo_package_detect", 4, "gemini")
 
-    # Data freshness (sync_log staleness)
+    # Data freshness — all coarse-grained, sync_log staleness
     counts["fetch_github"] = schedule_fetch_github()
     counts["fetch_releases"] = schedule_fetch_releases()
+
+    # Wave 7: Data ingestion (all 24h staleness)
+    counts["fetch_downloads"] = _schedule_coarse_task("fetch_downloads", "downloads", 7, None)
+    counts["fetch_dockerhub"] = _schedule_coarse_task("fetch_dockerhub", "dockerhub", 7, None)
+    counts["fetch_vscode"] = _schedule_coarse_task("fetch_vscode", "vscode", 7, None)
+    counts["fetch_huggingface"] = _schedule_coarse_task("fetch_huggingface", "huggingface", 7, None)
+    counts["fetch_hn"] = _schedule_coarse_task("fetch_hn", "hn", 6, None)
+    counts["fetch_v2ex"] = _schedule_coarse_task("fetch_v2ex", "v2ex", 6, None)
+    counts["fetch_trending"] = _schedule_coarse_task("fetch_trending", "trending", 7, None)
+    counts["fetch_candidates"] = _schedule_coarse_task("fetch_candidates", "candidate_velocity", 4, None)
+    counts["fetch_candidate_watchlist"] = _schedule_coarse_task("fetch_candidate_watchlist", "candidate_watchlist", 4, None)
+    counts["fetch_hf_datasets"] = _schedule_coarse_task("fetch_hf_datasets", "hf_datasets", 5, None)
+    counts["fetch_hf_models"] = _schedule_coarse_task("fetch_hf_models", "hf_models", 5, None)
+    counts["fetch_public_apis"] = _schedule_coarse_task("fetch_public_apis", "public_apis", 5, None)
+    counts["fetch_api_specs"] = _schedule_coarse_task("fetch_api_specs", "api_specs", 5, None)
+    counts["fetch_package_deps"] = _schedule_coarse_task("fetch_package_deps", "package_deps", 5, None)
+    counts["compute_dep_velocity"] = _schedule_coarse_task("compute_dep_velocity", "dep_velocity", 5, None)
+    counts["fetch_builder_tools"] = _schedule_coarse_task("fetch_builder_tools", "builder_tools", 5, None)
+    counts["fetch_npm_mcp"] = _schedule_coarse_task("fetch_npm_mcp", "npm_mcp", 5, None)
+    counts["fetch_ai_repo_downloads"] = _schedule_coarse_task("fetch_ai_repo_downloads", "ai_repo_downloads", 5, None)
+    counts["fetch_ai_repo_commits"] = _schedule_coarse_task("fetch_ai_repo_commits", "ai_repo_commits", 5, "github_api")
+    counts["fetch_newsletters"] = _schedule_coarse_task("fetch_newsletters", "newsletters", 6, None)
+    counts["fetch_models"] = _schedule_coarse_task("fetch_models", "models", 5, None)
+
+    # Wave 7: Analytics + post-processing (all 24h staleness)
+    counts["import_gsc"] = _schedule_coarse_task("import_gsc", "gsc", 6, None)
+    counts["import_umami"] = _schedule_coarse_task("import_umami", "umami", 6, None)
+    counts["compute_coview"] = _schedule_coarse_task("compute_coview", "coview", 5, None)
+    counts["compute_hn_backfill"] = _schedule_coarse_task("compute_hn_backfill", "hn_backfill", 5, None)
+    counts["compute_hn_lab_backfill"] = _schedule_coarse_task("compute_hn_lab_backfill", "hn_lab_backfill", 5, None)
+    counts["compute_v2ex_lab_backfill"] = _schedule_coarse_task("compute_v2ex_lab_backfill", "v2ex_lab_backfill", 5, None)
+    counts["compute_domain_reassign"] = _schedule_coarse_task("compute_domain_reassign", "domain_reassign", 5, None)
+    counts["compute_project_linking"] = _schedule_coarse_task("compute_project_linking", "project_linking", 5, None)
+    counts["compute_briefing_refresh"] = _schedule_coarse_task("compute_briefing_refresh", "briefing_refresh", 5, None)
+    counts["export_dataset"] = _schedule_coarse_task("export_dataset", "dataset_export", 4, None)
+
+    # Weekly tasks (7-day staleness)
+    counts["discover_ai_repos"] = _schedule_coarse_task("discover_ai_repos", "ai_repos", 4, "github_api", staleness_hours=168)
+    counts["compute_structural"] = _schedule_coarse_task("compute_structural", "weekly_structural", 3, None, staleness_hours=168)
 
     # Backfill (lowest priority, creates tasks in batches)
     counts["backfill_created_at"] = schedule_backfill_created_at()

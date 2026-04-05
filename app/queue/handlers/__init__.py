@@ -16,6 +16,22 @@ from app.queue.handlers.enrich_subcategory import handle_enrich_subcategory
 from app.queue.handlers.enrich_stack_layer import handle_enrich_stack_layer
 from app.queue.handlers.enrich_hn_match import handle_enrich_hn_match
 from app.queue.handlers.enrich_package_detect import handle_enrich_package_detect
+from app.queue.handlers.fetch_data import (
+    handle_fetch_downloads, handle_fetch_dockerhub, handle_fetch_vscode,
+    handle_fetch_huggingface, handle_fetch_hn, handle_fetch_v2ex,
+    handle_fetch_trending, handle_fetch_candidates, handle_fetch_candidate_watchlist,
+    handle_fetch_hf_datasets, handle_fetch_hf_models, handle_fetch_public_apis,
+    handle_fetch_api_specs, handle_fetch_package_deps, handle_compute_dep_velocity,
+    handle_fetch_builder_tools, handle_fetch_npm_mcp, handle_fetch_ai_repo_downloads,
+    handle_fetch_ai_repo_commits, handle_fetch_newsletters, handle_fetch_models,
+)
+from app.queue.handlers.compute_post_process import (
+    handle_import_gsc, handle_import_umami, handle_compute_coview,
+    handle_compute_hn_backfill, handle_compute_hn_lab_backfill,
+    handle_compute_v2ex_lab_backfill, handle_compute_domain_reassign,
+    handle_compute_project_linking, handle_compute_briefing_refresh,
+    handle_export_dataset, handle_discover_ai_repos, handle_compute_structural,
+)
 
 TASK_HANDLERS: dict = {
     "fetch_readme": handle_fetch_readme,
@@ -36,4 +52,39 @@ TASK_HANDLERS: dict = {
     "enrich_stack_layer": handle_enrich_stack_layer,
     "enrich_hn_match": handle_enrich_hn_match,
     "enrich_package_detect": handle_enrich_package_detect,
+    # Wave 7: Data ingestion
+    "fetch_downloads": handle_fetch_downloads,
+    "fetch_dockerhub": handle_fetch_dockerhub,
+    "fetch_vscode": handle_fetch_vscode,
+    "fetch_huggingface": handle_fetch_huggingface,
+    "fetch_hn": handle_fetch_hn,
+    "fetch_v2ex": handle_fetch_v2ex,
+    "fetch_trending": handle_fetch_trending,
+    "fetch_candidates": handle_fetch_candidates,
+    "fetch_candidate_watchlist": handle_fetch_candidate_watchlist,
+    "fetch_hf_datasets": handle_fetch_hf_datasets,
+    "fetch_hf_models": handle_fetch_hf_models,
+    "fetch_public_apis": handle_fetch_public_apis,
+    "fetch_api_specs": handle_fetch_api_specs,
+    "fetch_package_deps": handle_fetch_package_deps,
+    "compute_dep_velocity": handle_compute_dep_velocity,
+    "fetch_builder_tools": handle_fetch_builder_tools,
+    "fetch_npm_mcp": handle_fetch_npm_mcp,
+    "fetch_ai_repo_downloads": handle_fetch_ai_repo_downloads,
+    "fetch_ai_repo_commits": handle_fetch_ai_repo_commits,
+    "fetch_newsletters": handle_fetch_newsletters,
+    "fetch_models": handle_fetch_models,
+    # Wave 7: Analytics + post-processing
+    "import_gsc": handle_import_gsc,
+    "import_umami": handle_import_umami,
+    "compute_coview": handle_compute_coview,
+    "compute_hn_backfill": handle_compute_hn_backfill,
+    "compute_hn_lab_backfill": handle_compute_hn_lab_backfill,
+    "compute_v2ex_lab_backfill": handle_compute_v2ex_lab_backfill,
+    "compute_domain_reassign": handle_compute_domain_reassign,
+    "compute_project_linking": handle_compute_project_linking,
+    "compute_briefing_refresh": handle_compute_briefing_refresh,
+    "export_dataset": handle_export_dataset,
+    "discover_ai_repos": handle_discover_ai_repos,
+    "compute_structural": handle_compute_structural,
 }
