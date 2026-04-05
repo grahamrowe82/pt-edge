@@ -28,8 +28,8 @@ def _budget_is_fresh() -> bool:
         return row is not None
 
 
-PENDING_CAP = 500       # max pending fine-grained tasks before scheduler stops adding
-BATCH_LIMIT = 1000      # max tasks to create per scheduler pass
+PENDING_CAP = 5000      # max pending fine-grained tasks before scheduler stops adding
+BATCH_LIMIT = 5000      # max tasks to create per scheduler pass
 
 
 def _pending_count(conn, task_type: str) -> int:
@@ -738,8 +738,8 @@ def schedule_all() -> dict:
     counts["compute_briefing_refresh"] = _schedule_coarse_task("compute_briefing_refresh", "briefing_refresh", 5, "db_only")
     counts["export_dataset"] = _schedule_coarse_task("export_dataset", "dataset_export", 4, "github_api")
 
-    # Weekly tasks (7-day staleness)
-    counts["discover_ai_repos"] = _schedule_coarse_task("discover_ai_repos", "ai_repos", 4, "github_api", staleness_hours=168)
+    # Discovery (daily) and structural (weekly)
+    counts["discover_ai_repos"] = _schedule_coarse_task("discover_ai_repos", "ai_repos", 4, "github_api", staleness_hours=24)
     counts["compute_structural"] = _schedule_coarse_task("compute_structural", "weekly_structural", 3, "db_only", staleness_hours=168)
 
     # Backfill (lowest priority, creates tasks in batches)
