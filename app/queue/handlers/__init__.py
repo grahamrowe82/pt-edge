@@ -5,6 +5,9 @@ from app.queue.handlers.enrich_repo_brief import handle_enrich_repo_brief
 from app.queue.handlers.enrich_project_brief import handle_enrich_project_brief
 from app.queue.handlers.enrich_domain_brief import handle_enrich_domain_brief
 from app.queue.handlers.enrich_landscape_brief import handle_enrich_landscape_brief
+from app.queue.handlers.backfill_created_at import handle_backfill_created_at
+from app.queue.handlers.fetch_github import handle_fetch_github
+from app.queue.handlers.fetch_releases import handle_fetch_releases
 
 TASK_HANDLERS: dict = {
     "fetch_readme": handle_fetch_readme,
@@ -14,4 +17,7 @@ TASK_HANDLERS: dict = {
     "enrich_project_brief": handle_enrich_project_brief,
     "enrich_domain_brief": handle_enrich_domain_brief,
     "enrich_landscape_brief": handle_enrich_landscape_brief,
+    "backfill_created_at": handle_backfill_created_at,
+    "fetch_github": handle_fetch_github,
+    "fetch_releases": handle_fetch_releases,
 }

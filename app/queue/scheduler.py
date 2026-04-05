@@ -339,6 +339,115 @@ def schedule_enrich_landscape_briefs() -> int:
         return count
 
 
+def schedule_backfill_created_at() -> int:
+    """Create backfill_created_at tasks for repos missing created_at.
+
+    Fine-grained: one task per repo. Creates batches of 1000, but only
+    when fewer than 500 are already pending. This avoids flooding the
+    table with 225K rows while keeping the queue fed.
+    """
+    with engine.connect() as conn:
+        # Check how many are already pending
+        pending = conn.execute(text("""
+            SELECT count(*) FROM tasks
+            WHERE task_type = 'backfill_created_at'
+              AND state IN ('pending', 'claimed')
+        """)).scalar() or 0
+
+        if pending >= 500:
+            return 0
+
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type)
+            SELECT 'backfill_created_at', ar.id::text, 2, 'github_api'
+            FROM ai_repos ar
+            WHERE ar.created_at IS NULL
+            ORDER BY ar.stars DESC NULLS LAST
+            LIMIT 1000
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info(f"Scheduled {count} backfill_created_at tasks")
+        return count
+
+
+def schedule_fetch_github() -> int:
+    """Create a fetch_github task if the last run was >24h ago.
+
+    Coarse-grained: one task refreshes all ~800 project metadata.
+    """
+    with engine.connect() as conn:
+        recent = conn.execute(text("""
+            SELECT 1 FROM sync_log
+            WHERE sync_type = 'github'
+              AND status = 'success'
+              AND started_at > now() - interval '24 hours'
+            LIMIT 1
+        """)).fetchone()
+
+        if recent:
+            return 0
+
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type)
+            SELECT 'fetch_github', 'all', 7, 'github_api'
+            WHERE NOT EXISTS (
+                SELECT 1 FROM tasks
+                WHERE task_type = 'fetch_github'
+                  AND state IN ('pending', 'claimed')
+            )
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info("Scheduled fetch_github task")
+        return count
+
+
+def schedule_fetch_releases() -> int:
+    """Create a fetch_releases task if the last run was >24h ago.
+
+    Coarse-grained: one task fetches releases + generates summaries
+    for all projects.
+    """
+    with engine.connect() as conn:
+        recent = conn.execute(text("""
+            SELECT 1 FROM sync_log
+            WHERE sync_type = 'releases'
+              AND status = 'success'
+              AND started_at > now() - interval '24 hours'
+            LIMIT 1
+        """)).fetchone()
+
+        if recent:
+            return 0
+
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type)
+            SELECT 'fetch_releases', 'all', 6, 'github_api'
+            WHERE NOT EXISTS (
+                SELECT 1 FROM tasks
+                WHERE task_type = 'fetch_releases'
+                  AND state IN ('pending', 'claimed')
+            )
+            ON CONFLICT (task_type, subject_id)
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info("Scheduled fetch_releases task")
+        return count
+
+
 def schedule_all() -> dict:
     """Run all scheduling rules. Returns counts of tasks created."""
     counts = {}
@@ -361,6 +470,13 @@ def schedule_all() -> dict:
     # Staleness-driven enrichment (no budget gate, no day-of-week gate)
     counts["enrich_domain_brief"] = schedule_enrich_domain_briefs()
     counts["enrich_landscape_brief"] = schedule_enrich_landscape_briefs()
+
+    # Data freshness (sync_log staleness)
+    counts["fetch_github"] = schedule_fetch_github()
+    counts["fetch_releases"] = schedule_fetch_releases()
+
+    # Backfill (lowest priority, creates tasks in batches)
+    counts["backfill_created_at"] = schedule_backfill_created_at()
 
     return counts
 

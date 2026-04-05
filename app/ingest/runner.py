@@ -9,17 +9,17 @@ from app.ingest.candidates import ingest_candidate_velocity, refresh_candidate_w
 from app.ingest.dockerhub import ingest_dockerhub
 from app.ingest.vscode_marketplace import ingest_vscode
 from app.ingest.downloads import ingest_downloads
-from app.ingest.github import ingest_github
+# ingest_github — now handled by task queue (app/queue/handlers/fetch_github.py)
 from app.ingest.hn import ingest_hn, backfill_hn_links, backfill_hn_lab_links
 from app.ingest.newsletters import ingest_newsletters
 from app.ingest.v2ex import ingest_v2ex, backfill_v2ex_lab_links
 from app.ingest.models import ingest_models
 from app.ingest.huggingface import ingest_huggingface
-from app.ingest.releases import ingest_releases
+# ingest_releases — now handled by task queue (app/queue/handlers/fetch_releases.py)
 from app.ingest.trending import ingest_trending
 from app.ingest.ai_repos import ingest_ai_repos
 from app.ingest.ai_repo_commits import ingest_ai_repo_commits
-from app.ingest.ai_repo_created_at import ingest_ai_repo_created_at
+# ingest_ai_repo_created_at — now handled by task queue (app/queue/handlers/backfill_created_at.py)
 from app.ingest.ai_repo_downloads import ingest_ai_repo_downloads
 
 from app.ingest.public_apis import ingest_public_apis
@@ -152,9 +152,12 @@ async def run_all() -> dict:
 
     logger.info("Starting full ingest cycle")
 
+    # github — now handled by task queue (fetch_github, priority 7)
+    results["github"] = {"status": "handled_by_task_queue"}
+    logger.info("github: delegated to task queue worker")
+
     for name, fn in [
         # Phase 1: Fast daily-critical — no LLM calls (< 5 min each)
-        ("github", ingest_github),
         ("downloads", ingest_downloads),
         ("dockerhub", ingest_dockerhub),
         ("vscode", ingest_vscode),
@@ -179,8 +182,8 @@ async def run_all() -> dict:
         # ai_repos removed — runs on its own weekly cron (Saturday 12:00 UTC)
         # Phase 3: LLM-dependent (rate-limited, at end so they don't block)
         ("ai_repo_package_detect", detect_packages_llm),
-        ("releases", ingest_releases),
         ("newsletters", ingest_newsletters),
+        # releases — now handled by task queue (fetch_releases, priority 6)
     ]:
         try:
             results[name] = await _run_with_retry(name, fn)
@@ -188,6 +191,10 @@ async def run_all() -> dict:
         except Exception as e:
             logger.exception(f"{name} failed: {e}")
             results[name] = {"error": str(e)}
+
+    # releases — now handled by task queue (fetch_releases, priority 6)
+    results["releases"] = {"status": "handled_by_task_queue"}
+    logger.info("releases: delegated to task queue worker")
 
     # Google Search Console (lazy import — google libs not in CI)
     try:
@@ -422,16 +429,10 @@ async def run_all() -> dict:
         logger.warning(f"static_site deploy trigger failed: {e}")
         results["static_site"] = {"error": str(e)}
 
-    # Backfill created_at — runs last, uses remaining time in the day.
-    # Self-draining: becomes a no-op once all repos have created_at.
-    try:
-        results["ai_repo_created_at"] = await _run_with_retry(
-            "ai_repo_created_at", ingest_ai_repo_created_at
-        )
-        logger.info(f"ai_repo_created_at: {results['ai_repo_created_at']}")
-    except Exception as e:
-        logger.exception(f"ai_repo_created_at failed: {e}")
-        results["ai_repo_created_at"] = {"error": str(e)}
+    # ai_repo_created_at — now handled by task queue (backfill_created_at, priority 2)
+    # Fine-grained: one task per repo, naturally yields to higher-priority work
+    results["ai_repo_created_at"] = {"status": "handled_by_task_queue"}
+    logger.info("ai_repo_created_at: delegated to task queue worker")
 
     # Log sync_log entries for jobs that don't write their own
     run_started = datetime.now(timezone.utc)  # approximate; individual times not tracked for post-loop jobs
