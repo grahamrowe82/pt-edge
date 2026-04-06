@@ -1589,6 +1589,18 @@ def test_api_docs_template_rate_limits_consistent():
 # Worker integration tests — mark_done with realistic data
 # ---------------------------------------------------------------------------
 
+def _db_available() -> bool:
+    """Check if the database is reachable."""
+    try:
+        from app.db import engine
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(not _db_available(), reason="No database connection")
 class TestWorkerIntegration:
     """Tests that exercise mark_done with data that has historically broken it."""
 
