@@ -6,16 +6,23 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
+from app.ingest.budget import acquire_budget, record_throttle, record_success
 from app.models import Project, SyncLog
 
 logger = logging.getLogger(__name__)
 
 
 async def fetch_pypi_downloads(client: httpx.AsyncClient, package: str) -> dict | None:
+    if not await acquire_budget("pypi"):
+        return None
     resp = await client.get(f"https://pypistats.org/api/packages/{package}/recent")
     if resp.status_code == 200:
+        await record_success("pypi")
         data = resp.json().get("data", {})
         return {"last_day": data.get("last_day", 0), "last_week": data.get("last_week", 0), "last_month": data.get("last_month", 0)}
+    if resp.status_code == 429:
+        await record_throttle("pypi")
+        return None
     logger.warning(f"PyPI stats API {resp.status_code} for {package}")
     return None
 
@@ -23,13 +30,18 @@ async def fetch_pypi_downloads(client: httpx.AsyncClient, package: str) -> dict 
 async def fetch_npm_downloads(client: httpx.AsyncClient, package: str) -> dict | None:
     result = {"last_day": 0, "last_week": 0, "last_month": 0}
     for period, key in [("last-day", "last_day"), ("last-week", "last_week"), ("last-month", "last_month")]:
+        if not await acquire_budget("npm"):
+            return None
         resp = await client.get(f"https://api.npmjs.org/downloads/point/{period}/{package}")
         if resp.status_code == 200:
+            await record_success("npm")
             result[key] = resp.json().get("downloads", 0)
+        elif resp.status_code == 429:
+            await record_throttle("npm")
+            return None
         else:
             logger.warning(f"npm API {resp.status_code} for {package} ({period})")
             return None
-        await asyncio.sleep(0.3)
     return result
 
 
@@ -38,14 +50,20 @@ async def fetch_crate_downloads(client: httpx.AsyncClient, crate_name: str) -> d
 
     crates.io returns `recent_downloads` (~90 days). Divide by 3 for monthly.
     """
+    if not await acquire_budget("crates"):
+        return None
     resp = await client.get(
         f"https://crates.io/api/v1/crates/{crate_name}",
         headers={"User-Agent": "pt-edge/1.0 (https://github.com/pt-edge)"},
     )
     if resp.status_code == 200:
+        await record_success("crates")
         data = resp.json().get("crate", {})
         recent = data.get("recent_downloads", 0) or 0
         return {"last_month": recent // 3}
+    if resp.status_code == 429:
+        await record_throttle("crates")
+        return None
     logger.warning(f"crates.io API {resp.status_code} for {crate_name}")
     return None
 
@@ -65,7 +83,6 @@ async def collect_downloads_for_project(
                     "downloads_daily": stats["last_day"], "downloads_weekly": stats["last_week"],
                     "downloads_monthly": stats["last_month"],
                 })
-            await asyncio.sleep(1.0)
 
         if project.npm_package:
             stats = await fetch_npm_downloads(client, project.npm_package)
@@ -76,7 +93,6 @@ async def collect_downloads_for_project(
                     "downloads_daily": stats["last_day"], "downloads_weekly": stats["last_week"],
                     "downloads_monthly": stats["last_month"],
                 })
-            await asyncio.sleep(0.5)
 
     return rows
 

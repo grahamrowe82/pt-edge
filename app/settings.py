@@ -14,7 +14,6 @@ class Settings(BaseSettings):
     SEMANTIC_SCHOLAR_API_KEY: str = ""  # optional; unauthenticated access works
     REDDIT_CLIENT_ID: str = ""  # empty = Reddit ingest skipped
     REDDIT_CLIENT_SECRET: str = ""
-    OPENAI_RPM: int = 400  # OpenAI rate limit (500 RPM, use 400 for safety)
     GEMINI_API_KEY: str = ""  # Google Gemini API key; empty = Gemini disabled
     GEMINI_MODEL: str = "gemini-2.5-flash"  # Gemini model ID
     SNAPSHOT_RETENTION_DAYS: int = 365  # how long to keep daily snapshots (not wired to pruning yet)

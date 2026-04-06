@@ -129,8 +129,10 @@ async def fetch_hf_pages(
             url = parse_next_url(link_header)
 
             if url:
-                # Respect rate limit: 500 req / 300s ≈ 1.67 req/s
-                await asyncio.sleep(0.6)
+                from app.ingest.budget import acquire_budget
+                if not await acquire_budget("huggingface"):
+                    logger.warning("HuggingFace budget exhausted, stopping pagination")
+                    break
 
         except httpx.HTTPStatusError as e:
             logger.error(f"HF API error on page {page}: {e.response.status_code}")
