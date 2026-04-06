@@ -435,6 +435,19 @@ def fetch_repo_briefs(domain):
                           "brief_evidence": r.evidence} for r in rows}
 
 
+def fetch_domain_brief(domain):
+    """Landscape brief for a domain, or None."""
+    with readonly_engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT title, summary, evidence
+            FROM domain_briefs
+            WHERE domain = :domain
+        """), {"domain": domain}).fetchone()
+    if row:
+        return {"title": row.title, "summary": row.summary, "evidence": row.evidence}
+    return None
+
+
 def fetch_trending(view_name, snapshot_table, domain_filter=None):
     """Repos with biggest score improvement since earliest available snapshot."""
     domain_clause = "AND s.domain = :domain_filter" if domain_filter else ""
@@ -911,6 +924,11 @@ def main():
     # Phase 2: Render pages — collect generated URLs for sitemap
     generated_urls = []
 
+    print("  Loading domain brief...")
+    domain_brief = fetch_domain_brief(domain)
+    if domain_brief:
+        print(f"  Domain brief: {domain_brief['title'][:60]}")
+
     print("  Generating homepage...")
     write_file(
         os.path.join(out_dir, "index.html"),
@@ -919,6 +937,7 @@ def main():
             tiers=tiers,
             categories=[{"subcategory": c["subcategory"], "label": c["label"], "count": c["count"]} for c in categories],
             top_comparisons=top_comparisons,
+            domain_brief=domain_brief,
             **ctx,
         ),
     )

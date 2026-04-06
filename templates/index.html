@@ -46,6 +46,13 @@
     </div>
   </div>
 
+  {% if domain_brief %}
+  <div class="mb-12 rounded-lg border border-gray-200 bg-gray-50 p-6">
+    <h2 class="text-lg font-semibold text-gray-900 mb-2">{{ domain_brief.title }}</h2>
+    <p class="text-sm text-gray-700 leading-relaxed">{{ domain_brief.summary }}</p>
+  </div>
+  {% endif %}
+
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-12">
     {% for tier_name, tier_data in tiers.items() %}
     <div class="rounded-lg border border-gray-200 p-4 text-center">
