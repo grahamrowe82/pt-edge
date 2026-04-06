@@ -422,6 +422,19 @@ def fetch_servers(view_name):
     return results
 
 
+def fetch_repo_briefs(domain):
+    """Repo briefs keyed by full_name for a given domain."""
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT ar.full_name, rb.title, rb.summary, rb.evidence
+            FROM repo_briefs rb
+            JOIN ai_repos ar ON ar.id = rb.ai_repo_id
+            WHERE ar.domain = :domain
+        """), {"domain": domain}).fetchall()
+    return {r.full_name: {"brief_title": r.title, "brief_summary": r.summary,
+                          "brief_evidence": r.evidence} for r in rows}
+
+
 def fetch_trending(view_name, snapshot_table, domain_filter=None):
     """Repos with biggest score improvement since earliest available snapshot."""
     domain_clause = "AND s.domain = :domain_filter" if domain_filter else ""
@@ -804,6 +817,16 @@ def main():
     servers = fetch_servers(cfg["view"])
     total_count = len(servers)
     print(f"  {total_count} qualifying {cfg['noun_plural']}")
+
+    print("  Loading repo briefs...")
+    briefs = fetch_repo_briefs(domain)
+    brief_count = 0
+    for s in servers:
+        b = briefs.get(s["full_name"])
+        if b:
+            s.update(b)
+            brief_count += 1
+    print(f"  {brief_count} repo briefs matched")
 
     print("  Fetching trending...")
     trending_days = 0
