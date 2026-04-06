@@ -13,7 +13,11 @@ Three sections shipped as part of the worker-to-site audit (PRs 3, 4, 12) have b
 
 **Problem:** The current repo brief prompt produces generic summaries like "This project is highly dependable, with very active development and broad adoption by a large community." This is a vacuous restatement of what the quality score already communicates. The evidence list (stars, downloads, commits) duplicates the key metrics table that appears lower on the page. The section adds noise and pushes more useful content down.
 
-**To re-enable:** The repo brief prompt (`enrich_repo_brief.py`) needs to produce genuinely analytical content — comparative positioning, architectural trade-offs, specific strengths/weaknesses that aren't obvious from the metrics. The template should render this below the quality scores, not above them.
+**Pipeline also disabled:** `repo_briefs` removed from `BASE_CONTENT_ROWS` in `app/allocation/budget.py`, so the budget allocator no longer creates entries for this pipeline and no new `enrich_repo_brief` tasks are scheduled. This was the highest-priority Gemini task (priority 10) — no point spending LLM budget generating content we don't display.
+
+**What went wrong:** The original `PROJECT_BRIEF_PROMPT` in `project_briefs.py` was well-designed — it ran in batches of 10 with domain peer context and asked for comparative analysis with specific numbers. When ported to the task queue handler (`enrich_repo_brief.py`), the wrong prompt was copied (`REPO_BRIEF_PROMPT` — a simpler dependability checklist), domain context was dropped, and batch mode was lost. The result is generic one-line summaries that restate the quality score.
+
+**To re-enable:** The prompt needs fundamental rethinking. The deeper question is whether LLM-generated commentary adds value when the model doesn't have enough context to say something an informed human wouldn't already see from the metrics. The summaries pipeline (`enrich_summary`) works because it has the README as source material. Repo briefs only have numbers.
 
 ### 2. Domain brief on landing pages
 
