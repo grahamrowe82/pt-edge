@@ -2,6 +2,8 @@
 
 *6 April 2026*
 
+**Implementation plan:** [audit-implementation-plan.md](audit-implementation-plan.md) — 12 PRs across 4 phases to close every gap.
+
 The worker runs 36 task types. Each writes data to the database. This audit traces every task through to the live site at mcp.phasetransitions.ai to identify what data is being generated but never displayed, what tasks are failing, and where the pipeline is broken.
 
 ---
