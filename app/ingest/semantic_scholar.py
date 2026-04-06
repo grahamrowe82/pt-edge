@@ -148,7 +148,7 @@ async def ingest_semantic_scholar() -> dict:
                                  venue, year, publication_date, citation_count, open_access_url,
                                  project_id)
                             VALUES
-                                (:semantic_scholar_id, :arxiv_id, :doi, :title, :authors::jsonb,
+                                (:semantic_scholar_id, :arxiv_id, :doi, :title, CAST(:authors AS jsonb),
                                  :abstract, :venue, :year, :publication_date, :citation_count,
                                  :open_access_url, :project_id)
                             ON CONFLICT (semantic_scholar_id) DO UPDATE SET

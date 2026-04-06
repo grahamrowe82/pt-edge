@@ -450,7 +450,7 @@ async def generate_domain_briefs() -> dict:
             with engine.connect() as conn:
                 conn.execute(text("""
                     INSERT INTO domain_briefs (domain, title, summary, evidence, generated_at, updated_at)
-                    VALUES (:domain, :title, :summary, :evidence::jsonb, NOW(), NOW())
+                    VALUES (:domain, :title, :summary, CAST(:evidence AS jsonb), NOW(), NOW())
                     ON CONFLICT (domain) DO UPDATE SET
                         title = EXCLUDED.title,
                         summary = EXCLUDED.summary,
@@ -680,7 +680,7 @@ async def generate_repo_briefs() -> dict:
                     conn.execute(text("""
                         INSERT INTO repo_briefs (ai_repo_id, title, summary, evidence,
                                                  generated_at, updated_at)
-                        VALUES (:repo_id, :title, :summary, :evidence::jsonb, NOW(), NOW())
+                        VALUES (:repo_id, :title, :summary, CAST(:evidence AS jsonb), NOW(), NOW())
                         ON CONFLICT (ai_repo_id) DO UPDATE SET
                             title = EXCLUDED.title,
                             summary = EXCLUDED.summary,

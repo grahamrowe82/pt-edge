@@ -220,7 +220,7 @@ async def generate_landscape_briefs() -> dict:
             with engine.connect() as conn:
                 conn.execute(text("""
                     INSERT INTO landscape_briefs (layer, title, summary, evidence, generation_hash, generated_at, updated_at)
-                    VALUES (:layer, :title, :summary, :evidence::jsonb, :hash, NOW(), NOW())
+                    VALUES (:layer, :title, :summary, CAST(:evidence AS jsonb), :hash, NOW(), NOW())
                     ON CONFLICT (layer) DO UPDATE SET
                         title = EXCLUDED.title,
                         summary = EXCLUDED.summary,

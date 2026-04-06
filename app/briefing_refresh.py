@@ -144,7 +144,7 @@ async def refresh_briefing_evidence() -> dict:
                 conn.execute(
                     text("""
                         UPDATE briefings
-                        SET evidence = :evidence::jsonb,
+                        SET evidence = CAST(:evidence AS jsonb),
                             verified_at = NOW()
                         WHERE id = :id
                     """),
@@ -205,7 +205,7 @@ async def refresh_briefing_evidence() -> dict:
                         conn.execute(
                             text(f"""
                                 UPDATE {table}
-                                SET evidence = :evidence::jsonb,
+                                SET evidence = CAST(:evidence AS jsonb),
                                     updated_at = NOW()
                                 WHERE id = :id
                             """),

@@ -81,7 +81,7 @@ def _log_api_usage(api_key_id: int, endpoint: str, params: dict, duration_ms: in
         session.execute(
             text("""
                 INSERT INTO api_usage (api_key_id, endpoint, params, duration_ms, status_code)
-                VALUES (:kid, :ep, :params::jsonb, :dur, :sc)
+                VALUES (:kid, :ep, CAST(:params AS jsonb), :dur, :sc)
             """),
             {"kid": api_key_id, "ep": endpoint, "params": json.dumps(params_clean), "dur": duration_ms, "sc": status_code},
         )
