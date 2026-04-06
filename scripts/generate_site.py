@@ -448,6 +448,20 @@ def fetch_domain_brief(domain):
     return None
 
 
+def fetch_briefings(domain):
+    """Recent briefings for a domain."""
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT slug, title, summary, updated_at
+            FROM briefings
+            WHERE domain = :domain
+            ORDER BY updated_at DESC
+            LIMIT 5
+        """), {"domain": domain}).fetchall()
+    return [{"slug": r.slug, "title": r.title, "summary": r.summary,
+             "updated_at": r.updated_at} for r in rows]
+
+
 def fetch_hn_posts(domain):
     """HN discussion posts keyed by full_name for a given domain."""
     with readonly_engine.connect() as conn:
@@ -996,6 +1010,11 @@ def main():
     if domain_brief:
         print(f"  Domain brief: {domain_brief['title'][:60]}")
 
+    print("  Loading briefings...")
+    briefings = fetch_briefings(domain)
+    if briefings:
+        print(f"  {len(briefings)} briefings for {domain}")
+
     print("  Generating homepage...")
     write_file(
         os.path.join(out_dir, "index.html"),
@@ -1005,6 +1024,7 @@ def main():
             categories=[{"subcategory": c["subcategory"], "label": c["label"], "count": c["count"]} for c in categories],
             top_comparisons=top_comparisons,
             domain_brief=domain_brief,
+            briefings=briefings,
             **ctx,
         ),
     )

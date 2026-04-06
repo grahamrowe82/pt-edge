@@ -63,6 +63,21 @@
     {% endfor %}
   </div>
 
+  {% if briefings %}
+  <div class="mb-12">
+    <h2 class="text-xl font-bold text-gray-900 mb-4">What's New</h2>
+    <div class="space-y-3">
+      {% for b in briefings %}
+      <div class="rounded-lg border border-gray-200 p-4">
+        <h3 class="text-sm font-semibold text-gray-900">{{ b.title }}</h3>
+        <p class="mt-1 text-sm text-gray-600 line-clamp-2">{{ b.summary[:200] }}{% if b.summary|length > 200 %}...{% endif %}</p>
+        <p class="mt-1 text-xs text-gray-400">{{ b.updated_at.strftime('%d %b %Y') if b.updated_at else '' }}</p>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   <div class="mb-12">
     <h2 class="text-xl font-bold text-gray-900 mb-4">Top {{ noun_plural }} by quality score</h2>
     <div class="overflow-x-auto">
