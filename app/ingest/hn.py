@@ -172,6 +172,8 @@ async def fetch_hn_page(client: httpx.AsyncClient, query: str, min_timestamp: in
         "hitsPerPage": 50,
     }
     resp = await client.get(ALGOLIA_API, params=params)
+    from app.ingest.budget import record_call
+    await record_call("hn_algolia")
     if resp.status_code == 200:
         return resp.json().get("hits", [])
     logger.warning(f"HN Algolia API {resp.status_code} for '{query}'")

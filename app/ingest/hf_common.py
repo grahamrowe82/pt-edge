@@ -101,6 +101,8 @@ async def fetch_hf_pages(
                 # Subsequent pages use the full URL from Link header (includes cursor)
                 resp = await client.get(url)
 
+            from app.ingest.budget import record_call
+            await record_call("huggingface")
             resp.raise_for_status()
             items = resp.json()
 
@@ -129,7 +131,7 @@ async def fetch_hf_pages(
             url = parse_next_url(link_header)
 
             if url:
-                from app.ingest.budget import acquire_budget
+                from app.ingest.budget import acquire_budget, record_call
                 if not await acquire_budget("huggingface"):
                     logger.warning("HuggingFace budget exhausted, stopping pagination")
                     break

@@ -222,7 +222,7 @@ async def embed_batch(texts: list[str], dimensions: int = DIMENSIONS) -> list[Op
     from openai import AsyncOpenAI
     client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
-    from app.ingest.budget import acquire_budget, ResourceExhaustedError
+    from app.ingest.budget import acquire_budget, record_call, ResourceExhaustedError
 
     for start in range(0, len(safe_texts), MAX_BATCH_SIZE):
         chunk = safe_texts[start:start + MAX_BATCH_SIZE]
@@ -230,6 +230,7 @@ async def embed_batch(texts: list[str], dimensions: int = DIMENSIONS) -> list[Op
             if not await acquire_budget("openai"):
                 raise ResourceExhaustedError("openai")
             resp = await client.embeddings.create(input=chunk, model=MODEL, dimensions=dimensions)
+            await record_call("openai")
             for item in resp.data:
                 results[start + item.index] = item.embedding
         except Exception as e:
@@ -242,6 +243,7 @@ async def embed_batch(texts: list[str], dimensions: int = DIMENSIONS) -> list[Op
                     resp = await client.embeddings.create(
                         input=[text], model=MODEL, dimensions=dimensions,
                     )
+                    await record_call("openai")
                     results[start + i] = resp.data[0].embedding
                 except Exception as e2:
                     logger.warning(f"Individual embed failed (index {start + i}): {e2}")
