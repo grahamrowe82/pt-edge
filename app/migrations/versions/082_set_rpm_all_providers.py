@@ -18,19 +18,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # PyPI: sleep(0.5-1.0) between calls → 120 RPM
+    # Gemini: official 1000 RPM, 10% headroom
+    op.execute("UPDATE resource_budgets SET rpm = 900 WHERE resource_type = 'gemini'")
+    # OpenAI: ~500 RPM typical for embeddings tier, conservative guess
+    op.execute("UPDATE resource_budgets SET rpm = 400 WHERE resource_type = 'openai'")
+    # PyPI: no published limits, conservative
     op.execute("UPDATE resource_budgets SET rpm = 120 WHERE resource_type = 'pypi'")
-    # npm: sleep(0.3) between calls → 200 RPM
+    # npm: no published limits, conservative
     op.execute("UPDATE resource_budgets SET rpm = 200 WHERE resource_type = 'npm'")
-    # HuggingFace: sleep(0.6) = 500 req/300s documented → 100 RPM
-    op.execute("UPDATE resource_budgets SET rpm = 100 WHERE resource_type = 'huggingface'")
-    # Docker Hub: sleep(0.5) → 120 RPM
-    op.execute("UPDATE resource_budgets SET rpm = 120 WHERE resource_type = 'dockerhub'")
-    # HN Algolia: sleep(1.0) → 60 RPM
+    # HuggingFace: official 1,000 req per 5 min (free user) = 200 RPM, 12K/hr
+    op.execute("UPDATE resource_budgets SET rpm = 200, budget = 12000 WHERE resource_type = 'huggingface'")
+    # Docker Hub: official 200 pulls per 6 hr (free auth), RPM 30
+    op.execute("UPDATE resource_budgets SET rpm = 30, budget = 200, period_hours = 6 WHERE resource_type = 'dockerhub'")
+    # HN Algolia: no published limits, conservative
     op.execute("UPDATE resource_budgets SET rpm = 60 WHERE resource_type = 'hn_algolia'")
-    # V2EX: sleep(6.0), hard limit 120/hr → 10 RPM
+    # V2EX: official 120/hr confirmed via X-Rate-Limit-Limit header
     op.execute("UPDATE resource_budgets SET rpm = 10 WHERE resource_type = 'v2ex'")
-    # crates.io: sleep(1.0), documented 1 req/sec → 60 RPM
+    # crates.io: convention 1 req/sec, no published hard limit
     op.execute("UPDATE resource_budgets SET rpm = 60 WHERE resource_type = 'crates'")
 
 
