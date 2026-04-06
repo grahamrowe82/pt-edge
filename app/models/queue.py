@@ -40,6 +40,13 @@ class ResourceBudget(Base):
     period_hours: Mapped[int] = mapped_column(Integer, nullable=False)
     budget: Mapped[int] = mapped_column(Integer, nullable=False)
     consumed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reset_mode: Mapped[str] = mapped_column(Text, nullable=False, default="rolling")
+    reset_tz: Mapped[str] = mapped_column(Text, nullable=False, default="UTC")
+    reset_hour: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
+    rpm: Mapped[int | None] = mapped_column(Integer)
+    last_call_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    backoff_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    backoff_count: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)
 
 
 class RawCache(Base):
