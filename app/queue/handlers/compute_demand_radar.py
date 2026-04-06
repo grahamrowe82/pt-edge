@@ -15,29 +15,6 @@ from app.models import SyncLog
 
 logger = logging.getLogger(__name__)
 
-# Domain extraction from URL path — same logic as mv_allocation_scores
-_PATH_DOMAIN_CASE = """
-    CASE
-        WHEN path LIKE '%/agents/%' THEN 'agents'
-        WHEN path LIKE '%/rag/%' THEN 'rag'
-        WHEN path LIKE '%/ai-coding/%' THEN 'ai-coding'
-        WHEN path LIKE '%/voice-ai/%' THEN 'voice-ai'
-        WHEN path LIKE '%/diffusion/%' THEN 'diffusion'
-        WHEN path LIKE '%/vector-db/%' THEN 'vector-db'
-        WHEN path LIKE '%/embeddings/%' THEN 'embeddings'
-        WHEN path LIKE '%/prompt-engineering/%' THEN 'prompt-engineering'
-        WHEN path LIKE '%/ml-frameworks/%' THEN 'ml-frameworks'
-        WHEN path LIKE '%/llm-tools/%' THEN 'llm-tools'
-        WHEN path LIKE '%/nlp/%' THEN 'nlp'
-        WHEN path LIKE '%/transformers/%' THEN 'transformers'
-        WHEN path LIKE '%/generative-ai/%' THEN 'generative-ai'
-        WHEN path LIKE '%/computer-vision/%' THEN 'computer-vision'
-        WHEN path LIKE '%/data-engineering/%' THEN 'data-engineering'
-        WHEN path LIKE '%/mlops/%' THEN 'mlops'
-        WHEN path LIKE '%/perception/%' THEN 'perception'
-        ELSE NULL
-    END"""
-
 
 async def handle_snapshot_bot_activity(task: dict) -> dict:
     """Snapshot yesterday's bot activity from mv_access_bot_demand into
@@ -59,7 +36,7 @@ async def handle_snapshot_bot_activity(task: dict) -> dict:
         if existing and existing > 0:
             logger.info(f"bot_activity_daily already has {existing} rows for yesterday, upserting")
 
-        # Aggregate project pages: path → ai_repos → (domain, subcategory)
+        # Aggregate project pages: equality join via pre-parsed full_name
         result = conn.execute(text("""
             INSERT INTO bot_activity_daily
                 (snapshot_date, domain, subcategory, bot_family,
@@ -76,8 +53,9 @@ async def handle_snapshot_bot_activity(task: dict) -> dict:
                      THEN ROUND(SUM(bad.hits)::numeric / COUNT(DISTINCT bad.path), 2)
                 END
             FROM mv_access_bot_demand bad
-            JOIN ai_repos ar ON bad.path LIKE '%/servers/' || ar.full_name || '/%'
+            JOIN ai_repos ar ON bad.full_name = ar.full_name
             WHERE bad.access_date = CURRENT_DATE - 1
+              AND bad.page_type = 'server'
               AND ar.domain IS NOT NULL AND ar.domain <> 'uncategorized'
               AND ar.subcategory IS NOT NULL AND ar.subcategory <> ''
             GROUP BY bad.access_date, ar.domain, ar.subcategory, bad.bot_family
@@ -91,18 +69,15 @@ async def handle_snapshot_bot_activity(task: dict) -> dict:
         project_rows = result.rowcount
         conn.commit()
 
-        # Aggregate category pages: extract domain+subcategory from URL
-        result = conn.execute(text(f"""
+        # Aggregate category pages: use pre-parsed domain + subcategory_slug
+        result = conn.execute(text("""
             INSERT INTO bot_activity_daily
                 (snapshot_date, domain, subcategory, bot_family,
                  hits, unique_pages, unique_ips, revisit_ratio)
             SELECT
                 bad.access_date,
-                {_PATH_DOMAIN_CASE} AS domain,
-                REGEXP_REPLACE(
-                    REGEXP_REPLACE(bad.path, '.*/categories/([^/]+)/?$', '\\1'),
-                    '^/.*$', NULL
-                ) AS subcategory,
+                bad.domain,
+                bad.subcategory_slug,
                 bad.bot_family,
                 SUM(bad.hits),
                 COUNT(DISTINCT bad.path),
@@ -112,19 +87,10 @@ async def handle_snapshot_bot_activity(task: dict) -> dict:
                 END
             FROM mv_access_bot_demand bad
             WHERE bad.access_date = CURRENT_DATE - 1
-              AND bad.path LIKE '%/categories/%'
-            GROUP BY bad.access_date,
-                     {_PATH_DOMAIN_CASE},
-                     REGEXP_REPLACE(
-                         REGEXP_REPLACE(bad.path, '.*/categories/([^/]+)/?$', '\\1'),
-                         '^/.*$', NULL
-                     ),
-                     bad.bot_family
-            HAVING {_PATH_DOMAIN_CASE} IS NOT NULL
-               AND REGEXP_REPLACE(
-                       REGEXP_REPLACE(bad.path, '.*/categories/([^/]+)/?$', '\\1'),
-                       '^/.*$', NULL
-                   ) IS NOT NULL
+              AND bad.page_type = 'category'
+              AND bad.domain IS NOT NULL AND bad.domain <> ''
+              AND bad.subcategory_slug IS NOT NULL AND bad.subcategory_slug <> ''
+            GROUP BY bad.access_date, bad.domain, bad.subcategory_slug, bad.bot_family
             ON CONFLICT (snapshot_date, domain, subcategory, bot_family)
             DO UPDATE SET
                 hits = bot_activity_daily.hits + EXCLUDED.hits,
@@ -336,17 +302,20 @@ async def handle_detect_bot_sessions(task: dict) -> dict:
             logger.info(f"bot_sessions already has {existing} rows for yesterday, skipping")
             return {"status": "skipped", "existing_rows": existing}
 
-        # Get yesterday's Tier 1 bot requests with subcategory from ai_repos
+        # Get yesterday's Tier 1 bot requests with domain/subcategory from ai_repos
+        # Uses SPLIT_PART to extract full_name from path for indexed equality join
         rows = conn.execute(text(f"""
             SELECT
                 h.created_at AS ts,
                 h.client_ip,
                 h.path,
                 {_TIER1_CASE} AS bot_family,
-                ar.domain,
+                COALESCE(ar.domain, SPLIT_PART(h.path, '/', 2)) AS domain,
                 ar.subcategory
             FROM http_access_log h
-            LEFT JOIN ai_repos ar ON h.path LIKE '%/servers/' || ar.full_name || '/%'
+            LEFT JOIN ai_repos ar
+                ON SPLIT_PART(h.path, '/', 4) || '/' || SPLIT_PART(h.path, '/', 5) = ar.full_name
+                AND h.path LIKE '%%/servers/%%'
             WHERE h.created_at::date = CURRENT_DATE - 1
               AND h.status_code = 200
               AND ({_TIER1_CASE}) IS NOT NULL
