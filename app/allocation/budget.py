@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 BASE_CONTENT_ROWS = {
     "ai_repo_summaries": 8000,
     "comparison_sentences": 1000,
-    "repo_briefs": 6000,
 }
 
 
