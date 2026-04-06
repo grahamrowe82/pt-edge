@@ -688,11 +688,66 @@ def schedule_export_static_site() -> int:
         return count
 
 
+def check_task_health() -> None:
+    """Log ERROR if any task type has 100% failure rate in the last hour."""
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT task_type,
+                   count(*) FILTER (WHERE state = 'done') as done,
+                   count(*) FILTER (WHERE state = 'failed') as failed,
+                   max(error_message) as last_error
+            FROM tasks
+            WHERE completed_at > now() - interval '1 hour'
+            GROUP BY task_type
+            HAVING count(*) FILTER (WHERE state = 'done') = 0
+               AND count(*) FILTER (WHERE state = 'failed') > 2
+        """)).fetchall()
+    for row in rows:
+        logger.error(
+            f"HEALTH: {row.task_type} has 0 successes and {row.failed} failures "
+            f"in the last hour. Last error: {row.last_error[:200] if row.last_error else 'unknown'}"
+        )
+
+
+def check_pipeline_freshness() -> None:
+    """Log ERROR if critical pipeline outputs are stale."""
+    with engine.connect() as conn:
+        checks = [
+            ("MV refresh", """
+                SELECT 1 FROM sync_log
+                WHERE sync_type = 'views'
+                  AND status IN ('success', 'partial')
+                  AND started_at > now() - interval '24 hours'
+                LIMIT 1
+            """),
+            ("Site export", """
+                SELECT 1 FROM sync_log
+                WHERE sync_type = 'static_site'
+                  AND status = 'success'
+                  AND started_at > now() - interval '24 hours'
+                LIMIT 1
+            """),
+            ("Content budget", """
+                SELECT 1 FROM content_budget
+                WHERE computed_at::date = CURRENT_DATE
+                LIMIT 1
+            """),
+        ]
+        for name, sql in checks:
+            row = conn.execute(text(sql)).fetchone()
+            if row is None:
+                logger.error(f"HEALTH: {name} is stale — no successful run in the last 24 hours")
+
+
 def schedule_all() -> dict:
     """Run all scheduling rules. Returns counts of tasks created."""
     counts = {}
 
-    # Housekeeping first
+    # Health checks first
+    check_task_health()
+    check_pipeline_freshness()
+
+    # Housekeeping
     reap_stale_tasks()
     reset_expired_budgets()
     cleanup_old_tasks()
