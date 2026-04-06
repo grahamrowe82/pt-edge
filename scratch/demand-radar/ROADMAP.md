@@ -1,8 +1,8 @@
-# Forest Infrastructure Roadmap
+# Demand Radar: ML Infrastructure Roadmap
 
 **Created:** 2026-04-05
 **Updated:** 2026-04-06
-**Branch:** `forest-research`
+**Branch:** `demand-radar`
 **Context:** [LAB-NOTES.md](LAB-NOTES.md) contains the research findings. [RESEARCH-PLAN.md](RESEARCH-PLAN.md) contains the detailed research threads that feed this plan.
 
 ---

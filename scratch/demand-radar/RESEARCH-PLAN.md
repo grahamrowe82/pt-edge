@@ -1,4 +1,4 @@
-# Research Plan: Comprehensive Access Log Intelligence
+# Demand Radar: Research Plan
 
 **Date:** 2026-04-06
 **Context:** PR 206 established the initial framework from 22 hours of data. We now have ~48 hours and the conversation on Easter Saturday surfaced several insights that the current documents don't capture. This plan identifies the gaps and proposes research threads to fill them.

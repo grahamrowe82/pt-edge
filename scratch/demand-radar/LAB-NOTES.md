@@ -1,7 +1,7 @@
-# Forest Research: Lab Notes
+# Demand Radar: Lab Notes
 
 **Date:** 2026-04-05 (updated 2026-04-06)
-**Branch:** `forest-research`
+**Branch:** `demand-radar`
 **Data window:** 2026-04-04 14:12 UTC to 2026-04-06 11:54 UTC (~48 hours)
 **Total requests:** ~557,000/day (peak 1,500 RPM)
 
@@ -10,11 +10,13 @@
 ## Purpose
 
 The Combinatorial Forest vision says "the light is the access logs." We turned on
-logging 48 hours ago and now have our first substantial dataset. This document records
-what we found by hand-exploring the raw logs, assessing whether the current tracking
-infrastructure can support the demand intelligence pipeline, and identifying what
-needs to change.
+logging 48 hours ago and now have our first substantial dataset.
 
+We call this the **Demand Radar** — the infrastructure and analysis layer that
+detects what the AI ecosystem values by reading the signals that bots leave across
+220K pages. Every hit — indexing, user-action, or human — is latent intelligence.
+The Demand Radar extracts that signal and feeds it into content prioritisation,
+eventually via trained ML models rather than hand-tuned weights.
 Detailed findings are in the companion reports:
 - [sessions.md](sessions.md) — AI agent session detection
 - [training-crawlers.md](training-crawlers.md) — Meta, Amazon, and other crawler analysis
