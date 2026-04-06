@@ -45,6 +45,7 @@ VIEWS_IN_ORDER = [
     "mv_perception_quality",     # standalone: quality scores for perception-domain repos
     "mv_access_bot_demand",      # standalone: bot crawl demand from http_access_log
     "mv_allocation_scores",      # depends on: all quality views + ai_repo_snapshots + gsc + umami
+    "mv_warm_leads",             # depends on: mv_access_bot_demand + ai_repos
 ]
 
 
