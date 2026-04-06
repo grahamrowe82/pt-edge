@@ -1299,7 +1299,7 @@ def seed():
                 params["evidence"] = json.dumps(params["evidence"])
             conn.execute(text("""
                 INSERT INTO briefings (slug, domain, title, summary, detail, evidence, source_article, verified_at, updated_at)
-                VALUES (:slug, :domain, :title, :summary, :detail, CAST(:evidence AS jsonb), :source_article, NOW(), NOW())
+                VALUES (:slug, :domain, :title, :summary, :detail, :evidence::jsonb, :source_article, NOW(), NOW())
                 ON CONFLICT (slug)
                 DO UPDATE SET
                     domain = EXCLUDED.domain,

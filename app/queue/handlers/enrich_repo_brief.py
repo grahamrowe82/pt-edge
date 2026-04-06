@@ -144,7 +144,7 @@ async def handle_enrich_repo_brief(task: dict) -> dict:
         conn.execute(text("""
             INSERT INTO repo_briefs (ai_repo_id, title, summary, evidence,
                                      generated_at, updated_at)
-            VALUES (:repo_id, :title, :summary, CAST(:evidence AS jsonb), NOW(), NOW())
+            VALUES (:repo_id, :title, :summary, :evidence::jsonb, NOW(), NOW())
             ON CONFLICT (ai_repo_id) DO UPDATE SET
                 title = EXCLUDED.title,
                 summary = EXCLUDED.summary,
