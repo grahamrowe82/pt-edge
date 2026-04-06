@@ -102,7 +102,10 @@
   </div>
   {% endif %}
 
-  {% if server.brief_summary %}
+  {# Assessment section hidden — repo brief data is fetched but the current
+     rendering is a vacuous restatement of the quality score. Needs redesign
+     to surface the analytical value of repo_briefs. See docs/hidden-sections.md #}
+  {# {% if server.brief_summary %}
   <div class="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
     <h2 class="text-base font-semibold text-gray-900 mb-2">Assessment</h2>
     <p class="text-sm text-gray-700">{{ server.brief_summary }}</p>
@@ -116,7 +119,7 @@
     </ul>
     {% endif %}
   </div>
-  {% endif %}
+  {% endif %} #}
 
   {% if server.problem_domains and server.problem_domains | length > 0 %}
   <div class="mb-6">
