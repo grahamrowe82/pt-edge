@@ -448,6 +448,31 @@ def fetch_domain_brief(domain):
     return None
 
 
+def fetch_hn_posts(domain):
+    """HN discussion posts keyed by full_name for a given domain."""
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT ar.full_name, hp.hn_id, hp.title, hp.points, hp.num_comments,
+                   hp.posted_at
+            FROM hn_posts hp
+            JOIN projects p ON hp.project_id = p.id
+            JOIN ai_repos ar ON p.ai_repo_id = ar.id
+            WHERE ar.domain = :domain
+              AND hp.points > 0
+            ORDER BY hp.points DESC
+        """), {"domain": domain}).fetchall()
+    lookup = {}
+    for r in rows:
+        lookup.setdefault(r.full_name, [])
+        if len(lookup[r.full_name]) < 5:
+            lookup[r.full_name].append({
+                "hn_id": r.hn_id, "title": r.title,
+                "points": r.points, "num_comments": r.num_comments,
+                "posted_at": r.posted_at,
+            })
+    return lookup
+
+
 def fetch_trending(view_name, snapshot_table, domain_filter=None):
     """Repos with biggest score improvement since earliest available snapshot."""
     domain_clause = "AND s.domain = :domain_filter" if domain_filter else ""
@@ -840,6 +865,16 @@ def main():
             s.update(b)
             brief_count += 1
     print(f"  {brief_count} repo briefs matched")
+
+    print("  Loading HN posts...")
+    hn_lookup = fetch_hn_posts(domain)
+    hn_count = 0
+    for s in servers:
+        posts = hn_lookup.get(s["full_name"])
+        if posts:
+            s["hn_posts"] = posts
+            hn_count += 1
+    print(f"  {hn_count} projects with HN discussions")
 
     print("  Fetching trending...")
     trending_days = 0
