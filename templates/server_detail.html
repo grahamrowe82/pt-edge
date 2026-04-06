@@ -246,6 +246,20 @@
   </div>
   {% endif %}
 
+  {% if server.hn_posts %}
+  <div class="mb-8">
+    <h2 class="text-lg font-bold text-gray-900 mb-3">Community Discussion</h2>
+    <div class="space-y-2">
+      {% for post in server.hn_posts %}
+      <a href="https://news.ycombinator.com/item?id={{ post.hn_id }}" class="block rounded-lg border border-orange-100 p-3 hover:border-orange-300 transition-colors" target="_blank" rel="noopener">
+        <span class="text-sm text-gray-900">{{ post.title }}</span>
+        <span class="block text-xs text-gray-500 mt-0.5">{{ post.points }} points · {{ post.num_comments }} comments · {{ post.posted_at.strftime('%b %Y') if post.posted_at else '' }}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   {% if comparisons %}
   <div class="mb-8">
     <h2 class="text-lg font-bold text-gray-900 mb-3">Compare</h2>
