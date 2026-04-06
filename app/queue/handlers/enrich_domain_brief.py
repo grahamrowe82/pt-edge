@@ -114,7 +114,7 @@ async def handle_enrich_domain_brief(task: dict) -> dict:
     with engine.connect() as conn:
         conn.execute(text("""
             INSERT INTO domain_briefs (domain, title, summary, evidence, generated_at, updated_at)
-            VALUES (:domain, :title, :summary, CAST(:evidence AS jsonb), NOW(), NOW())
+            VALUES (:domain, :title, :summary, :evidence::jsonb, NOW(), NOW())
             ON CONFLICT (domain) DO UPDATE SET
                 title = EXCLUDED.title,
                 summary = EXCLUDED.summary,

@@ -149,7 +149,7 @@ def mark_done(task_id: int, result: dict | None = None) -> None:
     with engine.connect() as conn:
         conn.execute(text("""
             UPDATE tasks
-            SET state = 'done', completed_at = now(), result = CAST(:result AS jsonb)
+            SET state = 'done', completed_at = now(), result = :result::jsonb
             WHERE id = :id
         """), {"id": task_id, "result": result_json})
         conn.commit()
