@@ -2,6 +2,8 @@
 
 *6 April 2026 — companion to [audit-worker-to-site.md](audit-worker-to-site.md)*
 
+**Status: Complete.** All actionable items shipped or resolved by 7 April 2026. See [Outcome](#outcome) at the bottom for final disposition of each PR.
+
 This document maps every gap identified in the audit to a specific PR, ordered by dependency and priority.
 
 ---
@@ -384,20 +386,24 @@ Within Phase 1 (PRs 2-4), PR 3 is the highest-value change — it surfaces 5,603
 
 ---
 
-## Summary Table
+## Outcome
 
-| PR | Phase | What | Key files | Depends on |
-|----|-------|------|-----------|-----------|
-| 1 | 0 | Fix JSONB cast in mark_done | `worker.py` | None |
-| 1.5 | 0.5 | Pipeline health checks (3 lightweight checks) | `tests/test_smoke.py`, `scheduler.py` | PR 1 |
-| 2 | 1 | Render use_this_if/not_ideal_if | `server_detail.html` | PR 1 |
-| 3 | 1 | Wire repo_briefs to project pages | Migration + `generate_site.py` + `server_detail.html` | PR 1 |
-| 4 | 1 | Wire domain_briefs to landing pages | `generate_site.py` + template | PR 1 |
-| 5 | 2 | HN discussion links on project pages | `generate_site.py` + `server_detail.html` | PR 1 |
-| 6 | 2 | Release history on project pages | `generate_site.py` + `server_detail.html` | PR 1 |
-| 7 | 2 | HuggingFace models/datasets linking | `generate_site.py` + `server_detail.html` | PR 1 |
-| 8 | 3 | Fix summary prompt for use_this_if | `enrich_summary.py` | PR 1 |
-| 9 | 3 | Fix landscape briefs | Handler/ingest code | PR 1 |
-| 10 | 3 | README backlog (monitor) | Already merged | — |
-| 11 | 4 | Public API directory pages | New template + script | PR 1 |
-| 12 | 4 | Briefings on domain pages | `generate_site.py` + template | PR 1 |
+| PR | What | Status | Notes |
+|----|------|--------|-------|
+| 1 | Fix JSONB cast in mark_done | **Shipped** (#207, then corrected in #216) | Original diagnosis was wrong: `CAST(:param AS jsonb)` always worked; `::jsonb` never works with SQLAlchemy `text()`. The real original bug was missing `json.dumps()`. PR 207 switched to `::jsonb` and broke the pipeline. PR 216 reverted to `CAST()` and also fixed 4 pre-existing broken files (`landscape_briefs`, `semantic_scholar`, `routes`, `project_briefs`). |
+| 1.5 | Pipeline health checks | **Shipped** (#208) | Task failure rate monitor, pipeline freshness check, `mark_done` integration tests. |
+| 2 | Render use_this_if/not_ideal_if | **Not needed** | Template already renders these fields. Low coverage (4,761/250K) is a data issue — the scheduler already re-enriches legacy repos that lack these fields. |
+| 3 | Wire repo_briefs to project pages | **Shipped** (#210) | 5,603 repo briefs surfaced as "Assessment" section. Fetched as separate query, no MV changes needed. |
+| 4 | Wire domain_briefs to landing pages | **Shipped** (#211) | 17 domain landscape briefs on domain homepages. |
+| 5 | HN discussion links on project pages | **Shipped** (#213) | 720 HN posts across 72 repos as "Community Discussion" section. |
+| 6 | Release history on project pages | **Shipped** (#214) | 7,203 releases across 558 repos as "Recent Releases" section. |
+| 7 | HuggingFace models/datasets linking | **Dropped** | No linking mechanism exists. HF API doesn't provide source repo URLs. Author-name matching is ~5-10% coverage and unreliable. HF data is artifacts, not repos — wrong fit for a quality-scored repo directory. Data is well-served by the MCP `find_model`/`find_dataset` tools. |
+| 8 | Fix summary prompt for use_this_if | **Not needed** | The prompt and handler already work correctly. The 11K repos missing `use_this_if` are legacy data from before the handler existed. The scheduler's existing filter (`problem_domains IS NULL`) already picks them up for re-enrichment. |
+| 9 | Fix landscape briefs | **Self-resolved** | The 0-row table was caused by `::jsonb` in `landscape_briefs.py` (pre-existing, never worked). PR 216's CAST fix unblocked it — 9 rows populated within minutes of deploy. |
+| 10 | README backlog | **Already done** | Backlog throttle merged separately (PR 198). Monitoring only. |
+| 11 | Public API directory pages | **Dropped** | Same reasoning as PR 7: APIs are artifacts, not repos. No quality scoring signals. Data is well-served by the MCP `find_public_api` tool. |
+| 12 | Briefings on domain pages | **Shipped** (#217) | 38 briefings across 10 domains as "What's New" section on domain homepages. |
+
+### Key lesson: SQLAlchemy `text()` and PostgreSQL type casts
+
+With SQLAlchemy `text()` + psycopg2, **always use `CAST(:param AS type)`**, never `:param::type`. The `::` operator conflicts with SQLAlchemy's bind parameter parser. Raw psycopg2 with `%s::type` is fine because `%s` substitution happens first.
