@@ -473,6 +473,28 @@ def fetch_hn_posts(domain):
     return lookup
 
 
+def fetch_releases(domain):
+    """Recent releases keyed by full_name for a given domain."""
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT ar.full_name, r.version, r.title, r.url, r.released_at
+            FROM releases r
+            JOIN projects p ON r.project_id = p.id
+            JOIN ai_repos ar ON p.ai_repo_id = ar.id
+            WHERE ar.domain = :domain
+            ORDER BY r.released_at DESC
+        """), {"domain": domain}).fetchall()
+    lookup = {}
+    for r in rows:
+        lookup.setdefault(r.full_name, [])
+        if len(lookup[r.full_name]) < 5:
+            lookup[r.full_name].append({
+                "version": r.version, "title": r.title,
+                "url": r.url, "released_at": r.released_at,
+            })
+    return lookup
+
+
 def fetch_trending(view_name, snapshot_table, domain_filter=None):
     """Repos with biggest score improvement since earliest available snapshot."""
     domain_clause = "AND s.domain = :domain_filter" if domain_filter else ""
@@ -875,6 +897,16 @@ def main():
             s["hn_posts"] = posts
             hn_count += 1
     print(f"  {hn_count} projects with HN discussions")
+
+    print("  Loading releases...")
+    release_lookup = fetch_releases(domain)
+    release_count = 0
+    for s in servers:
+        rels = release_lookup.get(s["full_name"])
+        if rels:
+            s["releases"] = rels
+            release_count += 1
+    print(f"  {release_count} projects with releases")
 
     print("  Fetching trending...")
     trending_days = 0

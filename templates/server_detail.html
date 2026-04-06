@@ -260,6 +260,20 @@
   </div>
   {% endif %}
 
+  {% if server.releases %}
+  <div class="mb-8">
+    <h2 class="text-lg font-bold text-gray-900 mb-3">Recent Releases</h2>
+    <div class="space-y-2">
+      {% for rel in server.releases %}
+      <a href="{{ rel.url }}" class="block rounded-lg border border-gray-200 p-3 hover:border-blue-300 transition-colors" target="_blank" rel="noopener">
+        <span class="text-sm font-medium text-gray-900">{{ rel.version or rel.title }}</span>
+        <span class="block text-xs text-gray-500 mt-0.5">{{ rel.released_at.strftime('%d %b %Y') if rel.released_at else '' }}</span>
+      </a>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
   {% if comparisons %}
   <div class="mb-8">
     <h2 class="text-lg font-bold text-gray-900 mb-3">Compare</h2>
