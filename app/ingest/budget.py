@@ -155,9 +155,10 @@ async def acquire_budget(resource_type: str) -> bool:
 
     rpm, seconds_since_last = row
     if rpm and seconds_since_last is not None:
-        interval = 60.0 / rpm
-        if seconds_since_last < interval:
-            await asyncio.sleep(interval - seconds_since_last)
+        interval = 60.0 / float(rpm)
+        gap = float(seconds_since_last)
+        if gap < interval:
+            await asyncio.sleep(interval - gap)
 
     return True
 
