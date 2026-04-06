@@ -1,4 +1,4 @@
-"""Demand Radar: session detection table + warm leads view
+"""Demand Radar: session detection table + owner demand view
 
 Revision ID: 085
 Revises: 084
@@ -10,9 +10,9 @@ Two tactical fixes from the Demand Radar research:
    multi-page AI agent sessions from raw access logs, including
    cross-IP fan-out detection for OAI-SearchBot.
 
-2. mv_warm_leads MV — identifies commercial entities (multi-repo GitHub
-   orgs) cross-referenced with AI agent demand. Foundation of the
-   claim-your-page business model.
+2. mv_owner_demand MV — per-github_owner aggregation of AI agent
+   demand signals. Raw facts only (hits, IPs, pages, agent families),
+   no business logic or thresholds baked in.
 """
 
 from alembic import op
@@ -58,61 +58,36 @@ def upgrade() -> None:
         "CREATE INDEX ix_bot_sessions_domain ON bot_sessions (primary_domain, session_date)"
     )
 
-    # --- 2. mv_warm_leads MV ---
+    # --- 2. mv_owner_demand MV ---
+    # Raw facts: per-owner aggregation of AI agent demand.
+    # No thresholds, no labels — just the signal.
     tier1_list = ", ".join(_TIER1_FAMILIES)
     op.execute(f"""
-        CREATE MATERIALIZED VIEW mv_warm_leads AS
-        WITH org_stats AS (
-            SELECT
-                github_owner,
-                COUNT(*) AS repo_count,
-                SUM(stars) AS total_stars,
-                SUM(forks) AS total_forks,
-                ARRAY_AGG(DISTINCT domain) FILTER (WHERE domain <> 'uncategorized') AS domains,
-                BOOL_OR(ai_summary IS NOT NULL) AS has_enriched_content
-            FROM ai_repos
-            GROUP BY github_owner
-            HAVING COUNT(*) >= 3
-        ),
-        demand AS (
-            SELECT
-                ar.github_owner,
-                SUM(bad.hits) AS ai_hits_7d,
-                SUM(bad.unique_ips) AS ai_ips_7d,
-                COUNT(DISTINCT bad.path) AS pages_hit,
-                COUNT(DISTINCT bad.bot_family) AS agent_families
-            FROM mv_access_bot_demand bad
-            JOIN ai_repos ar ON bad.path LIKE '%/servers/' || ar.full_name || '/%'
-            WHERE bad.bot_family IN ({tier1_list})
-              AND bad.access_date >= CURRENT_DATE - 7
-            GROUP BY ar.github_owner
-        )
+        CREATE MATERIALIZED VIEW mv_owner_demand AS
         SELECT
-            o.github_owner,
-            o.repo_count,
-            o.total_stars,
-            o.total_forks,
-            o.domains,
-            o.has_enriched_content,
-            COALESCE(d.ai_hits_7d, 0) AS ai_hits_7d,
-            COALESCE(d.ai_ips_7d, 0) AS ai_ips_7d,
-            COALESCE(d.pages_hit, 0) AS pages_hit,
-            COALESCE(d.agent_families, 0) AS agent_families,
-            CASE
-                WHEN d.ai_hits_7d IS NOT NULL AND d.ai_hits_7d > 0 THEN 'warm'
-                WHEN o.total_stars >= 1000 THEN 'notable'
-                ELSE 'cold'
-            END AS lead_status
-        FROM org_stats o
-        LEFT JOIN demand d ON o.github_owner = d.github_owner
-        ORDER BY COALESCE(d.ai_hits_7d, 0) DESC, o.total_stars DESC
+            ar.github_owner,
+            COUNT(DISTINCT ar.id) AS repo_count,
+            COALESCE(SUM(ar.stars), 0) AS total_stars,
+            ARRAY_AGG(DISTINCT ar.domain) FILTER (WHERE ar.domain <> 'uncategorized') AS domains,
+            COALESCE(SUM(bad.hits), 0) AS ai_hits_7d,
+            COALESCE(SUM(bad.unique_ips), 0) AS ai_ips_7d,
+            COUNT(DISTINCT bad.path) FILTER (WHERE bad.path IS NOT NULL) AS pages_hit,
+            COUNT(DISTINCT bad.bot_family) FILTER (WHERE bad.bot_family IS NOT NULL) AS agent_families
+        FROM ai_repos ar
+        LEFT JOIN mv_access_bot_demand bad
+            ON bad.path LIKE '%%/servers/' || ar.full_name || '/%%'
+            AND bad.bot_family IN ({tier1_list})
+            AND bad.access_date >= CURRENT_DATE - 7
+        GROUP BY ar.github_owner
+        HAVING COALESCE(SUM(bad.hits), 0) > 0
+        ORDER BY COALESCE(SUM(bad.hits), 0) DESC
     """)
     op.execute(
-        "CREATE UNIQUE INDEX idx_mv_warm_leads_owner "
-        "ON mv_warm_leads (github_owner)"
+        "CREATE UNIQUE INDEX idx_mv_owner_demand_owner "
+        "ON mv_owner_demand (github_owner)"
     )
 
 
 def downgrade() -> None:
-    op.execute("DROP MATERIALIZED VIEW IF EXISTS mv_warm_leads")
+    op.execute("DROP MATERIALIZED VIEW IF EXISTS mv_owner_demand")
     op.execute("DROP TABLE IF EXISTS bot_sessions")
