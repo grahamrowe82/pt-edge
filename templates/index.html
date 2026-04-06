@@ -46,12 +46,15 @@
     </div>
   </div>
 
-  {% if domain_brief %}
+  {# Domain brief hidden — the data is fetched but a single static paragraph
+     doesn't add enough value to justify the prime position. Needs richer
+     rendering or integration with fresher signals. See docs/hidden-sections.md #}
+  {# {% if domain_brief %}
   <div class="mb-12 rounded-lg border border-gray-200 bg-gray-50 p-6">
     <h2 class="text-lg font-semibold text-gray-900 mb-2">{{ domain_brief.title }}</h2>
     <p class="text-sm text-gray-700 leading-relaxed">{{ domain_brief.summary }}</p>
   </div>
-  {% endif %}
+  {% endif %} #}
 
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-12">
     {% for tier_name, tier_data in tiers.items() %}
@@ -63,7 +66,10 @@
     {% endfor %}
   </div>
 
-  {% if briefings %}
+  {# Briefings hidden — text blocks with no click target break UX. Needs
+     either dedicated briefing pages to link to, or a different format.
+     See docs/hidden-sections.md #}
+  {# {% if briefings %}
   <div class="mb-12">
     <h2 class="text-xl font-bold text-gray-900 mb-4">What's New</h2>
     <div class="space-y-3">
@@ -76,7 +82,7 @@
       {% endfor %}
     </div>
   </div>
-  {% endif %}
+  {% endif %} #}
 
   <div class="mb-12">
     <h2 class="text-xl font-bold text-gray-900 mb-4">Top {{ noun_plural }} by quality score</h2>
