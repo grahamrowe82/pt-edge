@@ -1,54 +1,125 @@
 # Forest Research: Lab Notes
 
-**Date:** 2026-04-05 (Easter Saturday + 1 day of logs)
+**Date:** 2026-04-05 (updated 2026-04-06)
 **Branch:** `forest-research`
-**Data window:** 2026-04-04 14:12 UTC to 2026-04-05 11:54 UTC (~22 hours)
-**Total requests:** 163,918
+**Data window:** 2026-04-04 14:12 UTC to 2026-04-06 11:54 UTC (~48 hours)
+**Total requests:** ~557,000/day (peak 1,500 RPM)
 
 ---
 
 ## Purpose
 
 The Combinatorial Forest vision says "the light is the access logs." We turned on
-logging 22 hours ago and now have our first dataset. This document records what we
-found by hand-exploring the raw logs, assessing whether the current tracking
-infrastructure can support the five layers of the forest, and identifying what
+logging 48 hours ago and now have our first substantial dataset. This document records
+what we found by hand-exploring the raw logs, assessing whether the current tracking
+infrastructure can support the demand intelligence pipeline, and identifying what
 needs to change.
 
 Detailed findings are in the companion reports:
 - [sessions.md](sessions.md) — AI agent session detection
-- [training-crawlers.md](training-crawlers.md) — Meta and Amazon crawl analysis
+- [training-crawlers.md](training-crawlers.md) — Meta, Amazon, and other crawler analysis
 - [practitioner-intent.md](practitioner-intent.md) — what humans are asking AI about
 - [bot-fingerprinting.md](bot-fingerprinting.md) — traffic classification and stealth bots
 - [table-growth.md](table-growth.md) — database sustainability
 
 ---
 
-## Finding 1: 99.5% of traffic is bots — the site is a machine-readable resource
+## Finding 1: Three layers of traffic model
 
-Only ~650-700 of 163,918 requests are genuine humans. The rest:
+Traffic decomposes into three distinct layers, each with different latency, value,
+and action implications:
 
-| Category | Hits | % |
+| Layer | Volume | What it reveals |
 |---|---|---|
-| Meta-ExternalAgent (AI training) | 126,903 | 77.4% |
-| Amazonbot (AI/search) | 18,618 | 11.4% |
-| PerplexityBot (AI training) | 7,396 | 4.5% |
-| GoogleOther (AI training/products) | 5,858 | 3.6% |
-| Google stealth rendering (no bot label) | 5,782 | 3.5% |
-| SemrushBot (SEO) | 1,230 | 0.8% |
-| AI user-action bots (demand signal) | 1,361 | 0.8% |
-| Everything else | ~770 | 0.5% |
+| **Indexing bots** | ~550K/day (93%) | What AI companies think will be valuable in future model weights |
+| **User-action bots** | ~1,400/day (0.8%) | What real humans are asking AI right now |
+| **Humans** | ~200/day (via Umami) | What humans find through Google |
 
-**Implication for the forest:** The site already functions as an AI-consumed
-resource. The question isn't whether AI agents will read it — they already are,
-overwhelmingly. The question is whether we can extract signal from the noise.
+Each layer has different temporal characteristics:
+- **Indexing:** months of latency (content enters training, appears in model weights next quarter)
+- **User-action:** real-time (someone is asking a question right now)
+- **Human/SEO:** days-to-weeks (Google re-ranks, impressions shift)
+
+**Cross-layer hypothesis:** heavy indexing in a domain at time T may predict
+user-action demand at T+2 weeks. If this correlation holds, the indexing data
+becomes a leading indicator for the other two layers. This is testable once we
+have enough temporal data.
 
 ---
 
-## Finding 2: Sessions ARE detectable — and they reveal comparison-shopping
+## Finding 2: User-action bots reveal practitioner intent
+
+~1,400 AI user-action bot fetches across 1,297 distinct pages reveal the demand
+landscape. Key observations:
+
+**Domain distribution is concentrated:**
+- ml-frameworks: 72% of user-action hits
+- agents: 7.7%
+- Long tail across everything else
+
+**The long tail is the story.** 1,297 distinct pages with almost 1 hit per page.
+There is no "trend" — that IS the trend. Millions of engineers are solving unique
+problems and asking AI for help. The demand surface is enormous and flat.
+
+**Deep research sessions are real:**
+- 251-page ChatGPT Pro deep research burst on Apr 5, 15:08-15:24 UTC
+- Topic: healthcare ML / risk prediction
+- Fanned out across 8 OAI-SearchBot IPs simultaneously
+- This single session touched more pages than most bots hit in a day
+
+**Comparison pages are pulling weight:** 95 hits across 78 comparison pages.
+Users (via AI) are actively comparison-shopping.
+
+**Multi-agent convergence as quality signal:** Pages fetched by 2+ different AI
+agents represent independently validated demand. vectorbt was fetched by both
+ChatGPT and Claude (14 hits). Cross-platform demand is the strongest signal that
+content is genuinely needed.
+
+---
+
+## Finding 3: Indexing bots are intelligence, not noise
+
+Each bot has a distinct crawl strategy that reveals what its parent company values.
+This is the biggest underexploited signal in the access logs.
+
+**Per-bot crawl fingerprints:**
+
+| Bot | Hits/day | Unique pages | Ratio | IPs | Strategy |
+|---|---|---|---|---|---|
+| Meta-ExternalAgent | ~250K | ~115K | ~2:1 | 69 (single /24) | Revisits pages; prioritises perception/CV |
+| ClaudeBot | ~181K | ~170K | ~1:1 | 1 aggressive IP | Completionist; trying to inhale entire site. 628 req/min peaks |
+| Amazonbot | ~37K | ~37K | 1:1 | 432 (distributed AWS) | Perfect breadth-first; polite 4s delay; wants everything equally |
+| Google (various) | ~40K | selective | varies | varies | Selective; heavy on embeddings + ml-frameworks, light on rag |
+| PerplexityBot | ~15K | varies | varies | varies | NLP nearly = ml-frameworks (unique among bots); hit methodology/about pages |
+| GPTBot | ~19 | ~19 | 1:1 | minimal | Nearly absent — shifted to real-time retrieval via OAI-SearchBot |
+
+**Signals extractable from crawl behaviour:**
+
+1. **Bot consensus (5+ families hit same page) = quality proxy.** Pages independently
+   validated by multiple AI companies. We found 17 such pages in 48h. If this
+   correlates with quality scores or user-action demand, it's a cheap allocation signal.
+
+2. **Meta revisit frequency = freshness/importance signal.** Meta hits the same pages
+   multiple times (20,984 perception hits, 10,644 unique pages = re-crawling favourites).
+   A page Meta re-crawls every 6 hours is one it considers high-value and time-sensitive.
+
+3. **Domain preference divergence = product roadmap intelligence.** Meta prioritises
+   perception/CV (Llama multimodal focus). Google focuses on embeddings + ml-frameworks
+   (Gemini infrastructure). Perplexity uniquely weights NLP nearly equal to ml-frameworks
+   (search product needs). Where they diverge reveals product strategy. Where they
+   converge reveals consensus importance.
+
+4. **Absence signal.** What bots DON'T crawl is informative. GPTBot's near-total
+   absence (19 hits/day) while OAI-SearchBot surges means OpenAI has strategically
+   shifted from training-crawl to real-time retrieval. Perplexity ignores
+   diffusion/prompt-engineering. Meta barely touches embeddings.
+
+---
+
+## Finding 4: Sessions ARE detectable — but fan-out complicates detection
 
 Using a (client_ip, bot_type, 5-minute-gap) heuristic, we found **172 multi-page
-sessions** in 21 hours. This is the Layer 2 signal the forest needs.
+sessions** in the first 21 hours. This is the demand signal the pipeline needs.
 
 **Key numbers:**
 - 17.6% of all AI bot sessions involve 2+ pages
@@ -56,55 +127,38 @@ sessions** in 21 hours. This is the Layer 2 signal the forest needs.
 - 22 sessions explicitly used `/compare/` pages
 - Max session depth: 17 pages (chest X-ray pneumonia detection survey)
 
-**The standout session:** OAI-SearchBot fanned out across 4 IPs simultaneously,
-fetching ~53 chest X-ray ML project pages in under a minute. This is one human
-asking "what are the best chest X-ray pneumonia detection models?" and the bot
-doing a comprehensive landscape scan.
+**The complication:** The 251-page ChatGPT Pro deep research burst fanned out across
+8 OAI-SearchBot IPs simultaneously. The single-IP heuristic would split this into 8
+separate sessions. Cross-IP fan-out detection is needed: if N OAI-SearchBot IPs each
+hit unique pages in the same subcategory within a 30-second window, merge into one
+session.
 
-**The complication:** OAI-SearchBot uses only 8 IPs, all reused across the full
-observation window. The 5-minute gap is essential to avoid merging unrelated queries.
-ChatGPT-User is the opposite — 437 IPs for 735 hits (1.7 hits/IP), making session
-detection unreliable. Most ChatGPT interactions are single-page fetches.
-
-**For Layer 2 (comparison pages):** OAI-SearchBot is the best session signal source.
-ChatGPT-User sessions are too sparse for reliable comparison detection. A hybrid
-approach would be: (1) IP+5min for OAI-SearchBot, (2) cross-IP topic clustering
-within 30-second windows to catch the fan-out pattern, (3) treat each ChatGPT-User
-request as an independent intent signal.
+ChatGPT-User remains unreliable for session detection — 437 IPs for 735 hits
+(1.7 hits/IP). Most ChatGPT interactions are single-page fetches.
 
 ---
 
-## Finding 3: We can infer practitioner personas from the pages AI agents fetch
+## Finding 5: ~50% of top pages have commercial entities
 
-1,361 AI user-action bot fetches across 874 unique pages reveal clear persona clusters:
+8 of the top 20 user-action-hit pages have a commercial company behind the repo.
+This is the foundation of the "claim your page" business model.
 
-1. **Quant finance / algorithmic trading** — vectorbt (14 fetches, strongest signal),
-   torchquant, scikit-survival, financial trading ML category
-2. **ML ops / anomaly detection** — Anomaly-Transformer, MTAD-GAT, concept drift,
-   anomaly-detection-systems category
-3. **Medical imaging / clinical ML** — chest X-ray pathology (17-page deep session),
-   brain tumor detection, pathology whole-slide data
-4. **Agent builders** — agent-governance-toolkit, hermes-plugins, agent-memory-systems,
-   marketing-agent-blueprints
-5. **Search / retrieval practitioners** — clip-as-service, bm25s, semantic-search-models
-6. **OCR / document processing** — DocTR, deep-text-recognition-benchmark, mmocr
+**Worked examples:**
+- **Mindee/DocTR** — French OCR company, open-source text recognition
+- **Jina AI** — embedding/search infrastructure company
+- **QuantCo** — ML for insurance/pricing
+- **vectorbt Pro** — quantitative trading tools (strongest individual signal: 14 fetches)
 
-**For Layer 4 (cross-domain synthesis):** We can't see the human's query, but we CAN
-see which subcategories and projects they land on. The path IS the intent proxy.
-Clustering fetched paths by subcategory gives us a reasonable practitioner-domain
-signal, especially when combined with session data (e.g., "this session touched 3
-anomaly detection projects = operations/reliability persona").
-
-**Multi-agent convergence as quality signal:** 30 pages were fetched by 2+ different
-AI agents. vectorbt was fetched by both ChatGPT and Claude (14 hits). One Raman
-spectra matching page hit the triple (ChatGPT + Claude + OAI-Search). Cross-platform
-demand is the strongest signal that content is genuinely needed.
+**Heuristic for detection at scale:** GitHub org (not personal account) + has a
+website that isn't GitHub Pages + more than one repo = likely commercial entity.
+Cross-referencing with user-action demand gives a "warm lead" list — companies
+whose open-source tools are being discovered through AI but who don't know it.
 
 ---
 
-## Finding 4: Massive content coverage gaps where demand exists
+## Finding 6: Massive content coverage gaps where demand exists
 
-Categories with real AI agent demand but <5% content enrichment:
+Categories with real AI agent demand but low content enrichment:
 
 | Category | Fetches | Repos | Enriched | Coverage |
 |---|---|---|---|---|
@@ -115,38 +169,14 @@ Categories with real AI agent demand but <5% content enrichment:
 | code-repository-intelligence | 3 | 139 | 19 | 13.7% |
 | agent-memory-systems | 3 | 153 | 26 | 17.0% |
 
-**For Layer 5 (demand-responsive generation):** These are the exact gaps the forest
-should fill. Someone asked about wireless signal processing and we had 3 enriched
-pages out of 90. Someone asked about chest X-ray pathology and we had 3 out of 157.
-The demand signal is there — the content response is not yet automated.
+These are the exact gaps a demand-responsive pipeline should fill. Someone asked
+about wireless signal processing and we had 3 enriched pages out of 90.
 
 ---
 
-## Finding 5: Meta is doing a full-site scrape for Llama training
+## Finding 7: Bot classification gaps remain
 
-Meta-ExternalAgent crawled 114,701 unique pages in 22 hours — 52% of the entire
-directory. Key characteristics:
-
-- **69-node fleet** from a single `57.141.6.x/24` subnet, perfectly load-balanced
-- **Breadth-first**, sitemap-following, 90% of paths visited exactly once
-- **317ms median inter-request gap** — aggressive but our static serving handles
-  it at 1-3ms p95, zero errors
-- Bursty: alternates between ~10K/hr peaks and ~2K/hr troughs
-
-**Amazonbot** is similar but politer: 18,625 hits, 432 AWS IPs, 4-second crawl delay,
-every page visited exactly once. Steady ~850 hits/hour.
-
-**Implication:** The combinatorial forest thesis is validated — large page counts
-attract training crawlers at scale. Meta attempted to ingest half the site in a day.
-This means our content is entering Llama's training data, which in turn means
-future ChatGPT/Claude/Perplexity answers about AI tools may be influenced by what
-PT-Edge publishes. That's the content quality loop from the vision document.
-
----
-
-## Finding 6: 11,640 requests are misclassified — GoogleOther and stealth rendering
-
-The materialized view misses:
+The materialized view misclassifies ~11,640 requests/day:
 
 | Bot | Hits | Problem |
 |---|---|---|
@@ -156,108 +186,57 @@ The materialized view misses:
 | PetalBot | 31 | Falls to "other_bot" — should be named |
 | DuckAssistBot | 3 | Not classified — should be Tier 1 AI user-action |
 | Claude-User | 8 | Not classified — should be Tier 1 AI user-action |
-| AdsBot-Google-Mobile | 3 | Not classified |
-| Qwantbot | 1 | Not classified |
 
-**GoogleOther is the big one.** It's Google's AI training crawler (feeds Gemini, not
-Search). 5,858 hits is more than all AI user-action bots combined. It should be
-classified separately from Googlebot so we can track AI training vs search indexing.
-
-The stealth rendering (5,782 hits from 66.249.70.x with plain Nexus 5X UA) is
-Google's render budget — they fetch pages as a mobile browser to see what real users
-see. These are currently counted as human traffic, inflating human metrics by ~8x.
+GoogleOther is the big one — it's Google's AI training crawler (feeds Gemini, not
+Search). The stealth rendering (Nexus 5X from 66.249.70.x) inflates human metrics
+by ~8x.
 
 ---
 
-## Finding 7: The access log table will eat the database in 17 days
+## Finding 8: Traffic growing exponentially
 
-| Metric | Value |
-|---|---|
-| Current size | 54 MB (after 22 hours) |
-| Growth rate | ~58 MB/day |
-| Time to 500 MB | ~8 days |
-| Time to 1 GB | ~17 days |
-| Total DB size | 4,240 MB |
+| Metric | First 22h | 48h mark |
+|---|---|---|
+| Requests/day | ~179K | **557K** |
+| Peak RPM | ~220 | **1,500** |
+| User-action hits/day | 542 | **1,434** (tripled) |
+| p90 latency | 2ms | **20ms** (still fine on single instance) |
 
-**This is urgent.** The materialized view only achieves 3.6x compression because
-path cardinality is extremely high (127K distinct paths in 164K rows). Even the MV
-grows at ~15 MB/day.
-
-**Recommended:** Keep raw logs 1 day max (refresh MV first, then purge + VACUUM).
-Add monthly rollup for the MV itself after 30 days.
+This is Easter weekend — the floor, not the ceiling. Weekday traffic will be higher.
+The site is absorbing the load without issue; static serving scales trivially.
 
 ---
 
-## Assessment: Is the tracking infrastructure up to the job?
+## Assessment: What's needed vs what's not urgent
 
-### What works (Layers 1 & 3)
+### What works
+The `http_access_log` -> `mv_access_bot_demand` -> `mv_allocation_scores` pipeline
+correctly captures per-page, per-bot-family demand and feeds the allocation engine.
+The static site handles 1,500 RPM without breaking a sweat.
 
-The `http_access_log` → `mv_access_bot_demand` → `mv_allocation_scores` pipeline
-correctly captures per-page, per-bot-family demand and aggregates it into the
-allocation engine at 10% ES weight. This supports Layer 1 (which pages are needed)
-and Layer 3 (which categories are hot).
+### What's needed: ML infrastructure
+The three-layer model, bot fingerprinting, and demand prediction all require
+**temporal data that doesn't exist yet.** Every day without snapshot tables is a day
+of lost training data. The priority is:
 
-### What's structurally missing
+1. `bot_activity_daily` snapshot table — start immediately, data accumulates passively
+2. Feature store for category-level signals (bot consensus, revisit ratios, etc.)
+3. Retrospective labels for demand prediction (did this category get user-action hits in the next 7 days?)
+4. Training pipeline (LightGBM, weekly, automated as a worker task)
 
-**For Layer 2 (comparison detection):** Sessions are detectable but the infrastructure
-doesn't support them. The raw table has no session_id, no clustering logic, and no
-automated session detection. The materialized view discards the timing and IP data
-needed for session reconstruction. Building Layer 2 requires either:
-- A session-detection step between raw logs and the MV (e.g., a CTE or intermediate
-  table that clusters requests into sessions before aggregation)
-- Or keeping raw logs longer (at least 24h) and running session detection as a
-  daily batch job that outputs `(session_id, paths[])` tuples
+See [ROADMAP.md](ROADMAP.md) for the full infrastructure plan.
 
-**For Layer 4 (practitioner-domain routing):** We proved that path-based intent
-inference works — the fetched paths clearly cluster into practitioner personas. But
-there's no automated classification. The allocation engine maps paths to
-(domain, subcategory) which is our taxonomy, not the user's problem domain. A
-practitioner-domain layer would need to map subcategories to problem domains
-(e.g., "anomaly-detection-systems" → "operations/reliability engineering").
-
-**For Layer 5 (demand-responsive generation):** The materialized view is a manual
-refresh, not a stream. There's no trigger that says "this category just got its
-first AI agent hit, generate content." The pipeline would need either:
-- A scheduled job that diffs the MV against content coverage and queues generation
-- Or an event-driven approach where the access log middleware itself detects
-  "new category demand" in real-time
+### What's NOT urgent: table growth
+Storage concern is deprioritised. Render storage auto-expands and cost per GB is low.
+The urgency language in earlier versions of these notes was written when we thought
+storage was blocking; it's not. See [table-growth.md](table-growth.md) for the
+analysis, kept for reference.
 
 ### Classification gaps
-
-The CASE statement in migration 075 needs updates for GoogleOther, Claude-User,
-DuckAssistBot, and the Google stealth renderer pattern. The stealth renderer is
-the hardest — it requires IP-range matching, not just UA string matching.
-
-### Operational sustainability
-
-Without a retention policy, the raw log table kills the database in 2-3 weeks.
-This is the most urgent fix.
+The CASE statement needs updates for GoogleOther, Claude-User, DuckAssistBot. These
+are tactical fixes that can happen in parallel with the ML infrastructure work.
 
 ---
 
-## Recommended next steps (in priority order)
-
-1. **Add retention policy** — daily cron: refresh MV, delete raw logs > 1 day,
-   VACUUM. This is blocking; without it the DB fills up.
-
-2. **Fix bot classification** — add GoogleOther, Claude-User, DuckAssistBot,
-   AdsBot-Google, MJ12bot, PetalBot to the CASE statement. Consider IP-based
-   classification for Google stealth rendering.
-
-3. **Build session detection** — daily batch job that clusters AI user-action bot
-   requests into sessions using (IP, bot_type, 5-min gap). Output to a
-   `bot_sessions` table with (session_id, bot_family, paths[], started_at,
-   page_count). This unlocks Layer 2.
-
-4. **Add demand-gap detection** — scheduled job that joins MV demand data with
-   content coverage (ai_repos.ai_summary IS NOT NULL) and outputs a priority
-   queue of "categories with demand but low enrichment." This unlocks Layer 5.
-
-5. **Build practitioner-domain mapping** — a lookup table mapping subcategories
-   to practitioner problem domains. Combined with session data, this gives us
-   Layer 4 intent signals.
-
----
-
-*Lab notes compiled from 5 parallel research threads. All raw queries and
+*Lab notes compiled from multiple research threads over 48 hours. All raw queries and
 detailed findings are in the companion reports in this directory.*

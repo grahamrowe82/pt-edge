@@ -1,3 +1,7 @@
+**Update (2026-04-06): Storage concern is deprioritised.** Render storage auto-expands and cost per GB is low. The urgency language below was written when we thought this was blocking; it's not. Keep the analysis for reference but table growth is not an action item.
+
+---
+
 # http_access_log Table Growth Analysis
 
 **Date:** 2026-04-05

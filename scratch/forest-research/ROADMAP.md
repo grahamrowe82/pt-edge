@@ -1,219 +1,192 @@
 # Forest Infrastructure Roadmap
 
 **Created:** 2026-04-05
+**Updated:** 2026-04-06
 **Branch:** `forest-research`
-**Context:** [LAB-NOTES.md](LAB-NOTES.md) contains the raw research findings that inform this plan.
+**Context:** [LAB-NOTES.md](LAB-NOTES.md) contains the research findings. [RESEARCH-PLAN.md](RESEARCH-PLAN.md) contains the detailed research threads that feed this plan.
 
 ---
 
-## Background
+## Philosophy
 
-22 hours of access logs revealed that 99.5% of traffic is bots, AI agents are
-actively comparison-shopping across project pages, and practitioner personas are
-inferable from access patterns. The current tracking infrastructure supports
-Layers 1 and 3 of the Combinatorial Forest but cannot support Layers 2, 4, or 5.
+Build correct infrastructure end-to-end now, accept garbage outputs for weeks,
+define quality thresholds so we know when data is ready. Build once, wait for data.
 
-This roadmap turns the research findings into three sequential PRs.
+Every day without snapshot tables is a day of lost training data. The models below
+require weeks-to-months of temporal features before they can train. The cost of
+starting late is permanent; the cost of starting with imperfect schemas is a
+migration.
 
 ---
 
-## PR 1: Classification fixes + archival storage
+## End-state models (in order of value)
 
-**Goal:** Fix misclassified traffic and build a denser archival format so raw logs
-can be retained indefinitely without eating the database.
+### 1. Demand Predictor
 
-**Why urgent:** 11,640 requests/day are misclassified (GoogleOther + stealth
-renderer). The raw log table grows at ~58 MB/day and will cause storage pressure
-within weeks if left in its current format.
+Per-(domain, subcategory) features -> probability of user-action hit next 7 days.
 
-### Classification fixes (migration update to mv_access_bot_demand)
+- **Algorithm:** LightGBM
+- **Quality threshold:** AUC > 0.70
+- **Features:** bot consensus count, Meta revisit ratio, indexing velocity (7d delta),
+  ClaudeBot coverage ratio, GSC impressions, content coverage ratio, repo quality
+  distribution
+- **Labels:** `had_user_action_hit_next_7d` (binary), `user_action_count_next_7d`
+- **Value:** Prioritises enrichment budget toward categories about to see demand,
+  not categories that already had demand
 
-Add to the CASE statement in the materialized view:
+### 2. Page Ranker (Learning to Rank)
 
-| Bot | UA pattern | Category |
-|---|---|---|
-| GoogleOther | `%GoogleOther%` | Google (AI training / non-search) |
-| Claude-User | `%Claude-User%` | AI user-action (Tier 1 demand signal) |
-| DuckAssistBot | `%DuckAssistBot%` | AI user-action (Tier 1 demand signal) |
-| MJ12bot | `%MJ12bot%` | SEO crawler |
-| PetalBot | `%PetalBot%` | Search engine |
-| AdsBot-Google | `%AdsBot-Google%` | Google (ads) |
-| Qwantbot | `%Qwantbot%` | Search engine |
+Per-page features -> ranked enrichment priority list.
 
-Also consider: Google stealth renderer (Nexus 5X from 66.249.x.x with no bot
-label) — requires IP-range matching, harder to do in a pure UA CASE statement.
-May need a separate classification pass or an IP-lookup table for Google's ranges.
+- **Algorithm:** LightGBM LambdaRank
+- **Quality threshold:** NDCG@100 > 0.60
+- **Features:** repo quality score, bot family hit count (per family), session
+  inclusion count, comparison page appearances, content freshness, GitHub activity
+  signals
+- **Labels:** user-action hits as relevance grades
+- **Value:** Within a category, tells us which specific pages to enrich first
 
-### Archival storage design
+### 3. Latent Theme Discovery
 
-The raw `http_access_log` table is the hot buffer (last 1-3 days). After session
-detection runs, processed data moves into a denser archival table that preserves
-all dimensions that matter but drops the repetitive UA strings.
+(bot_family x subcategory) matrix factorisation -> emergent demand themes.
 
-**Principle: never delete the underlying signal.** Every IP, path, timestamp, and
-duration is potentially useful for future analysis. Storage is cheap; losing signal
-is expensive.
+- **Algorithm:** NMF or SVD on the bot-subcategory hit matrix
+- **Quality threshold:** qualitative assessment (do the latent factors correspond
+  to recognisable practitioner themes?)
+- **Value:** Discovers cross-domain demand patterns invisible in per-category analysis
+  (e.g., "healthcare ML" spanning chest-xray, clinical-risk, medical-imaging)
 
-Proposed archival table: `access_log_archive`
+---
+
+## Infrastructure to build
+
+### 1. `bot_activity_daily` snapshot table
+
+One row per (date, domain, subcategory, bot_family) with aggregate metrics.
+**Start immediately — this is the foundation everything else depends on.**
 
 | Column | Type | Notes |
 |---|---|---|
 | id | serial | |
-| bot_family | varchar(30) | Classified at write time, not re-derived |
-| client_ip | inet | Native Postgres IP type, more compact |
-| path | varchar(200) | |
-| status_code | smallint | |
-| duration_ms | smallint | |
-| created_at | timestamptz | |
-
-Drops: raw user_agent (300 bytes → replaced by 30-byte bot_family), method
-(always GET). Keeps: everything needed for session detection, trend analysis,
-and IP-level analysis.
-
-**Estimated compression:** ~150 bytes/row vs 344 = ~2.3x smaller. At ~180K
-rows/day = ~26 MB/day archived vs 58 MB/day raw. 1 year = ~9.5 GB, well within
-a Render plan upgrade.
-
-A daily cron job would: (1) refresh the materialized view, (2) run session
-detection on the hot buffer, (3) INSERT INTO archive SELECT ... with bot_family
-classification, (4) DELETE from hot buffer rows older than the archive cutoff,
-(5) VACUUM the hot buffer.
-
----
-
-## PR 2: Session detection (Layer 2 enabler)
-
-**Goal:** Automatically cluster AI user-action bot requests into sessions,
-enabling comparison page generation driven by real demand.
-
-**Depends on:** PR 1 (classification fixes — need Claude-User and DuckAssistBot
-in the Tier 1 bot family list).
-
-### Session detection logic
-
-Based on the research findings:
-
-**OAI-SearchBot:** Cluster by (client_ip, 5-minute inactivity gap). Works well
-because it uses only 8 stable IPs. Additionally detect cross-IP fan-out bursts:
-if 2+ OAI-SearchBot IPs fetch pages in the same subcategory within a 30-second
-window, merge into one session.
-
-**ChatGPT-User:** Treat each request as an independent intent signal unless
-timestamps from the same IP are < 60 seconds apart. IP rotation (437 IPs for
-735 hits) makes session detection unreliable for this bot.
-
-**Other Tier 1 bots:** Use the OAI-SearchBot heuristic (IP + 5-min gap) as
-default; refine as traffic grows.
-
-### New table: `bot_sessions`
-
-| Column | Type | Notes |
-|---|---|---|
-| id | serial | |
+| snapshot_date | date | |
+| domain | varchar | |
+| subcategory | varchar | |
 | bot_family | varchar(30) | |
-| session_started_at | timestamptz | First request in session |
-| session_ended_at | timestamptz | Last request in session |
-| page_count | smallint | |
-| paths | text[] | Ordered list of paths fetched |
-| domains | text[] | Distinct domains touched |
-| subcategories | text[] | Distinct subcategories touched |
-| client_ips | inet[] | IPs involved (for cross-IP sessions) |
-| is_comparison | boolean | 2+ project pages in same subcategory |
-| is_drilldown | boolean | Category page + project pages |
+| hits | int | |
+| unique_pages | int | |
+| unique_ips | int | |
+| revisit_ratio | numeric(4,2) | hits / unique_pages |
 
-### Daily batch job
+Estimated volume: ~10-15K rows/day. Negligible storage.
 
-Runs after the archive step in PR 1. Reads from the hot buffer (last 24h of
-raw logs), applies session clustering, writes to `bot_sessions`. The session
-table is append-only and never purged — it's the comparison demand signal.
+**Implementation:** Daily worker task that queries the raw access log, aggregates,
+and inserts. Runs after the MV refresh.
 
-### Downstream use
+### 2. `category_features_daily` feature store
 
-The `is_comparison` flag feeds Layer 2: when a session shows 2+ projects in the
-same subcategory, queue a comparison page for that pair if one doesn't exist.
-The `subcategories` array feeds the allocation engine as a richer signal than
-raw hit counts.
+One row per (date, domain, subcategory) with all features needed for model training.
 
----
+| Column | Type | Notes |
+|---|---|---|
+| snapshot_date | date | |
+| domain | varchar | |
+| subcategory | varchar | |
+| bot_consensus_count | smallint | Distinct bot families that crawled |
+| meta_revisit_ratio | numeric(4,2) | Meta hits / Meta unique pages |
+| claudebot_coverage | numeric(4,2) | ClaudeBot unique pages / total pages in category |
+| indexing_hits_total | int | All indexing bot hits |
+| indexing_velocity_7d | numeric | 7d change in indexing hits |
+| user_action_hits | int | Tier 1 bot hits |
+| user_action_sessions | int | Detected sessions touching this category |
+| gsc_impressions_7d | int | From GSC data if available |
+| gsc_clicks_7d | int | |
+| content_coverage | numeric(4,2) | Enriched repos / total repos |
+| avg_repo_quality | numeric(4,2) | Mean quality score in category |
+| repo_count | int | Total repos |
 
-## PR 3: Demand-gap detection (Layer 5 enabler)
+**Implementation:** Daily worker task that joins bot_activity_daily, mv_access_bot_demand,
+ai_repos, and GSC tables. Runs after bot_activity_daily is populated.
 
-**Goal:** Automatically identify categories where AI agents are sending humans
-but content is thin, and queue enrichment work.
+### 3. `category_demand_labels` retrospective labels
 
-**Depends on:** PR 1 (accurate classification) and PR 2 (session data for
-richer demand signal).
-
-### Demand-gap query
-
-Join the materialized view (or session table) against content coverage:
-
-```sql
-SELECT
-    ar.domain,
-    ar.subcategory,
-    COUNT(DISTINCT bad.path) AS pages_with_demand,
-    SUM(bad.hits) AS total_hits,
-    COUNT(*) FILTER (WHERE ar.ai_summary IS NOT NULL)::numeric
-        / COUNT(*) AS coverage_ratio,
-    COUNT(*) AS total_repos
-FROM ai_repos ar
-LEFT JOIN mv_access_bot_demand bad
-    ON bad.path LIKE '%/servers/' || ar.full_name || '/%'
-    AND bad.bot_family IN ('ChatGPT-User', 'OAI-SearchBot', ...)
-    AND bad.access_date >= CURRENT_DATE - 7
-WHERE ar.subcategory IS NOT NULL
-GROUP BY ar.domain, ar.subcategory
-HAVING SUM(bad.hits) > 0
-ORDER BY coverage_ratio ASC, total_hits DESC
-```
-
-### New view or table: `v_demand_gaps`
+Generated retrospectively — for each (date, domain, subcategory), look forward 7 days
+and record what actually happened.
 
 | Column | Type |
 |---|---|
+| snapshot_date | date |
 | domain | varchar |
 | subcategory | varchar |
-| ai_demand_hits_7d | int |
-| ai_demand_sessions_7d | int |
-| total_repos | int |
-| enriched_repos | int |
-| coverage_ratio | numeric |
-| gap_score | numeric |
+| had_user_action_hit_next_7d | boolean |
+| user_action_count_next_7d | int |
+| had_deep_research_session_next_7d | boolean |
 
-`gap_score` = demand signal * (1 - coverage_ratio). High demand + low coverage
-= high gap score = generate content here first.
+**Implementation:** Weekly worker task that fills in labels for dates 7+ days in the
+past. Always looking backward to create forward-looking labels.
 
-### Integration with enrichment pipeline
+### 4. Training pipeline
 
-The demand-gap view feeds into the existing allocation engine / deep dive queue.
-Categories with high gap scores get prioritised for AI summary generation in the
-next pipeline run. This closes the Layer 5 loop: demand → detection → generation
-→ better content → more demand.
+Weekly worker task that:
+1. Joins `category_features_daily` to `category_demand_labels`
+2. Trains LightGBM with 80/20 temporal split (no future leakage)
+3. Computes AUC on held-out set
+4. Logs results to a `model_runs` table (run_date, model_type, auc, ndcg, params_json)
+5. Flags model as production-ready if AUC > 0.70
+
+**Implementation:** Worker task type `train_demand_model`. Python script using
+lightgbm + scikit-learn. Model artifacts stored as JSON (feature importances,
+thresholds) in the database, not on disk.
+
+### 5. Feedback loop
+
+Once a model passes the quality threshold:
+- Model outputs replace/supplement hand-weighted allocation scores
+- The allocation engine consumes predicted demand probabilities alongside existing
+  GSC and quality signals
+- Enrichment budget flows to categories the model predicts will see demand,
+  not just categories that already saw demand
 
 ---
 
-## Deferred: Practitioner-domain mapping (Layer 4)
+## IMPORTANT: All recurring jobs must be worker tasks
 
-Not included in the initial 3 PRs. This is a lookup table mapping subcategories
-to practitioner problem domains (e.g., "anomaly-detection-systems" → "operations
-/ reliability engineering", "chest-xray-pathology-detection" → "clinical radiology").
+The project uses an always-on worker with a scheduler that creates task rows. Any
+daily/weekly computation must be integrated as a task type in the existing worker
+infrastructure. See `docs/design/worker-architecture.md` for the architecture.
 
-Can be built incrementally once sessions are flowing, because the session data
-will reveal which subcategories cluster together in real practitioner workflows.
-The mapping emerges from the data rather than being imposed top-down.
+**Do NOT use cron jobs.** The worker scheduler handles scheduling. Each computation
+above becomes a task type (e.g., `snapshot_bot_activity`, `build_category_features`,
+`label_demand`, `train_demand_model`).
 
 ---
 
-## Sequencing
+## Tactical fixes (can be done in parallel with infrastructure)
 
-```
-PR 1 (classification + archival)
-  └── PR 2 (session detection)
-        └── PR 3 (demand-gap detection)
-                  └── [future] Layer 4 practitioner mapping
-```
+These don't require temporal data and can ship immediately:
 
-Each PR is independently shippable and valuable. PR 1 is the foundation — without
-accurate classification and sustainable storage, everything downstream is built on
-bad data.
+1. **Bot classification CASE statement updates** — add GoogleOther, Claude-User,
+   DuckAssistBot to the materialized view. Consider IP-based classification for
+   Google stealth renderer.
+
+2. **Cross-IP fan-out session detection** — the 251-page ChatGPT Pro burst fanned
+   out across 8 OAI-SearchBot IPs. Session detection needs a secondary heuristic:
+   if N IPs from the same bot family hit pages in the same subcategory within a
+   30-second window, merge into one session.
+
+3. **Commercial entity detection heuristic** — org owner + company website = likely
+   commercial. Cross-reference with user-action demand for "warm lead" list.
+   Foundation of claim-your-page business model.
+
+---
+
+## Timeline expectations
+
+| Period | What happens |
+|---|---|
+| **Weeks 1-2** | Snapshot infrastructure ships. Descriptive stats from snapshots. Hand-tuned weights in allocation engine based on research findings. |
+| **Weeks 3-6** | Rolling z-score anomaly detection on snapshot data. Enough temporal data accumulating for feature engineering. First feature store populated. |
+| **Weeks 6-12** | First LTR and demand prediction models trainable. Quality thresholds evaluated. Feature importance reveals which signals actually matter. |
+| **Months 3+** | Collaborative filtering / matrix factorisation for latent theme discovery. Model outputs feeding allocation engine in production. |
+
+The key insight: we're not blocked on code, we're blocked on data accumulation.
+The infrastructure needs to ship now so the clock starts ticking.

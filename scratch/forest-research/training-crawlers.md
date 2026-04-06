@@ -223,3 +223,89 @@ AI user-action bots (ChatGPT-User, OAI-SearchBot, Perplexity-User) visited **986
 ### The combinatorial forest is real
 
 Meta crawled 114K pages in 22 hours. With 220K+ pages in the directory, this is a ~52% sweep in under a day. The page volume that makes the site valuable to Google also makes it a target for LLM training crawlers. These crawlers are consuming the content that PT-Edge generates — which validates the "combinatorial forest" thesis that large page counts attract crawler attention at scale.
+
+---
+
+## 5. Per-Bot Strategy Intelligence (Updated Apr 6)
+
+The 48-hour dataset reveals that each indexing bot has a distinct crawl strategy that
+functions as a fingerprint of its parent company's priorities. These aren't random
+crawlers — they're intelligence-gathering operations with characteristic signatures.
+
+### Meta-ExternalAgent: The Revisitor
+
+- **20,984 perception domain hits** but only **10,644 unique pages** = ~2:1 revisit ratio
+- Meta is re-crawling pages it considers important, not just sweeping breadth-first
+- Prioritises perception/computer-vision — consistent with Llama multimodal roadmap
+- 69-node fleet from a single /24 subnet, perfectly load-balanced
+- **Signal:** Revisit frequency is a quality/freshness proxy. Pages Meta re-crawls
+  every 6 hours are ones it considers high-value and time-sensitive.
+
+### ClaudeBot: The Completionist
+
+- **~181K hits**, near **1:1 hit-to-unique-page ratio** — trying to inhale the entire site
+- Single aggressive IP with **628 req/min peaks**
+- No apparent domain preference — wants everything equally
+- **Signal:** ClaudeBot coverage ratio (unique pages hit / total pages in category)
+  measures how thoroughly Anthropic has indexed a domain. Low coverage = discovery gap.
+
+### Amazonbot: The Diplomat
+
+- Perfect **1:1 hit-to-unique-page ratio** — every request is a new page
+- **432 IPs** distributed across AWS regions
+- Polite **4-second crawl delay** — respects robots.txt crawl-delay
+- Steady ~850 hits/hour, no bursting
+- No strong domain preference — wants everything equally
+- **Signal:** Amazonbot's even-handed coverage provides a baseline. Categories it
+  skips are genuinely low-signal.
+
+### Google (various): The Strategist
+
+- Selective crawling — heavy on **embeddings** and **ml-frameworks**, light on **rag**
+- GoogleOther (AI training, feeds Gemini) distinct from Googlebot (search indexing)
+- Stealth renderer (Nexus 5X UA from 66.249.70.x) adds a second evaluation pass
+- **Signal:** Google's domain preferences reveal what it thinks will matter for
+  Gemini's competitive positioning. Embeddings punching above its weight in Google's
+  crawl suggests Google sees embedding infrastructure as strategically important.
+
+### PerplexityBot: The Specialist
+
+- **NLP domain nearly equals ml-frameworks** — unique among all bots
+- Hit methodology and about pages (unusual — most bots ignore non-project pages)
+- Reflects Perplexity's search-product orientation: NLP and understanding queries
+  matters more to a search engine than to a model trainer
+- **Signal:** PerplexityBot's domain weights are the most differentiated from the
+  pack. Where Perplexity diverges from consensus reveals search-specific demand.
+
+### GPTBot: The Ghost
+
+- **~19 hits/day** — nearly absent
+- Meanwhile OAI-SearchBot surges (user-action retrieval)
+- OpenAI has strategically shifted from training-crawl to real-time retrieval
+- **Signal:** GPTBot absence confirms the shift to retrieval-augmented generation.
+  Other labs may follow this pattern. Track whether ClaudeBot or Meta volumes
+  decrease over time as they too shift to real-time retrieval.
+
+### Domain Preference Summary
+
+| Domain | Meta | ClaudeBot | Amazonbot | Google | Perplexity |
+|---|---|---|---|---|---|
+| ml-frameworks | high | high | even | **heavy** | high |
+| perception/CV | **heavy** | even | even | moderate | low |
+| embeddings | low | even | even | **heavy** | moderate |
+| NLP | moderate | even | even | moderate | **heavy** |
+| agents | high | high | even | moderate | moderate |
+| rag | moderate | even | even | **light** | moderate |
+| prompt-engineering | low | even | even | **light** | **light** |
+| diffusion | low | even | even | moderate | **light** |
+
+**Bold** = notable deviation from the bot's baseline. "Even" = Amazonbot and ClaudeBot
+show no strong preference, crawling proportional to site content.
+
+### Implications for the ML pipeline
+
+These crawl fingerprints feed directly into the `category_features_daily` feature store:
+- `meta_revisit_ratio` — freshness signal
+- `bot_consensus_count` — quality proxy (5+ families = independently validated)
+- Per-bot coverage ratios — domain preference divergence
+- Absence detection — categories no bot touches despite high quality scores
