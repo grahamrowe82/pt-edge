@@ -102,6 +102,22 @@
   </div>
   {% endif %}
 
+  {% if server.brief_summary %}
+  <div class="mb-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
+    <h2 class="text-base font-semibold text-gray-900 mb-2">Assessment</h2>
+    <p class="text-sm text-gray-700">{{ server.brief_summary }}</p>
+    {% if server.brief_evidence %}
+    <ul class="mt-2 space-y-1">
+      {% for e in server.brief_evidence %}
+      {% if e.metric and e.metric not in ['last_commit', 'created'] %}
+      <li class="text-xs text-gray-500">{{ e.metric | replace('_', ' ') | title }}: {{ '{:,}'.format(e.value) if e.value is number else e.value }}{% if e.as_of %} <span class="text-gray-400">({{ e.as_of }})</span>{% endif %}</li>
+      {% endif %}
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
+
   {% if server.problem_domains and server.problem_domains | length > 0 %}
   <div class="mb-6">
     <div class="flex flex-wrap gap-2">
