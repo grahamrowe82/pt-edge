@@ -1583,3 +1583,90 @@ def test_api_docs_template_rate_limits_consistent():
         f"API docs free tier should show {TIER_LIMITS['free']:,}/day"
     assert f"{TIER_LIMITS['pro']:,}/day" in content, \
         f"API docs pro tier should show {TIER_LIMITS['pro']:,}/day"
+
+
+# ---------------------------------------------------------------------------
+# Worker integration tests — mark_done with realistic data
+# ---------------------------------------------------------------------------
+
+class TestWorkerIntegration:
+    """Tests that exercise mark_done with data that has historically broken it."""
+
+    def _create_test_task(self, conn):
+        """Create a throwaway task and return its id."""
+        row = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, state, priority)
+            VALUES ('_test_smoke', '_test_' || gen_random_uuid()::text, 'claimed', 1)
+            RETURNING id
+        """)).fetchone()
+        conn.commit()
+        return row[0]
+
+    def _cleanup(self, conn, task_id):
+        conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
+        conn.commit()
+
+    def test_mark_done_with_colons(self):
+        """mark_done handles results containing colons (psycopg2 bind param pitfall)."""
+        from sqlalchemy import text
+        from app.db import engine
+        from app.queue.worker import mark_done
+
+        with engine.connect() as conn:
+            task_id = self._create_test_task(conn)
+        try:
+            result = {"summary": "Use this: it's great", "note": "key:value:pairs"}
+            mark_done(task_id, result)
+            with engine.connect() as conn:
+                row = conn.execute(text(
+                    "SELECT state, result FROM tasks WHERE id = :id"
+                ), {"id": task_id}).fetchone()
+            assert row.state == "done"
+            assert row.result["summary"] == "Use this: it's great"
+        finally:
+            with engine.connect() as conn:
+                self._cleanup(conn, task_id)
+
+    def test_mark_done_with_nested_json(self):
+        """mark_done handles nested JSON with special characters."""
+        from sqlalchemy import text
+        from app.db import engine
+        from app.queue.worker import mark_done
+
+        with engine.connect() as conn:
+            task_id = self._create_test_task(conn)
+        try:
+            result = {
+                "evidence": [{"metric": "stars", "value": 100, "as_of": "2026-04-06"}],
+                "unicode": "émojis 🚀 and café",
+            }
+            mark_done(task_id, result)
+            with engine.connect() as conn:
+                row = conn.execute(text(
+                    "SELECT state, result FROM tasks WHERE id = :id"
+                ), {"id": task_id}).fetchone()
+            assert row.state == "done"
+            assert row.result["evidence"][0]["metric"] == "stars"
+        finally:
+            with engine.connect() as conn:
+                self._cleanup(conn, task_id)
+
+    def test_mark_done_with_none(self):
+        """mark_done handles None result."""
+        from sqlalchemy import text
+        from app.db import engine
+        from app.queue.worker import mark_done
+
+        with engine.connect() as conn:
+            task_id = self._create_test_task(conn)
+        try:
+            mark_done(task_id, None)
+            with engine.connect() as conn:
+                row = conn.execute(text(
+                    "SELECT state, result FROM tasks WHERE id = :id"
+                ), {"id": task_id}).fetchone()
+            assert row.state == "done"
+            assert row.result is None
+        finally:
+            with engine.connect() as conn:
+                self._cleanup(conn, task_id)
