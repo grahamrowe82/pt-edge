@@ -11,7 +11,8 @@ Usage:
     # text is raw string or None on failure
 
 Budget and rate limiting are handled by acquire_budget("gemini") which
-reads limits from the database. See app/ingest/budget.py.
+reads limits from the database. Budget is only decremented after the
+HTTP request actually fires via record_call(). See app/ingest/budget.py.
 """
 
 import asyncio
@@ -24,6 +25,7 @@ from app.ingest.budget import (
     ResourceExhaustedError,
     ResourceThrottledError,
     acquire_budget,
+    record_call,
     record_success,
     record_throttle,
 )
@@ -72,6 +74,9 @@ async def call_llm(
             logger.warning(f"LLM HTTP error (attempt {attempt + 1}/{retries}): {e}")
             await asyncio.sleep(2**attempt * 5)
             continue
+
+        # Request fired — count it regardless of response status
+        await record_call("gemini")
 
         if resp.status_code == 429:
             await record_throttle("gemini")
@@ -134,6 +139,9 @@ async def call_llm_text(
             logger.warning(f"LLM HTTP error (attempt {attempt + 1}/{retries}): {e}")
             await asyncio.sleep(2**attempt * 5)
             continue
+
+        # Request fired — count it regardless of response status
+        await record_call("gemini")
 
         if resp.status_code == 429:
             await record_throttle("gemini")
