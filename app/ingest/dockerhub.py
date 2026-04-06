@@ -13,10 +13,11 @@ logger = logging.getLogger(__name__)
 
 async def fetch_dockerhub_pulls(client: httpx.AsyncClient, image: str) -> int | None:
     """Fetch cumulative pull count for a Docker Hub repository."""
-    from app.ingest.budget import acquire_budget, record_throttle, record_success
+    from app.ingest.budget import acquire_budget, record_call, record_throttle, record_success
     if not await acquire_budget("dockerhub"):
         return None
     resp = await client.get(f"https://hub.docker.com/v2/repositories/{image}")
+    await record_call("dockerhub")
     if resp.status_code == 200:
         await record_success("dockerhub")
         return resp.json().get("pull_count", 0)

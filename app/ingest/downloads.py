@@ -6,7 +6,7 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.ingest.budget import acquire_budget, record_throttle, record_success
+from app.ingest.budget import acquire_budget, record_call, record_throttle, record_success
 from app.models import Project, SyncLog
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,7 @@ async def fetch_pypi_downloads(client: httpx.AsyncClient, package: str) -> dict 
     if not await acquire_budget("pypi"):
         return None
     resp = await client.get(f"https://pypistats.org/api/packages/{package}/recent")
+    await record_call("pypi")
     if resp.status_code == 200:
         await record_success("pypi")
         data = resp.json().get("data", {})
@@ -33,6 +34,7 @@ async def fetch_npm_downloads(client: httpx.AsyncClient, package: str) -> dict |
         if not await acquire_budget("npm"):
             return None
         resp = await client.get(f"https://api.npmjs.org/downloads/point/{period}/{package}")
+        await record_call("npm")
         if resp.status_code == 200:
             await record_success("npm")
             result[key] = resp.json().get("downloads", 0)
@@ -56,6 +58,7 @@ async def fetch_crate_downloads(client: httpx.AsyncClient, crate_name: str) -> d
         f"https://crates.io/api/v1/crates/{crate_name}",
         headers={"User-Agent": "pt-edge/1.0 (https://github.com/pt-edge)"},
     )
+    await record_call("crates")
     if resp.status_code == 200:
         await record_success("crates")
         data = resp.json().get("crate", {})

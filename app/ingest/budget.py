@@ -1,13 +1,21 @@
 """Database-centric budget tracking for external API calls.
 
 Every external API call should go through acquire_budget() before making
-the HTTP request, and call record_success() or record_throttle() after.
+the HTTP request, and call record_call() after the request fires.
 
 The database is the source of truth for:
 - Daily/hourly budget (consumed vs limit)
 - Provider-specific reset windows (rolling or calendar)
 - RPM spacing (last_call_at)
 - Adaptive backoff state (backoff_until, backoff_count)
+
+Flow:
+  1. acquire_budget("gemini")  — checks limits, enforces RPM, does NOT decrement
+  2. make the HTTP request
+  3. record_call("gemini")     — decrements consumed (only after call actually fired)
+  4. record_success("gemini")  — clears backoff (if active)
+  OR
+  4. record_throttle("gemini") — sets exponential backoff (on 429)
 
 See docs/strategy/resource-budget-infrastructure.md for full design.
 """
@@ -38,17 +46,47 @@ class ResourceThrottledError(Exception):
         super().__init__(f"Resource throttled: {resource_type}")
 
 
-# Single atomic UPDATE that checks backoff, resets window if needed,
-# checks remaining budget, decrements consumed, and returns RPM info.
-_ACQUIRE_SQL = text("""
+# Check budget and backoff, enforce RPM spacing. Does NOT decrement consumed.
+_CHECK_SQL = text("""
+    SELECT
+      rpm,
+      EXTRACT(EPOCH FROM (
+        now() - COALESCE(last_call_at, '1970-01-01'::timestamptz)
+      )) AS seconds_since_last,
+      CASE
+        -- Backed off
+        WHEN backoff_until IS NOT NULL AND now() < backoff_until
+        THEN 0
+        -- Rolling: period expired, full budget available
+        WHEN reset_mode = 'rolling'
+          AND now() >= period_start + (period_hours || ' hours')::interval
+        THEN budget
+        -- Calendar: period expired, full budget available
+        WHEN reset_mode = 'calendar'
+          AND period_start < (
+            date_trunc('day', now() AT TIME ZONE reset_tz)
+            + (reset_hour || ' hours')::interval
+          ) AT TIME ZONE reset_tz
+          AND now() >= (
+            date_trunc('day', now() AT TIME ZONE reset_tz)
+            + (reset_hour || ' hours')::interval
+          ) AT TIME ZONE reset_tz
+        THEN budget
+        -- Window still active
+        ELSE budget - consumed
+      END AS remaining
+    FROM resource_budgets
+    WHERE resource_type = :rt
+""")
+
+# Decrement budget and update last_call_at. Called AFTER the API call fires.
+_RECORD_CALL_SQL = text("""
     UPDATE resource_budgets
     SET
       period_start = CASE
-        -- Rolling: reset if period expired
         WHEN reset_mode = 'rolling'
           AND now() >= period_start + (period_hours || ' hours')::interval
         THEN now()
-        -- Calendar: reset if period_start is before the most recent boundary
         WHEN reset_mode = 'calendar'
           AND period_start < (
             date_trunc('day', now() AT TIME ZONE reset_tz)
@@ -65,11 +103,9 @@ _ACQUIRE_SQL = text("""
         ELSE period_start
       END,
       consumed = CASE
-        -- Window expired (rolling): reset to 1
         WHEN reset_mode = 'rolling'
           AND now() >= period_start + (period_hours || ' hours')::interval
         THEN 1
-        -- Window expired (calendar): reset to 1
         WHEN reset_mode = 'calendar'
           AND period_start < (
             date_trunc('day', now() AT TIME ZONE reset_tz)
@@ -80,40 +116,10 @@ _ACQUIRE_SQL = text("""
             + (reset_hour || ' hours')::interval
           ) AT TIME ZONE reset_tz
         THEN 1
-        -- Window still active: increment
         ELSE consumed + 1
       END,
       last_call_at = now()
     WHERE resource_type = :rt
-      -- Not backed off
-      AND (backoff_until IS NULL OR now() >= backoff_until)
-      -- Has remaining budget (accounting for possible reset)
-      AND (
-        CASE
-          -- Rolling expired: will reset, always has capacity
-          WHEN reset_mode = 'rolling'
-            AND now() >= period_start + (period_hours || ' hours')::interval
-          THEN true
-          -- Calendar expired: will reset, always has capacity
-          WHEN reset_mode = 'calendar'
-            AND period_start < (
-              date_trunc('day', now() AT TIME ZONE reset_tz)
-              + (reset_hour || ' hours')::interval
-            ) AT TIME ZONE reset_tz
-            AND now() >= (
-              date_trunc('day', now() AT TIME ZONE reset_tz)
-              + (reset_hour || ' hours')::interval
-            ) AT TIME ZONE reset_tz
-          THEN true
-          -- Window active: check remaining
-          ELSE consumed < budget
-        END
-      )
-    RETURNING
-      rpm,
-      EXTRACT(EPOCH FROM (
-        now() - COALESCE(last_call_at, '1970-01-01'::timestamptz)
-      )) AS seconds_since_last
 """)
 
 _THROTTLE_SQL = text("""
@@ -137,29 +143,42 @@ _SUCCESS_SQL = text("""
 
 
 async def acquire_budget(resource_type: str) -> bool:
-    """Check budget, decrement, and enforce RPM spacing.
+    """Check budget and enforce RPM spacing. Does NOT decrement consumed.
 
     Returns True if the call is allowed. Returns False if budget is
     exhausted or the resource is backed off. Callers should raise
     ResourceExhaustedError when this returns False.
 
-    This is a single DB round-trip (atomic UPDATE ... RETURNING).
-    RPM spacing is enforced via asyncio.sleep after the UPDATE.
+    After the API call fires, call record_call() to decrement the budget.
     """
     with engine.connect() as conn:
-        row = conn.execute(_ACQUIRE_SQL, {"rt": resource_type}).fetchone()
-        conn.commit()
+        row = conn.execute(_CHECK_SQL, {"rt": resource_type}).fetchone()
 
     if row is None:
         return False
 
-    rpm, seconds_since_last = row
+    rpm, seconds_since_last, remaining = row
+    if remaining <= 0:
+        return False
+
     if rpm and seconds_since_last is not None:
-        interval = 60.0 / rpm
-        if seconds_since_last < interval:
-            await asyncio.sleep(interval - seconds_since_last)
+        interval = 60.0 / float(rpm)
+        gap = float(seconds_since_last)
+        if gap < interval:
+            await asyncio.sleep(interval - gap)
 
     return True
+
+
+async def record_call(resource_type: str) -> None:
+    """Record that an API call was made. Decrements consumed.
+
+    Call this AFTER the HTTP request fires, regardless of the response
+    status. This ensures we only count calls that actually happened.
+    """
+    with engine.connect() as conn:
+        conn.execute(_RECORD_CALL_SQL, {"rt": resource_type})
+        conn.commit()
 
 
 async def record_throttle(resource_type: str) -> None:

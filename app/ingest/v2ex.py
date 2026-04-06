@@ -63,13 +63,14 @@ async def fetch_node_topics(
     client: httpx.AsyncClient, node_name: str,
 ) -> list[dict]:
     """Fetch recent topics from a V2EX node (v1 API, no auth)."""
-    from app.ingest.budget import acquire_budget
+    from app.ingest.budget import acquire_budget, record_call
     if not await acquire_budget("v2ex"):
         return []
     resp = await client.get(
         f"{V2EX_API}/topics/show.json",
         params={"node_name": node_name},
     )
+    await record_call("v2ex")
     if resp.status_code == 200:
         data = resp.json()
         return data if isinstance(data, list) else []
@@ -79,10 +80,11 @@ async def fetch_node_topics(
 
 async def fetch_hot_topics(client: httpx.AsyncClient) -> list[dict]:
     """Fetch hot topics across all of V2EX (v1 API, no auth)."""
-    from app.ingest.budget import acquire_budget
+    from app.ingest.budget import acquire_budget, record_call
     if not await acquire_budget("v2ex"):
         return []
     resp = await client.get(f"{V2EX_API}/topics/hot.json")
+    await record_call("v2ex")
     if resp.status_code == 200:
         data = resp.json()
         return data if isinstance(data, list) else []
@@ -92,10 +94,11 @@ async def fetch_hot_topics(client: httpx.AsyncClient) -> list[dict]:
 
 async def fetch_latest_topics(client: httpx.AsyncClient) -> list[dict]:
     """Fetch latest topics across all of V2EX (v1 API, no auth)."""
-    from app.ingest.budget import acquire_budget
+    from app.ingest.budget import acquire_budget, record_call
     if not await acquire_budget("v2ex"):
         return []
     resp = await client.get(f"{V2EX_API}/topics/latest.json")
+    await record_call("v2ex")
     if resp.status_code == 200:
         data = resp.json()
         return data if isinstance(data, list) else []

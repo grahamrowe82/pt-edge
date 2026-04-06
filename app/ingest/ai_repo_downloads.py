@@ -148,7 +148,7 @@ async def _detect_pypi(
     repo_name: str,
 ) -> str | None:
     """Try candidate names against PyPI JSON API. Return matched package or None."""
-    from app.ingest.budget import acquire_budget, record_throttle, record_success
+    from app.ingest.budget import acquire_budget, record_call, record_throttle, record_success
     for candidate in _pypi_candidates(repo_name):
         async with semaphore:
             if not await acquire_budget("pypi"):
@@ -157,6 +157,7 @@ async def _detect_pypi(
                 resp = await client.get(f"https://pypi.org/pypi/{candidate}/json")
             except httpx.HTTPError:
                 continue
+            await record_call("pypi")
 
         if resp.status_code == 200:
             await record_success("pypi")
@@ -177,7 +178,7 @@ async def _detect_npm(
     repo_name: str,
 ) -> str | None:
     """Try candidate names against npm registry. Return matched package or None."""
-    from app.ingest.budget import acquire_budget, record_throttle, record_success
+    from app.ingest.budget import acquire_budget, record_call, record_throttle, record_success
     for candidate in _npm_candidates(owner, repo_name):
         async with semaphore:
             if not await acquire_budget("npm"):
@@ -186,6 +187,7 @@ async def _detect_npm(
                 resp = await client.get(f"https://registry.npmjs.org/{candidate}")
             except httpx.HTTPError:
                 continue
+            await record_call("npm")
 
         if resp.status_code == 200:
             await record_success("npm")
@@ -206,7 +208,7 @@ async def _detect_crate(
     repo_name: str,
 ) -> str | None:
     """Try candidate names against crates.io API. Return matched crate or None."""
-    from app.ingest.budget import acquire_budget, record_throttle, record_success
+    from app.ingest.budget import acquire_budget, record_call, record_throttle, record_success
     for candidate in _crate_candidates(repo_name):
         async with semaphore:
             if not await acquire_budget("crates"):
@@ -218,6 +220,7 @@ async def _detect_crate(
                 )
             except httpx.HTTPError:
                 continue
+            await record_call("crates")
 
         if resp.status_code == 200:
             await record_success("crates")
