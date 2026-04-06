@@ -184,8 +184,10 @@ async def collect_hn_for_term(
     semaphore: asyncio.Semaphore,
 ) -> list[dict]:
     async with semaphore:
+        from app.ingest.budget import acquire_budget
+        if not await acquire_budget("hn_algolia"):
+            return []
         hits = await fetch_hn_page(client, term, min_timestamp)
-        await asyncio.sleep(1.0)
 
     rows = []
     seen_ids = set()

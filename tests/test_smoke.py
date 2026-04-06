@@ -873,12 +873,8 @@ class TestRateLimiter:
     """RateLimiter enforces minimum interval between calls."""
 
     def test_import(self):
-        from app.ingest.rate_limit import RateLimiter, OPENAI_LIMITER
-        assert isinstance(OPENAI_LIMITER, RateLimiter)
-
-    def test_rpm_setting(self):
-        from app.ingest.rate_limit import OPENAI_LIMITER
-        assert OPENAI_LIMITER.rpm == 400
+        from app.ingest.rate_limit import RateLimiter
+        assert callable(RateLimiter)
 
     def test_interval_calculation(self):
         from app.ingest.rate_limit import RateLimiter
@@ -1077,11 +1073,11 @@ def test_rate_limiter_in_releases():
 
 
 def test_rate_limiter_in_embeddings():
-    """Embeddings module uses rate limiter."""
+    """Embeddings module uses acquire_budget for rate limiting."""
     import inspect
     from app import embeddings
     source = inspect.getsource(embeddings)
-    assert "OPENAI_LIMITER" in source
+    assert "acquire_budget" in source
 
 
 def test_runner_pipeline_order():

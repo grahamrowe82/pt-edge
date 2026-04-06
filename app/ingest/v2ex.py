@@ -30,8 +30,7 @@ TARGET_NODES = ["openai", "claude", "claudecode"]
 # Combined filter terms for hot/latest scanning (lowercase)
 _BROAD_FILTER_TERMS = {t.lower() for t in SEARCH_TERMS} | set(LAB_ALIASES.keys())
 
-# v1 API rate limit: 120 req/hr. We make ~8 requests per cycle so 6s is safe.
-_REQUEST_DELAY = 6.0
+# Rate limiting now handled by acquire_budget("v2ex") — 10 RPM in DB.
 
 
 def _matches_broad_filter(title: str, content: str | None) -> bool:
@@ -64,6 +63,9 @@ async def fetch_node_topics(
     client: httpx.AsyncClient, node_name: str,
 ) -> list[dict]:
     """Fetch recent topics from a V2EX node (v1 API, no auth)."""
+    from app.ingest.budget import acquire_budget
+    if not await acquire_budget("v2ex"):
+        return []
     resp = await client.get(
         f"{V2EX_API}/topics/show.json",
         params={"node_name": node_name},
@@ -77,6 +79,9 @@ async def fetch_node_topics(
 
 async def fetch_hot_topics(client: httpx.AsyncClient) -> list[dict]:
     """Fetch hot topics across all of V2EX (v1 API, no auth)."""
+    from app.ingest.budget import acquire_budget
+    if not await acquire_budget("v2ex"):
+        return []
     resp = await client.get(f"{V2EX_API}/topics/hot.json")
     if resp.status_code == 200:
         data = resp.json()
@@ -87,6 +92,9 @@ async def fetch_hot_topics(client: httpx.AsyncClient) -> list[dict]:
 
 async def fetch_latest_topics(client: httpx.AsyncClient) -> list[dict]:
     """Fetch latest topics across all of V2EX (v1 API, no auth)."""
+    from app.ingest.budget import acquire_budget
+    if not await acquire_budget("v2ex"):
+        return []
     resp = await client.get(f"{V2EX_API}/topics/latest.json")
     if resp.status_code == 200:
         data = resp.json()
@@ -154,7 +162,6 @@ async def ingest_v2ex() -> dict:
             except Exception as e:
                 error_count += 1
                 logger.error(f"V2EX fetch error ({node}): {e}")
-            await asyncio.sleep(_REQUEST_DELAY)
 
         # Hot + latest feeds: filter client-side for AI content
         for label, fetcher in [("hot", fetch_hot_topics), ("latest", fetch_latest_topics)]:
@@ -174,7 +181,6 @@ async def ingest_v2ex() -> dict:
             except Exception as e:
                 error_count += 1
                 logger.error(f"V2EX fetch error ({label}): {e}")
-            await asyncio.sleep(_REQUEST_DELAY)
 
     # Batch insert
     new_count = 0

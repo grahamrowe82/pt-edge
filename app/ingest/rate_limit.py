@@ -1,19 +1,12 @@
 """Shared rate limiters for external API calls.
 
-OpenAI: 500 RPM — we use 400 for safety margin.
+Note: Rate limiting for all providers has moved to app/ingest/budget.py
+which tracks RPM and daily budget via the database (resource_budgets table).
 
-Note: Gemini rate limiting has moved to app/ingest/budget.py which
-tracks RPM and daily budget via the database. OpenAI will follow in
-a future PR.
-
-Usage:
-
-    resp = await client.post(...)
+The RateLimiter class is kept for any future in-process use cases.
 """
 import asyncio
 import logging
-
-from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +28,3 @@ class RateLimiter:
             if wait > 0:
                 await asyncio.sleep(wait)
             self._last_call = asyncio.get_event_loop().time()
-
-
-OPENAI_LIMITER = RateLimiter(rpm=settings.OPENAI_RPM)

@@ -148,21 +148,24 @@ async def _detect_pypi(
     repo_name: str,
 ) -> str | None:
     """Try candidate names against PyPI JSON API. Return matched package or None."""
+    from app.ingest.budget import acquire_budget, record_throttle, record_success
     for candidate in _pypi_candidates(repo_name):
         async with semaphore:
+            if not await acquire_budget("pypi"):
+                return None
             try:
                 resp = await client.get(f"https://pypi.org/pypi/{candidate}/json")
             except httpx.HTTPError:
                 continue
-            await asyncio.sleep(0.5)
 
         if resp.status_code == 200:
+            await record_success("pypi")
             data = resp.json()
             if _pypi_matches_repo(data, owner, repo):
                 return candidate
         elif resp.status_code == 429:
-            logger.warning("PyPI rate limited, backing off")
-            await asyncio.sleep(30)
+            await record_throttle("pypi")
+            return None
     return None
 
 
@@ -174,21 +177,24 @@ async def _detect_npm(
     repo_name: str,
 ) -> str | None:
     """Try candidate names against npm registry. Return matched package or None."""
+    from app.ingest.budget import acquire_budget, record_throttle, record_success
     for candidate in _npm_candidates(owner, repo_name):
         async with semaphore:
+            if not await acquire_budget("npm"):
+                return None
             try:
                 resp = await client.get(f"https://registry.npmjs.org/{candidate}")
             except httpx.HTTPError:
                 continue
-            await asyncio.sleep(0.3)
 
         if resp.status_code == 200:
+            await record_success("npm")
             data = resp.json()
             if _npm_matches_repo(data, owner, repo):
                 return candidate
         elif resp.status_code == 429:
-            logger.warning("npm rate limited, backing off")
-            await asyncio.sleep(30)
+            await record_throttle("npm")
+            return None
     return None
 
 
@@ -200,8 +206,11 @@ async def _detect_crate(
     repo_name: str,
 ) -> str | None:
     """Try candidate names against crates.io API. Return matched crate or None."""
+    from app.ingest.budget import acquire_budget, record_throttle, record_success
     for candidate in _crate_candidates(repo_name):
         async with semaphore:
+            if not await acquire_budget("crates"):
+                return None
             try:
                 resp = await client.get(
                     f"https://crates.io/api/v1/crates/{candidate}",
@@ -209,15 +218,15 @@ async def _detect_crate(
                 )
             except httpx.HTTPError:
                 continue
-            await asyncio.sleep(1.0)  # crates.io: 1 req/sec
 
         if resp.status_code == 200:
+            await record_success("crates")
             data = resp.json()
             if _crate_matches_repo(data, owner, repo):
                 return candidate
         elif resp.status_code == 429:
-            logger.warning("crates.io rate limited, backing off")
-            await asyncio.sleep(60)
+            await record_throttle("crates")
+            return None
     return None
 
 
@@ -352,7 +361,6 @@ async def ingest_ai_repo_downloads(
                         if pypi_pkg:
                             async with dl_sem:
                                 stats = await fetch_pypi_downloads(client, pypi_pkg)
-                                await asyncio.sleep(0.5)
                             if stats:
                                 dl_monthly += stats["last_month"]
 
@@ -362,7 +370,6 @@ async def ingest_ai_repo_downloads(
                         if npm_pkg:
                             async with dl_sem:
                                 stats = await fetch_npm_downloads(client, npm_pkg)
-                                await asyncio.sleep(0.3)
                             if stats:
                                 dl_monthly += stats["last_month"]
 
@@ -372,7 +379,6 @@ async def ingest_ai_repo_downloads(
                         if crate_pkg:
                             async with dl_sem:
                                 stats = await fetch_crate_downloads(client, crate_pkg)
-                                await asyncio.sleep(1.0)
                             if stats:
                                 dl_monthly += stats["last_month"]
 
@@ -428,21 +434,18 @@ async def ingest_ai_repo_downloads(
                     if m["pypi_package"]:
                         async with dl_sem:
                             stats = await fetch_pypi_downloads(client, m["pypi_package"])
-                            await asyncio.sleep(0.5)
                         if stats:
                             dl_monthly += stats["last_month"]
 
                     if m["npm_package"]:
                         async with dl_sem:
                             stats = await fetch_npm_downloads(client, m["npm_package"])
-                            await asyncio.sleep(0.3)
                         if stats:
                             dl_monthly += stats["last_month"]
 
                     if m["crate_package"]:
                         async with dl_sem:
                             stats = await fetch_crate_downloads(client, m["crate_package"])
-                            await asyncio.sleep(1.0)
                         if stats:
                             dl_monthly += stats["last_month"]
 
