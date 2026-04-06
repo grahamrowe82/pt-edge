@@ -817,9 +817,11 @@ def schedule_all() -> dict:
     counts["compute_briefing_refresh"] = _schedule_coarse_task("compute_briefing_refresh", "briefing_refresh", 5, "db_only")
     counts["export_dataset"] = _schedule_coarse_task("export_dataset", "dataset_export", 4, "github_api")
 
-    # Demand Radar snapshots (daily, after MV refresh)
+    # Demand Radar (daily, after MV refresh)
     counts["snapshot_bot_activity"] = _schedule_coarse_task(
         "snapshot_bot_activity", "bot_activity_snapshot", 5, "db_only", staleness_hours=20)
+    counts["detect_bot_sessions"] = _schedule_coarse_task(
+        "detect_bot_sessions", "bot_sessions", 5, "db_only", staleness_hours=20)
 
     # Discovery (daily) and structural (weekly)
     counts["discover_ai_repos"] = _schedule_coarse_task("discover_ai_repos", "ai_repos", 4, "github_api", staleness_hours=24)

@@ -32,7 +32,10 @@ from app.queue.handlers.compute_post_process import (
     handle_compute_project_linking, handle_compute_briefing_refresh,
     handle_export_dataset, handle_discover_ai_repos, handle_compute_structural,
 )
-from app.queue.handlers.compute_demand_radar import handle_snapshot_bot_activity
+from app.queue.handlers.compute_demand_radar import (
+    handle_snapshot_bot_activity,
+    handle_detect_bot_sessions,
+)
 
 TASK_HANDLERS: dict = {
     "fetch_readme": handle_fetch_readme,
@@ -90,4 +93,5 @@ TASK_HANDLERS: dict = {
     "compute_structural": handle_compute_structural,
     # Demand Radar
     "snapshot_bot_activity": handle_snapshot_bot_activity,
+    "detect_bot_sessions": handle_detect_bot_sessions,
 }
