@@ -16,6 +16,7 @@ import socket
 from sqlalchemy import text
 
 from app.db import engine
+from app.ingest.budget import ResourceExhaustedError, ResourceThrottledError
 
 logger = logging.getLogger(__name__)
 
@@ -24,12 +25,31 @@ POLL_INTERVAL = 5       # seconds between claim attempts when idle
 HEARTBEAT_INTERVAL = 60  # seconds between heartbeats during execution
 
 # SQL: claim the highest-priority pending task for a specific resource type.
+# Checks budget remaining (rolling or calendar reset) and backoff state.
 _CLAIM_FOR_RESOURCE_SQL = text("""
     WITH budget_check AS (
         SELECT resource_type,
-               CASE WHEN now() >= period_start + (period_hours || ' hours')::interval
-                    THEN budget
-                    ELSE budget - consumed
+               CASE
+                 -- Backed off: no remaining budget
+                 WHEN backoff_until IS NOT NULL AND now() < backoff_until
+                 THEN 0
+                 -- Rolling: period expired, full budget available
+                 WHEN reset_mode = 'rolling'
+                   AND now() >= period_start + (period_hours || ' hours')::interval
+                 THEN budget
+                 -- Calendar: period expired, full budget available
+                 WHEN reset_mode = 'calendar'
+                   AND period_start < (
+                     date_trunc('day', now() AT TIME ZONE reset_tz)
+                     + (reset_hour || ' hours')::interval
+                   ) AT TIME ZONE reset_tz
+                   AND now() >= (
+                     date_trunc('day', now() AT TIME ZONE reset_tz)
+                     + (reset_hour || ' hours')::interval
+                   ) AT TIME ZONE reset_tz
+                 THEN budget
+                 -- Window still active
+                 ELSE budget - consumed
                END AS remaining
         FROM resource_budgets
     ),
@@ -58,9 +78,23 @@ _CLAIM_FOR_RESOURCE_SQL = text("""
 _CLAIM_ANY_SQL = text("""
     WITH budget_check AS (
         SELECT resource_type,
-               CASE WHEN now() >= period_start + (period_hours || ' hours')::interval
-                    THEN budget
-                    ELSE budget - consumed
+               CASE
+                 WHEN backoff_until IS NOT NULL AND now() < backoff_until
+                 THEN 0
+                 WHEN reset_mode = 'rolling'
+                   AND now() >= period_start + (period_hours || ' hours')::interval
+                 THEN budget
+                 WHEN reset_mode = 'calendar'
+                   AND period_start < (
+                     date_trunc('day', now() AT TIME ZONE reset_tz)
+                     + (reset_hour || ' hours')::interval
+                   ) AT TIME ZONE reset_tz
+                   AND now() >= (
+                     date_trunc('day', now() AT TIME ZONE reset_tz)
+                     + (reset_hour || ' hours')::interval
+                   ) AT TIME ZONE reset_tz
+                 THEN budget
+                 ELSE budget - consumed
                END AS remaining
         FROM resource_budgets
     ),
@@ -84,25 +118,13 @@ _CLAIM_ANY_SQL = text("""
               retry_count, max_retries
 """)
 
-# SQL: decrement resource budget after claiming a task.
-_DECREMENT_BUDGET_SQL = text("""
-    UPDATE resource_budgets
-    SET consumed = CASE
-            WHEN now() >= period_start + (period_hours || ' hours')::interval
-            THEN 1
-            ELSE consumed + 1
-        END,
-        period_start = CASE
-            WHEN now() >= period_start + (period_hours || ' hours')::interval
-            THEN now()
-            ELSE period_start
-        END
-    WHERE resource_type = :resource_type
-""")
-
-
 def claim_next_task(worker_id: str, resource_type: str | None = None) -> dict | None:
-    """Claim the next available task, optionally for a specific resource type."""
+    """Claim the next available task, optionally for a specific resource type.
+
+    Budget is NOT decremented here — it is tracked per actual API call
+    at the call site via acquire_budget(). The claim query only checks
+    remaining budget as a gate to avoid claiming work we can't execute.
+    """
     with engine.connect() as conn:
         if resource_type:
             row = conn.execute(
@@ -117,8 +139,6 @@ def claim_next_task(worker_id: str, resource_type: str | None = None) -> dict | 
             conn.commit()
             return None
         task = dict(row)
-        if task.get("resource_type"):
-            conn.execute(_DECREMENT_BUDGET_SQL, {"resource_type": task["resource_type"]})
         conn.commit()
         return task
 
@@ -198,6 +218,12 @@ async def _execute_task(task: dict, handlers: dict) -> None:
         result = await handler(task)
         mark_done(task_id, result)
         logger.info(f"Completed task {task_id}: {task_type} {subject} -> {result}")
+    except (ResourceExhaustedError, ResourceThrottledError) as e:
+        # Infrastructure signals — requeue without counting as a retry.
+        # The worker will stop claiming tasks for this resource until
+        # the budget resets or backoff expires.
+        requeue(task_id, str(e))
+        logger.info(f"Task {task_id} requeued ({type(e).__name__}): {e}")
     except Exception as e:
         error_msg = f"{type(e).__name__}: {e}"
         if task["retry_count"] < task["max_retries"]:

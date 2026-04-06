@@ -1,6 +1,6 @@
 """Shared LLM call helper for ingest modules.
 
-Centralises the httpx -> Gemini API pattern: rate limiting, retries,
+Centralises the httpx -> Gemini API pattern: budget tracking, retries,
 429 backoff, JSON parsing.
 
 Usage:
@@ -10,16 +10,23 @@ Usage:
     text = await call_llm_text(prompt, max_tokens=20)
     # text is raw string or None on failure
 
-Note: function names kept as call_llm/call_llm_text for backwards
-
+Budget and rate limiting are handled by acquire_budget("gemini") which
+reads limits from the database. See app/ingest/budget.py.
 """
+
 import asyncio
 import json
 import logging
 
 import httpx
 
-from app.ingest.rate_limit import GEMINI_LIMITER
+from app.ingest.budget import (
+    ResourceExhaustedError,
+    ResourceThrottledError,
+    acquire_budget,
+    record_success,
+    record_throttle,
+)
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -40,10 +47,12 @@ async def call_llm(
     if not settings.GEMINI_API_KEY:
         return None
 
+    if not await acquire_budget("gemini"):
+        raise ResourceExhaustedError("gemini")
+
     url = _GEMINI_URL.format(model=settings.GEMINI_MODEL)
 
     for attempt in range(retries):
-        await GEMINI_LIMITER.acquire()
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(
@@ -65,10 +74,8 @@ async def call_llm(
             continue
 
         if resp.status_code == 429:
-            wait = min(2**attempt * 15, 120)
-            logger.warning(f"Gemini 429, backing off {wait}s (attempt {attempt + 1}/{retries})")
-            await asyncio.sleep(wait)
-            continue
+            await record_throttle("gemini")
+            raise ResourceThrottledError("gemini")
 
         if resp.status_code != 200:
             logger.warning(f"Gemini API {resp.status_code}: {resp.text[:200]}")
@@ -83,6 +90,7 @@ async def call_llm(
                 .get("text", "")
                 .strip()
             )
+            await record_success("gemini")
             return json.loads(text_content)
         except (json.JSONDecodeError, IndexError, KeyError) as e:
             logger.warning(f"Failed to parse LLM response: {e}")
@@ -102,10 +110,12 @@ async def call_llm_text(
     if not settings.GEMINI_API_KEY:
         return None
 
+    if not await acquire_budget("gemini"):
+        raise ResourceExhaustedError("gemini")
+
     url = _GEMINI_URL.format(model=settings.GEMINI_MODEL)
 
     for attempt in range(retries):
-        await GEMINI_LIMITER.acquire()
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:
                 resp = await client.post(
@@ -126,10 +136,8 @@ async def call_llm_text(
             continue
 
         if resp.status_code == 429:
-            wait = min(2**attempt * 15, 120)
-            logger.warning(f"Gemini 429, backing off {wait}s (attempt {attempt + 1}/{retries})")
-            await asyncio.sleep(wait)
-            continue
+            await record_throttle("gemini")
+            raise ResourceThrottledError("gemini")
 
         if resp.status_code != 200:
             logger.warning(f"Gemini API {resp.status_code}: {resp.text[:200]}")
@@ -144,6 +152,7 @@ async def call_llm_text(
                 .get("text", "")
                 .strip()
             )
+            await record_success("gemini")
             return text or None
         except (IndexError, KeyError) as e:
             logger.warning(f"Failed to parse LLM response: {e}")

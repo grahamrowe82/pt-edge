@@ -1,7 +1,10 @@
 """Shared rate limiters for external API calls.
 
-Gemini: 1000 RPM paid tier — we use 800 for safety margin.
 OpenAI: 500 RPM — we use 400 for safety margin.
+
+Note: Gemini rate limiting has moved to app/ingest/budget.py which
+tracks RPM and daily budget via the database. OpenAI will follow in
+a future PR.
 
 Usage:
 
@@ -35,4 +38,3 @@ class RateLimiter:
 
 
 OPENAI_LIMITER = RateLimiter(rpm=settings.OPENAI_RPM)
-GEMINI_LIMITER = RateLimiter(rpm=settings.GEMINI_RPM)

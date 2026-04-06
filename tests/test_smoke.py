@@ -873,13 +873,11 @@ class TestRateLimiter:
     """RateLimiter enforces minimum interval between calls."""
 
     def test_import(self):
-        from app.ingest.rate_limit import RateLimiter, GEMINI_LIMITER, OPENAI_LIMITER
-        assert isinstance(GEMINI_LIMITER, RateLimiter)
+        from app.ingest.rate_limit import RateLimiter, OPENAI_LIMITER
         assert isinstance(OPENAI_LIMITER, RateLimiter)
 
     def test_rpm_setting(self):
-        from app.ingest.rate_limit import GEMINI_LIMITER, OPENAI_LIMITER
-        assert GEMINI_LIMITER.rpm == 800
+        from app.ingest.rate_limit import OPENAI_LIMITER
         assert OPENAI_LIMITER.rpm == 400
 
     def test_interval_calculation(self):
@@ -892,6 +890,21 @@ class TestRateLimiter:
         from app.ingest.rate_limit import RateLimiter
         limiter = RateLimiter(rpm=6000)  # fast for testing
         asyncio.run(limiter.acquire())  # should not raise
+
+
+class TestBudgetModule:
+    """Budget module provides acquire/throttle/success API."""
+
+    def test_import(self):
+        from app.ingest.budget import (
+            acquire_budget, record_throttle, record_success,
+            ResourceExhaustedError, ResourceThrottledError,
+        )
+        assert callable(acquire_budget)
+        assert callable(record_throttle)
+        assert callable(record_success)
+        assert issubclass(ResourceExhaustedError, Exception)
+        assert issubclass(ResourceThrottledError, Exception)
 
 
 class TestCrateDownloads:
@@ -1092,12 +1105,12 @@ def test_llm_helper_import():
     assert callable(call_llm_text)
 
 
-def test_llm_helper_uses_rate_limiter():
-    """Shared LLM helper uses GEMINI_LIMITER."""
+def test_llm_helper_uses_budget():
+    """Shared LLM helper uses acquire_budget for rate limiting."""
     import inspect
     from app.ingest import llm
     source = inspect.getsource(llm)
-    assert "GEMINI_LIMITER" in source
+    assert "acquire_budget" in source
 
 
 def test_subcategory_llm_import():
@@ -1260,14 +1273,13 @@ class TestAntiPatterns:
             )
             if uses_llm:
                 has_limiter = (
-                    "GEMINI_LIMITER" in source
-                    or "GEMINI_LIMITER" in source
+                    "acquire_budget" in source
                     or "call_llm" in source
                     or "call_llm_text" in source
                 )
                 assert has_limiter, (
                     f"app/ingest/{name}.py calls an LLM API "
-                    f"without a rate limiter or call_llm helper."
+                    f"without acquire_budget or call_llm helper."
                 )
 
     def test_openai_calls_use_rate_limiter(self):
@@ -1277,9 +1289,9 @@ class TestAntiPatterns:
         from app import embeddings
         source = inspect.getsource(embeddings)
         if "embeddings.create" in source:
-            assert "OPENAI_LIMITER" in source, (
+            assert "OPENAI_LIMITER" in source or "acquire_budget" in source, (
                 "app/embeddings.py calls the OpenAI API "
-                "without OPENAI_LIMITER. Import and await it."
+                "without OPENAI_LIMITER or acquire_budget."
             )
 
     def test_no_sleep_as_rate_limit(self):
