@@ -162,15 +162,39 @@ def reap_stale_tasks() -> int:
 
 
 def reset_expired_budgets() -> int:
-    """Reset resource budgets whose period has expired."""
+    """Reset resource budgets whose period has expired.
+
+    Handles both rolling (period_start + period_hours) and calendar
+    (reset at reset_hour in reset_tz) modes.
+    """
     with engine.connect() as conn:
-        result = conn.execute(text("""
+        # Rolling resets
+        r1 = conn.execute(text("""
             UPDATE resource_budgets
             SET consumed = 0, period_start = now()
-            WHERE now() >= period_start + (period_hours || ' hours')::interval
+            WHERE reset_mode = 'rolling'
+              AND now() >= period_start + (period_hours || ' hours')::interval
+        """))
+        # Calendar resets
+        r2 = conn.execute(text("""
+            UPDATE resource_budgets
+            SET consumed = 0,
+                period_start = (
+                    date_trunc('day', now() AT TIME ZONE reset_tz)
+                    + (reset_hour || ' hours')::interval
+                ) AT TIME ZONE reset_tz
+            WHERE reset_mode = 'calendar'
+              AND period_start < (
+                  date_trunc('day', now() AT TIME ZONE reset_tz)
+                  + (reset_hour || ' hours')::interval
+              ) AT TIME ZONE reset_tz
+              AND now() >= (
+                  date_trunc('day', now() AT TIME ZONE reset_tz)
+                  + (reset_hour || ' hours')::interval
+              ) AT TIME ZONE reset_tz
         """))
         conn.commit()
-        return result.rowcount
+        return r1.rowcount + r2.rowcount
 
 
 def cleanup_old_tasks() -> int:
