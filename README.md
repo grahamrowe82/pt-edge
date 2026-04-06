@@ -1,45 +1,24 @@
 # PT-Edge — AI Infrastructure Intelligence
 
-PT-Edge tracks 220,000+ AI repos across GitHub, PyPI, npm, Docker Hub, and HuggingFace, scores them daily on quality, and publishes the results as a directory site and via MCP tools and REST API.
+PT-Edge is a precomputed reasoning cache for AI infrastructure decisions. It tracks 220,000+ AI repos across GitHub, PyPI, npm, Docker Hub, HuggingFace, and Hacker News, scores them daily on quality, and publishes the results as a 220,000+ page directory site.
 
-**Directory site:** [mcp.phasetransitions.ai](https://mcp.phasetransitions.ai) — 165,000+ pages across 17 domains with 2,400 categories, updated daily.
+The site serves two audiences: **AI agents** reading pages on behalf of humans (structured, front-loaded, machine-readable) and **humans** reading directly (navigable, trustworthy, original analysis). Every page is designed so an AI agent can land on it and walk away with a confident, citable recommendation in one pass.
 
-**Built by [Phase Transitions](https://phasetransitionsai.substack.com/)**
+Every major AI lab's crawl infrastructure treats the site as a primary data source. The access logs are themselves an intelligence layer — see [Demand Radar](#demand-radar) below.
 
-## Directory Domains
+**Directory site:** [mcp.phasetransitions.ai](https://mcp.phasetransitions.ai) — 220,000+ pages across 17 domains with 2,400+ categories, updated daily.
 
-| Domain | Pages | Categories | Path |
-|--------|-------|-----------|------|
-| ML Frameworks | 49,120 | 715 | `/ml-frameworks/` |
-| LLM Tools | 26,982 | 346 | `/llm-tools/` |
-| AI Agents | 18,934 | 198 | `/agents/` |
-| MCP Servers | 12,551 | 178 | `/` |
-| NLP | 12,023 | 236 | `/nlp/` |
-| RAG Tools | 8,511 | 107 | `/rag/` |
-| Voice AI | 6,703 | 125 | `/voice-ai/` |
-| Transformers | 5,654 | 96 | `/transformers/` |
-| Generative AI | 5,377 | 89 | `/generative-ai/` |
-| Embeddings | 3,915 | 68 | `/embeddings/` |
-| Prompt Engineering | 3,899 | 64 | `/prompt-engineering/` |
-| Diffusion Models | 3,952 | 57 | `/diffusion/` |
-| AI Coding Tools | 3,733 | 52 | `/ai-coding/` |
-| Vector Databases | 2,847 | 48 | `/vector-db/` |
-| Computer Vision | 382 | 9 | `/computer-vision/` |
-| Data Engineering | 388 | 2 | `/data-engineering/` |
-| MLOps | 94 | 2 | `/mlops/` |
-
-Every project page includes a composite quality score (0-100) computed from four dimensions — maintenance, adoption, maturity, community — plus AI-generated technical summaries, live metrics paragraphs, risk flags, and structured data for search engines.
+**Built by [Graham Rowe](https://phasetransitionsai.substack.com/)**
 
 ## How It Works
 
-- **Daily ingest pipeline** pulls GitHub stats, package downloads, releases, HN posts, HuggingFace models/datasets, public API specs, and npm registry data
-- **Quality scoring** via materialized views: composite 0-100 score from maintenance (commits, push recency), adoption (stars, downloads, reverse deps), maturity (license, packaging, age), and community (forks, fork/star ratio)
-- **AI summaries** from READMEs via Claude Haiku — 2-3 sentences of technical depth beyond the GitHub description
-- **Daily metric snapshots** for all 220K repos — stars, forks, downloads, commits tracked over time
-- **Embedding-based category discovery** — 1536d embeddings + UMAP + HDBSCAN clustering + LLM labelling discovers 2,400 search-intent-aligned categories automatically
-- **Static site generation** via Jinja2 templates + Tailwind CSS, served from FastAPI alongside the MCP server and REST API
-- **47 MCP tools** for programmatic access via Claude Desktop, Claude.ai, and any MCP client
-- **REST API** with keyed access for B2B integrations
+1. **Ingest** — daily pipeline pulls GitHub stats, package downloads, releases, HN posts, HuggingFace models/datasets, and registry data
+2. **Score** — composite quality score (0-100) from four dimensions: maintenance, adoption, maturity, community
+3. **Enrich** — LLM-generated technical summaries, practitioner-focused assessments, and comparison analyses from READMEs
+4. **Publish** — static site generation across 17 domains with structured data, internal linking, and freshness signals
+5. **Observe** — bot traffic analysis reveals what the AI ecosystem values (Demand Radar)
+
+The entire system runs on a single server instance for under $300/month.
 
 ## Quality Scoring
 
@@ -52,34 +31,31 @@ Every project page includes a composite quality score (0-100) computed from four
 
 **Tiers:** Verified (70-100), Established (50-69), Emerging (30-49), Experimental (10-29)
 
+## Demand Radar
+
+Every bot hit on the site is latent intelligence. The access logs carry three layers of signal:
+
+- **Indexing bots** (Meta, Anthropic, Amazon, Google, Perplexity, OpenAI) — what AI companies think will be valuable in future model weights. Each bot has a distinct crawl strategy that reveals its parent company's priorities.
+- **User-action bots** (ChatGPT-User, OAI-SearchBot, Perplexity-User) — what real humans are asking AI right now. Each hit represents a practitioner making a technology decision through an AI intermediary.
+- **Human visitors** — what people find through search engines directly.
+
+The Demand Radar extracts these signals and feeds them into content prioritisation — eventually via trained ML models rather than hand-tuned weights. See [`scratch/demand-radar/`](scratch/demand-radar/) for the full analysis.
+
 ## Stack
 
-- **Runtime:** Python 3.11, FastAPI, FastMCP
-- **Database:** PostgreSQL 16 with pgvector
-- **Embeddings:** OpenAI text-embedding-3-large (256d)
-- **LLM:** Claude Haiku 4.5 (summaries, classification, enrichment)
-- **Site:** Jinja2 + Tailwind CSS (static, generated at startup)
-- **Hosting:** Render (web service + cron + managed Postgres)
+Python, FastAPI, PostgreSQL + pgvector, LLM enrichment (multiple providers), static site generation via Jinja2 + Tailwind CSS. Hosted on Render. MCP tools and REST API for programmatic access.
 
 ## Development
 
-```bash
-git clone https://github.com/grahamrowe82/pt-edge.git
-cd pt-edge
-cp .env.example .env  # Add your API keys
-docker compose up -d  # Start database
-alembic upgrade head  # Run migrations
-uvicorn app.main:app --reload  # Start server
-python scripts/ingest_all.py   # Run daily ingest
-python scripts/generate_site.py --domain mcp --output-dir site  # Generate directory
-```
+This is a production system with no staging environment. The database is a live 1GB+ PostgreSQL instance — queries hit real data. See [`docs/development.md`](docs/development.md) for setup notes and safety rules.
 
 ## Documentation
 
 - [`docs/strategy.md`](docs/strategy.md) — strategic positioning and reasoning
 - [`docs/roadmap.md`](docs/roadmap.md) — phased build plan
-- [`docs/site-audit.md`](docs/site-audit.md) — live site issues and quality fixes
-- [`docs/audit.md`](docs/audit.md) — MCP tool output audit
+- [`docs/design/worker-architecture.md`](docs/design/worker-architecture.md) — task queue and worker design
+- [`docs/development.md`](docs/development.md) — development setup and database safety
+- [`scratch/demand-radar/`](scratch/demand-radar/) — access log intelligence analysis
 
 ## License
 
