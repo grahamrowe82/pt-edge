@@ -83,7 +83,7 @@ The scheduler caps fine-grained tasks at 500 pending with 1,000 per batch, refil
 
 ### 1c. Add missing domains
 
-Expand the topic list in `ai_repos.py` to cover fields we're currently ignoring entirely.
+Expand the topic list in `ai_repo_domains.py` to cover fields we're currently ignoring entirely.
 
 **New domains and topics:**
 
@@ -103,7 +103,7 @@ Expand the topic list in `ai_repos.py` to cover fields we're currently ignoring 
 
 **Impact:** 70,000-125,000 new repos discovered over 2-3 weeks of daily crawls. Total repo count reaches 320K-370K.
 
-**Prerequisite:** Each new domain needs a corresponding quality view (`mv_*_quality`) and an entry in `DOMAIN_VIEW_MAP`, `DOMAIN_CONFIG`, and `start.sh` for site generation. This is mechanical but not zero work.
+**Prerequisite:** Each new domain needs a corresponding quality view (`mv_*_quality`) and an entry in `DOMAIN_VIEW_MAP` (duplicated in `enrich_repo_brief.py` and `project_briefs.py`), `DOMAIN_CONFIG` (in `generate_site.py`), `DOMAIN_ORDER` (in `ai_repo_domains.py`), and `start.sh` for site generation. This is mechanical but not zero work.
 
 ### Phase 1 summary
 

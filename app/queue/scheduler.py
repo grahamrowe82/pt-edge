@@ -68,6 +68,13 @@ def schedule_fetch_readmes() -> int:
                     AND rc.subject_id = ar.full_name
                     AND rc.fetched_at > now() - interval '90 days'
               )
+              AND NOT EXISTS (
+                  SELECT 1 FROM tasks t
+                  WHERE t.task_type = 'fetch_readme'
+                    AND t.subject_id = ar.full_name
+                    AND t.state = 'failed'
+                    AND t.completed_at > now() - interval '7 days'
+              )
             ORDER BY ar.stars DESC NULLS LAST
             LIMIT :lim
             ON CONFLICT (task_type, subject_id)
@@ -108,6 +115,13 @@ def schedule_enrich_summaries() -> int:
               AND ar.description <> ''
               AND rc.payload IS NOT NULL
               AND length(rc.payload) >= 100
+              AND NOT EXISTS (
+                  SELECT 1 FROM tasks t
+                  WHERE t.task_type = 'enrich_summary'
+                    AND t.subject_id = ar.full_name
+                    AND t.state = 'failed'
+                    AND t.completed_at > now() - interval '7 days'
+              )
             ORDER BY ar.stars DESC NULLS LAST
             LIMIT :lim
             ON CONFLICT (task_type, subject_id)
@@ -269,6 +283,13 @@ def schedule_enrich_repo_briefs() -> int:
               AND ar.description IS NOT NULL
               AND ar.description <> ''
               AND ar.ai_summary IS NOT NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM tasks t
+                  WHERE t.task_type = 'enrich_repo_brief'
+                    AND t.subject_id = ar.id::text
+                    AND t.state = 'failed'
+                    AND t.completed_at > now() - interval '7 days'
+              )
             ORDER BY ar.stars DESC NULLS LAST
             LIMIT :lim
             ON CONFLICT (task_type, subject_id)
@@ -446,6 +467,14 @@ def schedule_backfill_created_at() -> int:
             SELECT 'backfill_created_at', ar.id::text, 2, 'github_api'
             FROM ai_repos ar
             WHERE ar.created_at IS NULL
+              AND ar.archived = false
+              AND NOT EXISTS (
+                  SELECT 1 FROM tasks t
+                  WHERE t.task_type = 'backfill_created_at'
+                    AND t.subject_id = ar.id::text
+                    AND t.state = 'failed'
+                    AND t.completed_at > now() - interval '7 days'
+              )
             ORDER BY ar.stars DESC NULLS LAST
             LIMIT 1000
             ON CONFLICT (task_type, subject_id)
@@ -739,6 +768,40 @@ def check_pipeline_freshness() -> None:
                 logger.error(f"HEALTH: {name} is stale — no successful run in the last 24 hours")
 
 
+def report_failure_summary() -> None:
+    """Log a summary of task failures in the last 24 hours.
+
+    Groups by task_type and error class so repeated failures are visible
+    as a pattern, not buried in individual log lines.
+    """
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT task_type,
+                   substring(error_message from 1 for 80) AS error_class,
+                   count(*) AS n,
+                   count(DISTINCT subject_id) AS unique_subjects
+            FROM tasks
+            WHERE state = 'failed'
+              AND completed_at > now() - interval '24 hours'
+            GROUP BY 1, 2
+            ORDER BY n DESC
+            LIMIT 20
+        """)).fetchall()
+
+    if not rows:
+        logger.info("Task failure summary: 0 failures in the last 24h")
+        return
+
+    total = sum(r.n for r in rows)
+    lines = [f"Task failure summary: {total} failures in the last 24h"]
+    for r in rows:
+        lines.append(
+            f"  {r.n:>5d} failures ({r.unique_subjects} subjects) "
+            f"{r.task_type}: {r.error_class}"
+        )
+    logger.warning("\n".join(lines))
+
+
 def schedule_all() -> dict:
     """Run all scheduling rules. Returns counts of tasks created."""
     counts = {}
@@ -746,6 +809,7 @@ def schedule_all() -> dict:
     # Health checks first
     check_task_health()
     check_pipeline_freshness()
+    report_failure_summary()
 
     # Housekeeping
     reap_stale_tasks()

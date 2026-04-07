@@ -42,9 +42,11 @@ Expand topic coverage from 18 to 29 domains: reinforcement-learning, robotics, r
 
 **Files changed:**
 - `app/ingest/ai_repo_domains.py` — add entries to `DOMAINS` dict (topics + `min_stars` per domain), extend `DOMAIN_ORDER`
-- `scripts/generate_site.py` — add `DOMAIN_CONFIG` entry for each new domain (view name, labels, description, explainer)
-- `scripts/start.sh` — add site generation lines for each new domain
-- New Alembic migration — create `mv_*_quality` materialised views for each new domain
+- `scripts/generate_site.py` — add `DOMAIN_CONFIG` entry for each new domain (view name, snapshot table, labels, description, explainer)
+- `scripts/start.sh` — add site generation line for each new domain (one `generate_site.py --domain X --output-dir site/X` per domain)
+- `app/queue/handlers/enrich_repo_brief.py` — add entry to `DOMAIN_VIEW_MAP`
+- `app/ingest/project_briefs.py` — add entry to the duplicate `DOMAIN_VIEW_MAP` (these two maps should be consolidated eventually)
+- New Alembic migration — create `mv_*_quality` materialised views for each new domain (follow the template in migration 051)
 
 **Risk:** Largest Phase 1 PR. The migration creates 11 new MVs which will be empty until the first discovery run populates repos in those domains. Site generation should handle empty domains gracefully (verify before merging).
 
@@ -56,13 +58,15 @@ Expand topic coverage from 18 to 29 domains: reinforcement-learning, robotics, r
 
 PRs 4–7 are independent of each other. They can be built and merged in any order or in parallel. Each follows the same pattern: new ingest module → new handler → scheduler registration.
 
+**Handler pattern note:** The existing `discover_ai_repos` handler lives in the grouped file `compute_post_process.py`, not in its own file. New discovery handlers can follow either pattern — individual files or additions to the grouped file. Either way, they must be registered in `TASK_HANDLERS` in `__init__.py`.
+
 #### PR 4 — PyPI classifier discovery
 
 Discover AI repos via the PyPI `Topic :: Scientific/Engineering :: Artificial Intelligence` trove classifier. These are repos that published packages (strong usage signal) but may lack GitHub topic tags.
 
 **Files changed:**
 - `app/ingest/pypi_discovery.py` (new) — fetch classifier page / Simple API, resolve source URLs from `project_urls` metadata, cross-reference against `ai_repos`
-- `app/queue/handlers/discover_pypi.py` (new) — handler wrapping the ingest function
+- `app/queue/handlers/` — handler (new file or added to `compute_post_process.py`)
 - `app/queue/handlers/__init__.py` — register `discover_pypi` in `TASK_HANDLERS`
 - `app/queue/scheduler.py` — add weekly coarse task (`staleness_hours=168`, resource_type `pypi`)
 
@@ -77,10 +81,10 @@ Discover AI repos via the PyPI `Topic :: Scientific/Engineering :: Artificial In
 Find AI repos that lack topic tags but describe themselves as AI in their description or README. This is the biggest single opportunity — the 15–20% of repos invisible to topic search.
 
 **Files changed:**
-- `app/ingest/description_discovery.py` (new) — ~20 keyword queries (`"neural network" in:description language:python stars:>=5`, etc.), uses existing `adaptive_search()` from `github_search.py` for shard management
-- `app/queue/handlers/discover_description.py` (new) — handler
+- `app/ingest/description_discovery.py` (new) — ~20 keyword queries (`"neural network" in:description language:python stars:>=5`, etc.), reuse `adaptive_search()` from `github_search.py` for shard management
+- `app/queue/handlers/` — handler (new file or added to `compute_post_process.py`)
 - `app/queue/handlers/__init__.py` — register in `TASK_HANDLERS`
-- `app/queue/scheduler.py` — add weekly coarse task (`staleness_hours=168`, resource_type `github_search`)
+- `app/queue/scheduler.py` — add weekly coarse task (`staleness_hours=168`, resource_type `github_api` — there is no separate `github_search` resource type; all GitHub calls share one budget)
 
 **Expected yield:** 20,000–50,000 new repos. ~5,000–10,000 Search API calls per run.
 
@@ -96,7 +100,7 @@ Parse curated "awesome" lists for GitHub URLs we don't already track. Low volume
 
 **Files changed:**
 - `app/ingest/awesome_list_discovery.py` (new) — maintain a list of ~20 awesome-list repos, fetch each README, parse Markdown for GitHub URLs, cross-reference against `ai_repos`
-- `app/queue/handlers/discover_awesome.py` (new) — handler
+- `app/queue/handlers/` — handler (new file or added to `compute_post_process.py`)
 - `app/queue/handlers/__init__.py` — register in `TASK_HANDLERS`
 - `app/queue/scheduler.py` — add monthly coarse task (`staleness_hours=720`, resource_type `github_api`)
 
@@ -112,9 +116,9 @@ Cross-reference `hf_models` and `hf_datasets` for GitHub URLs not already in `ai
 
 **Files changed:**
 - `app/ingest/hf_linking.py` (new) — query HF tables for GitHub URLs, extract repo slugs, cross-reference against `ai_repos`, fetch metadata for new discoveries
-- `app/queue/handlers/discover_hf_linking.py` (new) — handler
+- `app/queue/handlers/` — handler (new file or added to `compute_post_process.py`)
 - `app/queue/handlers/__init__.py` — register in `TASK_HANDLERS`
-- `app/queue/scheduler.py` — add weekly coarse task, scheduled after `fetch_hf_models` / `fetch_hf_datasets`
+- `app/queue/scheduler.py` — add weekly coarse task (`staleness_hours=168`), scheduled after `fetch_hf_models` / `fetch_hf_datasets`
 
 **Expected yield:** 2,000–5,000 repos. Mostly DB-only with a few hundred GitHub calls for metadata.
 
@@ -145,7 +149,7 @@ Use PR 8's client to run the actual monthly discovery: look up dependents for al
 
 **Files changed:**
 - `app/ingest/dep_discovery.py` (new) — orchestrates the sweep: iterate seeds, call reverse-dep client, deduplicate, classify into domains (using existing embedding + nearest-domain logic), insert into `ai_repos`
-- `app/queue/handlers/discover_deps.py` (new) — handler
+- `app/queue/handlers/` — handler (new file or added to `compute_post_process.py`)
 - `app/queue/handlers/__init__.py` — register in `TASK_HANDLERS`
 - `app/queue/scheduler.py` — add monthly coarse task (`staleness_hours=720`)
 
