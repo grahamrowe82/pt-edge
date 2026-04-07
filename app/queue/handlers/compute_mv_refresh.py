@@ -12,7 +12,9 @@ async def handle_compute_mv_refresh(task: dict) -> dict:
     """Refresh all materialized views in dependency order.
 
     subject_id is unused (coarse-grained task).
+    Runs in a thread so the event loop stays responsive (1-3 minutes).
     """
+    import asyncio
     from app.views.refresh import refresh_all_views
-    result = refresh_all_views()
+    result = await asyncio.to_thread(refresh_all_views)
     return result

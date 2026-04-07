@@ -68,14 +68,20 @@ async def handle_compute_briefing_refresh(task: dict) -> dict:
 
 async def handle_export_dataset(task: dict) -> dict:
     """Push dataset export to GitHub + HuggingFace."""
-    import subprocess
-    result = subprocess.run(
-        ["bash", "scripts/push_dataset.sh"],
-        capture_output=True, text=True, timeout=120,
+    import asyncio
+    proc = await asyncio.create_subprocess_exec(
+        "bash", "scripts/push_dataset.sh",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
-    if result.returncode == 0:
-        return {"status": "pushed"}
-    raise RuntimeError(f"Dataset export failed: {result.stderr[:200]}")
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    except asyncio.TimeoutError:
+        proc.kill()
+        raise RuntimeError("Dataset export timed out after 120s")
+    if proc.returncode != 0:
+        raise RuntimeError(f"Dataset export failed: {stderr.decode()[:200]}")
+    return {"status": "pushed"}
 
 
 async def handle_discover_ai_repos(task: dict) -> dict:
@@ -88,16 +94,23 @@ async def handle_compute_structural(task: dict) -> dict:
     """Run weekly structural computation (comparison pairs, centroids, labels).
 
     Delegates to scripts/weekly_structural.py as a subprocess, same as
-    the existing Sunday cron job.
+    the existing Sunday cron job. Uses async subprocess so the event loop
+    stays responsive (heartbeats, scheduler, other resource slots).
     """
-    import subprocess
+    import asyncio
     import sys
     from pathlib import Path
     script = str(Path(__file__).parent.parent.parent.parent / "scripts" / "weekly_structural.py")
-    result = subprocess.run(
-        [sys.executable, script],
-        capture_output=True, text=True, timeout=3600,
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, script,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
-    if result.returncode == 0:
-        return {"status": "success"}
-    raise RuntimeError(f"weekly_structural failed: {result.stderr[:300]}")
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=3600)
+    except asyncio.TimeoutError:
+        proc.kill()
+        raise RuntimeError("weekly_structural timed out after 3600s")
+    if proc.returncode != 0:
+        raise RuntimeError(f"weekly_structural failed: {stderr.decode()[:300]}")
+    return {"status": "success"}
