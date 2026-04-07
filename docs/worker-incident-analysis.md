@@ -237,7 +237,167 @@ Nobody runs this. The worker doesn't run it. There's no cron for it. The informa
 
 ---
 
+---
+
+## Addendum: Orphaned Pipeline Tasks (2026-04-07, evening)
+
+Discovered while verifying the cleanup deployment. Three critical pipeline tasks — `compute_mv_refresh`, `export_static_site`, and `compute_structural` — have been stuck in `pending` state, never claimed by the worker. MV refresh hasn't run since April 5, which means no content budget, no Gemini enrichment, and no site deploys for 2 days.
+
+### What happened
+
+On April 5, the task queue was introduced in two steps:
+
+1. **19:39 (commit 81a04f0)** — Pipeline tasks (MV refresh, static site export, etc.) were migrated to the task queue. The worker at this point had a simple loop: `claim_next_task(WORKER_ID)` — no resource filtering. It claimed any pending task, including those with `resource_type = NULL`. MV refresh ran successfully.
+
+2. **22:26 (commit 6914398, 3 hours later)** — The worker was refactored for resource-aware concurrency. The loop changed to iterate over a fixed list of named resource slots (`github_api`, `gemini`, `openai`, etc.) and only claim tasks matching each slot. A fallback query (`_CLAIM_ANY_SQL`) was written for NULL-resource tasks, but the worker loop never calls it. The code path is dead.
+
+Tasks scheduled with `resource_type = NULL` — `compute_mv_refresh`, `export_static_site`, and `compute_content_budget` — became permanently unclaimable. The scheduler kept checking staleness and not re-creating them (because a `pending` task already existed), so they just sat there.
+
+### 5 Whys
+
+**1. Why didn't the worker claim these tasks?**
+
+The worker loop iterates `CONCURRENT_RESOURCES` (9 named resource types) and calls `claim_next_task(worker_id, resource_type=resource)` for each. This uses `_CLAIM_FOR_RESOURCE_SQL`, which filters `WHERE t.resource_type = :target_resource`. NULL doesn't match any named resource. The `_CLAIM_ANY_SQL` query (which handles NULL) exists but is only called when `resource_type=None` is passed to `claim_next_task()`, which the worker loop never does.
+
+**2. Why wasn't the dead code path caught during the refactor?**
+
+The concurrency refactor was done 3 hours after the task queue migration, in the same session. MV refresh had just run successfully under the old code, and the sync_log showed a recent success. The scheduler's staleness check (`last success > 6h ago`) wouldn't fire until the window elapsed — by which time nobody was watching. The success of the first change masked the breakage of the second.
+
+**3. Why did nobody notice for 2 days?**
+
+`check_pipeline_freshness()` correctly detected the problem within hours and logged `HEALTH: MV refresh is stale` at ERROR level every 15 minutes — approximately 192 times over 2 days. All ignored, because log-based alerts are write-only. They produce signals but nothing ensures a human sees them. The alert fired correctly; the notification channel doesn't exist.
+
+**4. Why is there no test that catches this class of bug?**
+
+There is no integration test for the task lifecycle. Nothing verifies "for every task_type the scheduler creates, the worker can actually claim and execute it." The scheduler and worker are tested (if at all) in isolation — the scheduler creates tasks, the worker processes tasks, but nobody checks that the contract between them holds. A mismatch in `resource_type` between creation and claiming is invisible unless you run both together.
+
+**5. Why is there no detection of orphaned tasks?**
+
+The stale task reaper (`reap_stale_tasks()`) catches tasks stuck in `claimed` state with dead heartbeats — a worker crashed mid-execution. But it doesn't check for tasks stuck in `pending` state that were never claimed. A task that sits in `pending` for hours is a different failure mode: not a crashed worker, but a task the worker doesn't know how to pick up. Nothing monitors for this.
+
+### Blast radius
+
+The MV refresh → content budget → enrichment pipeline has been stalled for 2 days:
+
+| Task | State | Stuck since | Downstream impact |
+|---|---|---|---|
+| `compute_mv_refresh` | pending | 2026-04-06 01:18 | No fresh materialized views |
+| `compute_content_budget` | never created | — | Budget gate blocks all Gemini enrichment |
+| `export_static_site` | pending | unknown | No site deploys |
+| `compute_structural` | pending | unknown (id 25) | No weekly structural analysis |
+| All Gemini enrichment | not scheduled | — | 10,000/day Gemini budget sitting unused |
+
+### Cross-cutting issues this exposes
+
+**1. Log-based health alerts are insufficient**
+
+`check_pipeline_freshness()` detected the problem correctly and immediately. The mechanism works. The delivery doesn't. ERROR-level log lines are invisible unless someone is reading logs — which is the exact scenario these alerts are supposed to prevent. Health checks need a notification channel that reaches a human: a webhook, a daily email, or at minimum a table that accumulates alerts so they're visible in the failure summary.
+
+**2. No orphan detection for pending tasks**
+
+The system monitors two failure modes:
+- Tasks that fail (error classification, failure summary) ✓
+- Tasks stuck in claimed state (stale task reaper) ✓
+
+It doesn't monitor:
+- Tasks stuck in pending state that are never claimed ✗
+- Task types the scheduler creates but the worker can't process ✗
+- Pipeline stages that should have run but didn't ✗
+
+A task in `pending` for >1 hour with `retry_count = 0` has never been claimed. That's always suspicious.
+
+**3. Refactors done in the same session as migrations are invisible**
+
+When you migrate a process to a new system and then refactor the new system in the same sitting, the old success masks the new breakage. The staleness window hasn't elapsed, so the scheduler thinks everything is fine. This is a human process issue, not a code issue — but orphan detection (above) would catch it mechanically.
+
+**4. No contract test between scheduler and worker**
+
+The scheduler creates tasks with specific `resource_type` values. The worker claims tasks by iterating a hardcoded list of resource types. These two lists are not derived from the same source. When they diverge — as they did here — tasks become unclaimable. A periodic check that every pending task's `resource_type` is either NULL (with a claiming path) or in the worker's `CONCURRENT_RESOURCES` list would catch this.
+
+---
+
+## Implementation Plan: Orphaned Task Fixes
+
+### PR 6: Fix NULL-resource task claiming in worker loop
+
+**Why first:** The pipeline is stalled. MV refresh, site export, and content budget are all blocked. This unblocks them immediately.
+
+**Scope:**
+
+Add a `None` slot to the worker loop so it claims NULL-resource tasks via the existing `_CLAIM_ANY_SQL` query. After iterating all named resource slots, attempt to claim one NULL-resource task if no slot is occupied for it:
+
+```python
+# After the CONCURRENT_RESOURCES loop, claim NULL-resource tasks
+if "_none" not in running or running["_none"].done():
+    if "_none" in running:
+        del running["_none"]
+    task = claim_next_task(WORKER_ID, resource_type=None)
+    if task:
+        running["_none"] = asyncio.create_task(
+            _execute_task(task, TASK_HANDLERS)
+        )
+        claimed_any = True
+```
+
+Also delete the three stuck pending tasks so the scheduler can re-create them with a clean slate — they've been pending for over a day and may have stale staleness checks.
+
+**Files:**
+- `app/queue/worker.py` — add NULL-resource claiming to `worker_loop()`
+
+**Verification:**
+- Delete the stuck tasks: `DELETE FROM tasks WHERE id IN (1072614, 25, 1050);`
+- Deploy, confirm scheduler creates fresh `compute_mv_refresh` task
+- Confirm worker claims and executes it within one cycle
+- Confirm `sync_log` shows a fresh MV refresh success
+- Confirm content budget is computed and Gemini enrichment resumes
+
+### PR 7: Add orphan detection to scheduler health checks
+
+**Why second:** Prevents this class of bug from going unnoticed again. Even if the fix in PR 6 is correct today, a future refactor could re-introduce the same problem.
+
+**Scope:**
+
+Add `check_orphaned_tasks()` to the scheduler health checks. Query for tasks stuck in `pending` for over 1 hour with `retry_count = 0` (never claimed):
+
+```sql
+SELECT task_type, resource_type, count(*),
+       min(created_at) AS oldest
+FROM tasks
+WHERE state = 'pending'
+  AND created_at < now() - interval '1 hour'
+  AND retry_count = 0
+GROUP BY 1, 2
+```
+
+Log at ERROR level if any are found. Include the `resource_type` so the error message directly points at why the worker can't claim them.
+
+Also add a contract check: verify that every `resource_type` in pending tasks is either NULL or present in the worker's `CONCURRENT_RESOURCES` list. Log ERROR if a pending task has a `resource_type` the worker doesn't know about.
+
+**Files:**
+- `app/queue/scheduler.py` — add `check_orphaned_tasks()`, call from `schedule_all()`
+- `app/queue/worker.py` — export `CONCURRENT_RESOURCES` (it's already module-level, just needs to be importable)
+
+**Verification:**
+- Temporarily insert a task with a bogus `resource_type` (e.g. `'nonexistent'`)
+- Confirm the health check logs an ERROR about it within one scheduler cycle
+- Delete the test task
+
+### PR 8 (future): Health check notification channel
+
+**Why deferred:** Requires choosing an external service (Slack webhook, email, etc.) which is an infrastructure decision beyond a code fix. But this is the real gap — `check_pipeline_freshness()` has been correctly detecting the MV refresh stall for 2 days and logging 192 ERROR lines that nobody read.
+
+**Options (from simplest to most robust):**
+1. **Daily health digest to a DB table** — `health_alerts` table, one row per alert, queryable via psql or MCP. Lowest effort, still requires someone to look.
+2. **Webhook to Slack/Discord** — Push alerts to a channel. Requires a webhook URL. Medium effort, actually reaches a human.
+3. **Email via SendGrid/SES** — Daily digest of health alerts. Requires email service setup.
+
+The right answer depends on what you actually look at daily. If you check Slack, use a webhook. If you check email, send a digest. If you only check psql, a table is fine. The mechanism matters less than "does it reach you?"
+
+---
+
 ## Recovery Required
+
+
 
 | Error Class | Rows | Recovery Action |
 |---|---|---|
