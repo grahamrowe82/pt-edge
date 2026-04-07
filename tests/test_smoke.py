@@ -1,5 +1,6 @@
 """Smoke tests — catch import errors and basic endpoint issues before deploy."""
 import json
+import logging
 import re
 import pytest
 
@@ -1592,6 +1593,7 @@ def test_api_docs_template_rate_limits_consistent():
 def _db_available() -> bool:
     """Check if the database is reachable."""
     try:
+        from sqlalchemy import text
         from app.db import engine
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
@@ -1606,6 +1608,7 @@ class TestWorkerIntegration:
 
     def _create_test_task(self, conn):
         """Create a throwaway task and return its id."""
+        from sqlalchemy import text
         row = conn.execute(text("""
             INSERT INTO tasks (task_type, subject_id, state, priority)
             VALUES ('_test_smoke', '_test_' || gen_random_uuid()::text, 'claimed', 1)
@@ -1615,6 +1618,7 @@ class TestWorkerIntegration:
         return row[0]
 
     def _cleanup(self, conn, task_id):
+        from sqlalchemy import text
         conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
         conn.commit()
 
@@ -1682,3 +1686,215 @@ class TestWorkerIntegration:
         finally:
             with engine.connect() as conn:
                 self._cleanup(conn, task_id)
+
+    def test_requeue_increments_retry_by_default(self):
+        """requeue() increments retry_count when increment_retry is True (default)."""
+        from sqlalchemy import text
+        from app.db import engine
+        from app.queue.worker import requeue
+
+        with engine.connect() as conn:
+            task_id = self._create_test_task(conn)
+        try:
+            requeue(task_id, "test error")
+            with engine.connect() as conn:
+                row = conn.execute(text(
+                    "SELECT state, retry_count, error_message FROM tasks WHERE id = :id"
+                ), {"id": task_id}).fetchone()
+            assert row.state == "pending"
+            assert row.retry_count == 1
+            assert row.error_message == "test error"
+        finally:
+            with engine.connect() as conn:
+                self._cleanup(conn, task_id)
+
+    def test_requeue_skips_increment_when_told(self):
+        """requeue(increment_retry=False) does NOT increment retry_count."""
+        from sqlalchemy import text
+        from app.db import engine
+        from app.queue.worker import requeue
+
+        with engine.connect() as conn:
+            task_id = self._create_test_task(conn)
+        try:
+            requeue(task_id, "rate limited", increment_retry=False)
+            with engine.connect() as conn:
+                row = conn.execute(text(
+                    "SELECT state, retry_count FROM tasks WHERE id = :id"
+                ), {"id": task_id}).fetchone()
+            assert row.state == "pending"
+            assert row.retry_count == 0
+        finally:
+            with engine.connect() as conn:
+                self._cleanup(conn, task_id)
+
+    def test_mark_failed_sets_state_and_error(self):
+        """mark_failed() sets state='failed' and records error_message."""
+        from sqlalchemy import text
+        from app.db import engine
+        from app.queue.worker import mark_failed
+
+        with engine.connect() as conn:
+            task_id = self._create_test_task(conn)
+        try:
+            mark_failed(task_id, "PermanentTaskError: GitHub 451 for foo/bar")
+            with engine.connect() as conn:
+                row = conn.execute(text(
+                    "SELECT state, error_message FROM tasks WHERE id = :id"
+                ), {"id": task_id}).fetchone()
+            assert row.state == "failed"
+            assert "451" in row.error_message
+        finally:
+            with engine.connect() as conn:
+                self._cleanup(conn, task_id)
+
+
+@pytest.mark.skipif(not _db_available(), reason="No database connection")
+class TestWorkerNullResourceClaiming:
+    """Tests that the worker can claim tasks with NULL resource_type."""
+
+    def test_claim_null_resource_task(self):
+        """claim_next_task(resource_type=None) claims NULL-resource tasks."""
+        from sqlalchemy import text
+        from app.db import engine
+        from app.queue.worker import claim_next_task
+
+        with engine.connect() as conn:
+            row = conn.execute(text("""
+                INSERT INTO tasks (task_type, subject_id, state, priority, resource_type)
+                VALUES ('_test_null_resource', '_test_' || gen_random_uuid()::text, 'pending', 99, NULL)
+                RETURNING id
+            """)).fetchone()
+            conn.commit()
+            task_id = row[0]
+
+        try:
+            task = claim_next_task("test-worker", resource_type=None)
+            assert task is not None
+            assert task["task_type"] == "_test_null_resource"
+        finally:
+            with engine.connect() as conn:
+                conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
+                if task and task["id"] != task_id:
+                    conn.execute(text("""
+                        UPDATE tasks SET state = 'pending', claimed_by = NULL,
+                               claimed_at = NULL, heartbeat_at = NULL
+                        WHERE id = :id
+                    """), {"id": task["id"]})
+                conn.commit()
+
+    def test_claim_named_resource_does_not_grab_null(self):
+        """claim_next_task(resource_type='github_api') ignores NULL-resource tasks."""
+        from sqlalchemy import text
+        from app.db import engine
+        from app.queue.worker import claim_next_task
+
+        with engine.connect() as conn:
+            row = conn.execute(text("""
+                INSERT INTO tasks (task_type, subject_id, state, priority, resource_type)
+                VALUES ('_test_null_resource', '_test_' || gen_random_uuid()::text, 'pending', 1, NULL)
+                RETURNING id
+            """)).fetchone()
+            conn.commit()
+            task_id = row[0]
+
+        try:
+            task = claim_next_task("test-worker", resource_type="github_api")
+            if task is not None:
+                assert task["id"] != task_id
+        finally:
+            with engine.connect() as conn:
+                conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
+                conn.commit()
+
+
+@pytest.mark.skipif(not _db_available(), reason="No database connection")
+class TestOrphanDetection:
+    """Tests for check_orphaned_tasks() scheduler health check."""
+
+    def test_detects_stuck_pending_task(self):
+        """check_orphaned_tasks logs ERROR for tasks pending >1hr with retry_count=0."""
+        from sqlalchemy import text
+        from app.db import engine
+        from app.queue.scheduler import check_orphaned_tasks
+
+        with engine.connect() as conn:
+            row = conn.execute(text("""
+                INSERT INTO tasks (task_type, subject_id, state, priority, resource_type,
+                                   created_at, retry_count)
+                VALUES ('_test_orphan', '_test_orphan_subject', 'pending', 1, 'nonexistent',
+                        now() - interval '2 hours', 0)
+                RETURNING id
+            """)).fetchone()
+            conn.commit()
+            task_id = row[0]
+
+        try:
+            with _capture_logs("app.queue.scheduler", logging.ERROR) as logs:
+                check_orphaned_tasks()
+
+            error_lines = [r.message for r in logs]
+            assert any("_test_orphan" in line for line in error_lines), \
+                f"Expected orphan detection to log about _test_orphan, got: {error_lines}"
+            assert any("nonexistent" in line for line in error_lines), \
+                f"Expected resource_type mismatch warning, got: {error_lines}"
+        finally:
+            with engine.connect() as conn:
+                conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
+                conn.commit()
+
+    def test_ignores_recent_pending_task(self):
+        """check_orphaned_tasks ignores tasks pending <1hr."""
+        from sqlalchemy import text
+        from app.db import engine
+        from app.queue.scheduler import check_orphaned_tasks
+
+        with engine.connect() as conn:
+            row = conn.execute(text("""
+                INSERT INTO tasks (task_type, subject_id, state, priority, resource_type,
+                                   retry_count)
+                VALUES ('_test_fresh', '_test_fresh_subject', 'pending', 1, 'github_api', 0)
+                RETURNING id
+            """)).fetchone()
+            conn.commit()
+            task_id = row[0]
+
+        try:
+            with _capture_logs("app.queue.scheduler", logging.ERROR) as logs:
+                check_orphaned_tasks()
+
+            error_lines = [r.message for r in logs]
+            assert not any("_test_fresh" in line for line in error_lines), \
+                f"Should not flag recent pending task, got: {error_lines}"
+        finally:
+            with engine.connect() as conn:
+                conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
+                conn.commit()
+
+
+class _capture_logs:
+    """Context manager to capture log records at a given level."""
+
+    def __init__(self, logger_name, level):
+        self.logger_name = logger_name
+        self.level = level
+        self.records = []
+
+    def __enter__(self):
+        self._logger = logging.getLogger(self.logger_name)
+
+        class Collector(logging.Handler):
+            def __init__(self_, records):
+                super().__init__()
+                self_.records = records
+
+            def emit(self_, record):
+                self_.records.append(record)
+
+        self._handler = Collector(self.records)
+        self._handler.setLevel(self.level)
+        self._logger.addHandler(self._handler)
+        return self.records
+
+    def __exit__(self, *args):
+        self._logger.removeHandler(self._handler)
