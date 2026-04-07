@@ -1,8 +1,11 @@
 # Expanding the PT-Edge Universe
 
-*5 April 2026*
+*5 April 2026 — updated 7 April 2026*
 
+**Vision:** [master-plan.md](master-plan.md) — thesis, flywheel, and revenue model.
 **Implementation plan:** [discovery-expansion-implementation.md](discovery-expansion-implementation.md) — PR sequence, file-level scope, and dependency graph.
+
+> **Status as of 7 April 2026:** Phase 1 is ~70% complete. PRs 1 (backlog throttle) and 2 (daily discovery) are shipped. PR 3 (new domains) is not started — the 11 planned domains remain to be added. One unplanned domain (`perception` — web scraping/browser automation) was added separately. Phases 2 and 3 have not started. See inline status markers below.
 
 ## The Problem
 
@@ -65,25 +68,31 @@ This is a resource allocation failure, not a technical limitation.
 
 *Config changes only. No new code except tuning constants.*
 
-### 1a. Remove the backlog throttle
+### 1a. Remove the backlog throttle — DONE
 
 The scheduler caps fine-grained tasks at 500 pending with 1,000 per batch, refilled every 15 minutes. At 4,500 claims/hour the worker runs dry between refills.
 
 **Change:** Increase `PENDING_CAP` to 5,000 and `BATCH_LIMIT` to 5,000 for `fetch_readme` and `backfill_created_at`. The worker always has work available for the `github_api` slot.
 
+**What shipped:** Global `PENDING_CAP` and `BATCH_LIMIT` raised to 5,000 in `scheduler.py`. `fetch_readme` uses the global limits. `backfill_created_at` intentionally kept at 500/1,000 to avoid flooding the tasks table with 225K+ rows — it uses its own `schedule_backfill_created_at()` function with batch control.
+
 **Impact:** README and created_at backlogs clear in 4 days instead of 55. The github_api budget goes from 12% to ~80% utilised during the backlog clearing period, then drops back as the backlog drains.
 
-### 1b. Run discovery daily instead of weekly
+### 1b. Run discovery daily instead of weekly — DONE
 
 `discover_ai_repos` currently runs with `staleness_hours=168` (weekly). The Saturday cron job is gone. The task queue can run it every day.
 
 **Change:** Set `staleness_hours=24` for `discover_ai_repos` in the scheduler.
 
+**What shipped:** `staleness_hours=24` is live in `scheduler.py`.
+
 **Impact:** Discovery rate increases 7x for the same 3,000 calls per run. Incremental crawls (searching for repos pushed since the last run) become much more current — catching repos within 24 hours of their first push instead of within 7 days.
 
-### 1c. Add missing domains
+### 1c. Add missing domains — NOT STARTED
 
 Expand the topic list in `ai_repo_domains.py` to cover fields we're currently ignoring entirely.
+
+> **Note:** One unplanned domain — `perception` (web scraping, browser automation) — was added separately. The 11 domains listed below remain to be added.
 
 **New domains and topics:**
 
@@ -107,20 +116,22 @@ Expand the topic list in `ai_repo_domains.py` to cover fields we're currently ig
 
 ### Phase 1 summary
 
-| Metric | Before | After |
-|--------|--------|-------|
-| Backlog clear time | 55 days | 4 days |
-| Discovery frequency | Weekly | Daily |
-| Domains | 18 | 29 |
-| Estimated repos | 248K | 320-370K |
-| GitHub REST utilisation | 12% | 60-80% during backlog, 30% steady state |
-| GitHub Search utilisation | 1% | 7% |
+| Metric | Before | After | Status |
+|--------|--------|-------|--------|
+| Backlog clear time | 55 days | 4 days | DONE |
+| Discovery frequency | Weekly | Daily | DONE |
+| Domains | 17 | 29 | 18 (added perception; 11 planned domains remain) |
+| Estimated repos | 248K | 320-370K | Pending domain expansion |
+| GitHub REST utilisation | 12% | 60-80% during backlog, 30% steady state | DONE |
+| GitHub Search utilisation | 1% | 7% | DONE |
 
 ---
 
-## Phase 2: New Discovery Channels
+## Phase 2: New Discovery Channels — NOT STARTED
 
 *New task types and handlers. Finds repos that topic search can't reach.*
+
+> **Status as of 7 April 2026:** None of the four Phase 2 channels have been implemented. Database tables for awesome list ingestion (`awesome_list_sources`, `awesome_list_repos`) were created in migration 068 (coverage audit) but no production handler uses them yet.
 
 ### 2a. PyPI classifier discovery
 
@@ -210,7 +221,7 @@ Combined with Phase 1: **357K-455K repos.**
 
 ---
 
-## Phase 3: Dependency-Based Discovery
+## Phase 3: Dependency-Based Discovery — NOT STARTED
 
 *The deepest discovery channel. Finds repos by what they use, not what they say they are.*
 
