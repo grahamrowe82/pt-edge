@@ -17,6 +17,7 @@ from sqlalchemy import text
 
 from app.db import engine
 from app.ingest.budget import ResourceExhaustedError, ResourceThrottledError
+from app.queue.errors import PermanentTaskError
 
 logger = logging.getLogger(__name__)
 
@@ -166,19 +167,19 @@ def mark_failed(task_id: int, error: str) -> None:
         conn.commit()
 
 
-def requeue(task_id: int, error: str) -> None:
+def requeue(task_id: int, error: str, increment_retry: bool = True) -> None:
     """Return a task to pending state for retry."""
     with engine.connect() as conn:
         conn.execute(text("""
             UPDATE tasks
             SET state = 'pending',
-                retry_count = retry_count + 1,
+                retry_count = retry_count + :inc,
                 error_message = :error,
                 claimed_by = NULL,
                 claimed_at = NULL,
                 heartbeat_at = NULL
             WHERE id = :id
-        """), {"id": task_id, "error": error[:2000]})
+        """), {"id": task_id, "error": error[:2000], "inc": 1 if increment_retry else 0})
         conn.commit()
 
 
@@ -222,8 +223,12 @@ async def _execute_task(task: dict, handlers: dict) -> None:
         # Infrastructure signals — requeue without counting as a retry.
         # The worker will stop claiming tasks for this resource until
         # the budget resets or backoff expires.
-        requeue(task_id, str(e))
+        requeue(task_id, str(e), increment_retry=False)
         logger.info(f"Task {task_id} requeued ({type(e).__name__}): {e}")
+    except PermanentTaskError as e:
+        # Non-retryable errors (DMCA, gone, etc.) — fail immediately.
+        mark_failed(task_id, f"PermanentTaskError: {e}")
+        logger.warning(f"Task {task_id} permanently failed (non-retryable): {e}")
     except Exception as e:
         error_msg = f"{type(e).__name__}: {e}"
         if task["retry_count"] < task["max_retries"]:

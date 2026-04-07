@@ -14,6 +14,8 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine
+from app.ingest.budget import ResourceThrottledError
+from app.queue.errors import PermanentTaskError
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -56,7 +58,10 @@ async def handle_backfill_created_at(task: dict) -> dict:
         return {"status": "not_found"}
 
     if resp.status_code == 403:
-        raise RuntimeError(f"GitHub rate limited (403) for {full_name}")
+        raise ResourceThrottledError(f"GitHub rate limited (403) for {full_name}")
+
+    if resp.status_code in (451, 410):
+        raise PermanentTaskError(f"GitHub {resp.status_code} for {full_name}")
 
     if resp.status_code != 200:
         raise RuntimeError(f"GitHub {resp.status_code} for {full_name}")
