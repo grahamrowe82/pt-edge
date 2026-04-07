@@ -1,8 +1,10 @@
 # Discovery Expansion: Implementation Plan
 
-*5 April 2026 — companion to [discovery-expansion.md](discovery-expansion.md)*
+*5 April 2026 — updated 7 April 2026 — companion to [discovery-expansion.md](discovery-expansion.md)*
 
 This document maps the strategy doc's three phases into a sequence of pull requests, identifies the files each PR touches, and flags dependencies between them.
+
+> **Status as of 7 April 2026:** PRs 1 and 2 are shipped. PR 3 is not started. PRs 4–9 are not started.
 
 ---
 
@@ -10,35 +12,37 @@ This document maps the strategy doc's three phases into a sequence of pull reque
 
 ### Phase 1: Use What We Have
 
-#### PR 1 — Remove backlog throttle
+#### PR 1 — Remove backlog throttle ✅ SHIPPED
 
 Bump the scheduler constants so the worker always has work available for the `github_api` slot during backlog clearing.
 
 **Files changed:**
 - `app/queue/scheduler.py` — `PENDING_CAP` 500 → 5,000; `BATCH_LIMIT` 1,000 → 5,000 for `fetch_readme` and `backfill_created_at`
 
-**Risk:** GitHub REST utilisation jumps from 12% to ~80% during the clearing window. Monitor rate-limit headers for the first 24 hours.
+**What actually shipped:** Global `PENDING_CAP` and `BATCH_LIMIT` raised to 5,000. `backfill_created_at` kept its own lower limits (500/1,000) intentionally via `schedule_backfill_created_at()` to avoid flooding the tasks table. `fetch_readme` uses the global limits as planned.
 
-**Dependencies:** None. Ship first — every day of delay is another day on the 55-day backlog.
+**Dependencies:** None.
 
 ---
 
-#### PR 2 — Daily discovery
+#### PR 2 — Daily discovery ✅ SHIPPED
 
 Switch `discover_ai_repos` from weekly to daily so incremental crawls catch new repos within 24 hours instead of 7 days.
 
 **Files changed:**
 - `app/queue/scheduler.py` — `staleness_hours` for `discover_ai_repos`: 168 → 24
 
-**Risk:** Search API utilisation rises from 1% to ~7%. Well within budget but worth confirming the first few daily runs complete without hitting rate limits.
+**What actually shipped:** `staleness_hours=24` is live.
 
 **Dependencies:** None. Independent of PR 1.
 
 ---
 
-#### PR 3 — Add 11 new domains
+#### PR 3 — Add 11 new domains — NOT STARTED
 
 Expand topic coverage from 18 to 29 domains: reinforcement-learning, robotics, recommendation-systems, time-series, graph-neural-networks, interpretability, federated-learning, edge-ai, drug-discovery, audio-ai, simulation.
+
+> **Note:** The domain file currently references `ai_repo_domains.py` (not `ai_repos.py` as originally written). One unplanned domain — `perception` (web scraping, browser automation) — was added separately, bringing the current count to 18. The 11 planned domains above remain to be added.
 
 **Files changed:**
 - `app/ingest/ai_repo_domains.py` — add entries to `DOMAINS` dict (topics + `min_stars` per domain), extend `DOMAIN_ORDER`
@@ -60,7 +64,9 @@ PRs 4–7 are independent of each other. They can be built and merged in any ord
 
 **Handler pattern note:** The existing `discover_ai_repos` handler lives in the grouped file `compute_post_process.py`, not in its own file. New discovery handlers can follow either pattern — individual files or additions to the grouped file. Either way, they must be registered in `TASK_HANDLERS` in `__init__.py`.
 
-#### PR 4 — PyPI classifier discovery
+> **Status as of 7 April 2026:** None of PRs 4–7 have been started.
+
+#### PR 4 — PyPI classifier discovery — NOT STARTED
 
 Discover AI repos via the PyPI `Topic :: Scientific/Engineering :: Artificial Intelligence` trove classifier. These are repos that published packages (strong usage signal) but may lack GitHub topic tags.
 
@@ -76,7 +82,7 @@ Discover AI repos via the PyPI `Topic :: Scientific/Engineering :: Artificial In
 
 ---
 
-#### PR 5 — Description-based GitHub search
+#### PR 5 — Description-based GitHub search — NOT STARTED
 
 Find AI repos that lack topic tags but describe themselves as AI in their description or README. This is the biggest single opportunity — the 15–20% of repos invisible to topic search.
 
@@ -94,9 +100,11 @@ Find AI repos that lack topic tags but describe themselves as AI in their descri
 
 ---
 
-#### PR 6 — Awesome list ingestion
+#### PR 6 — Awesome list ingestion — NOT STARTED
 
 Parse curated "awesome" lists for GitHub URLs we don't already track. Low volume but high quality — these are repos vetted by domain experts.
+
+> **Partial groundwork exists:** Migration 068 (`coverage_audit`) created `awesome_list_sources` and `awesome_list_repos` tables. These are not yet used by any production handler.
 
 **Files changed:**
 - `app/ingest/awesome_list_discovery.py` (new) — maintain a list of ~20 awesome-list repos, fetch each README, parse Markdown for GitHub URLs, cross-reference against `ai_repos`
@@ -110,7 +118,7 @@ Parse curated "awesome" lists for GitHub URLs we don't already track. Low volume
 
 ---
 
-#### PR 7 — HuggingFace source repo linking
+#### PR 7 — HuggingFace source repo linking — NOT STARTED
 
 Cross-reference `hf_models` and `hf_datasets` for GitHub URLs not already in `ai_repos`. These repos have associated ML models or datasets — strong signal of real research or production use.
 
@@ -128,7 +136,7 @@ Cross-reference `hf_models` and `hf_datasets` for GitHub URLs not already in `ai
 
 ### Phase 3: Dependency-Based Discovery
 
-#### PR 8 — Reverse dependency client
+#### PR 8 — Reverse dependency client — NOT STARTED
 
 Build the external API integration for looking up which packages depend on a given seed package. This is infrastructure — the plumbing that PR 9 consumes.
 
@@ -143,7 +151,7 @@ Build the external API integration for looking up which packages depend on a giv
 
 ---
 
-#### PR 9 — Reverse-dep discovery sweep
+#### PR 9 — Reverse-dep discovery sweep — NOT STARTED
 
 Use PR 8's client to run the actual monthly discovery: look up dependents for all seed packages, resolve source URLs, cross-reference against `ai_repos`, and create enrichment tasks for new discoveries.
 
@@ -181,14 +189,14 @@ PR 3 (domains) ──┘                       ├── PR 5 (description searc
 
 ## Summary Table
 
-| PR | Phase | Scope | Key files | Dependencies |
-|----|-------|-------|-----------|-------------|
-| 1 — Backlog throttle | 1 | Constants only | `scheduler.py` | None |
-| 2 — Daily discovery | 1 | One-line config | `scheduler.py` | None |
-| 3 — 11 new domains | 1 | Config + migration + site gen | `ai_repo_domains.py`, `generate_site.py`, `start.sh`, migration | None (deploy after 1 & 2) |
-| 4 — PyPI classifiers | 2 | New handler + ingest | New `pypi_discovery.py` + handler | Phase 1 |
-| 5 — Description search | 2 | New ingest module | New `description_discovery.py` + handler | Phase 1 |
-| 6 — Awesome lists | 2 | New handler | New `awesome_list_discovery.py` + handler | Phase 1 |
-| 7 — HF linking | 2 | SQL + handler | New `hf_linking.py` + handler | Phase 1 |
-| 8 — Dep client | 3 | External API integration | New `reverse_deps.py` | Phase 2 |
-| 9 — Dep sweep | 3 | New discovery sweep | New `dep_discovery.py` + handler | PR 8 |
+| PR | Phase | Scope | Key files | Dependencies | Status |
+|----|-------|-------|-----------|-------------|--------|
+| 1 — Backlog throttle | 1 | Constants only | `scheduler.py` | None | ✅ Shipped |
+| 2 — Daily discovery | 1 | One-line config | `scheduler.py` | None | ✅ Shipped |
+| 3 — 11 new domains | 1 | Config + migration + site gen | `ai_repo_domains.py`, `generate_site.py`, `start.sh`, `enrich_repo_brief.py`, `project_briefs.py`, migration | None (deploy after 1 & 2) | Not started |
+| 4 — PyPI classifiers | 2 | New handler + ingest | New `pypi_discovery.py` + handler | Phase 1 | Not started |
+| 5 — Description search | 2 | New ingest module | New `description_discovery.py` + handler | Phase 1 | Not started |
+| 6 — Awesome lists | 2 | New handler | New `awesome_list_discovery.py` + handler | Phase 1 | Not started (DB tables exist) |
+| 7 — HF linking | 2 | SQL + handler | New `hf_linking.py` + handler | Phase 1 | Not started |
+| 8 — Dep client | 3 | External API integration | New `reverse_deps.py` | Phase 2 | Not started |
+| 9 — Dep sweep | 3 | New discovery sweep | New `dep_discovery.py` + handler | PR 8 | Not started |
