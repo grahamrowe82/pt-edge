@@ -299,6 +299,21 @@ async def worker_loop() -> None:
                 )
                 claimed_any = True
 
+        # Claim NULL-resource tasks (MV refresh, static site export, etc.)
+        if "_none" not in running or running["_none"].done():
+            if "_none" in running:
+                del running["_none"]
+            task = claim_next_task(WORKER_ID, resource_type=None)
+            if task:
+                logger.info(
+                    f"Claimed task {task['id']}: {task['task_type']} "
+                    f"{task.get('subject_id', '')} [resource=none]"
+                )
+                running["_none"] = asyncio.create_task(
+                    _execute_task(task, TASK_HANDLERS)
+                )
+                claimed_any = True
+
         if not claimed_any and not running:
             # Nothing running, nothing to claim — sleep
             await asyncio.sleep(POLL_INTERVAL)

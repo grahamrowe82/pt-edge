@@ -1738,20 +1738,18 @@ class TestWorkerNullResourceClaiming:
             row = conn.execute(text("""
                 INSERT INTO tasks (task_type, subject_id, state, priority, resource_type)
                 VALUES ('_test_null_resource', '_test_' || gen_random_uuid()::text, 'pending', 99, NULL)
-                RETURNING id, subject_id
+                RETURNING id
             """)).fetchone()
             conn.commit()
-            task_id, subject_id = row[0], row[1]
+            task_id = row[0]
 
         try:
             task = claim_next_task("test-worker", resource_type=None)
             assert task is not None
-            # We inserted at priority 99, so it should be claimed first
             assert task["task_type"] == "_test_null_resource"
         finally:
             with engine.connect() as conn:
                 conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
-                # Also clean up the claimed state if a different task was claimed
                 if task and task["id"] != task_id:
                     conn.execute(text("""
                         UPDATE tasks SET state = 'pending', claimed_by = NULL,
@@ -1777,7 +1775,6 @@ class TestWorkerNullResourceClaiming:
 
         try:
             task = claim_next_task("test-worker", resource_type="github_api")
-            # Should not claim the NULL-resource task
             if task is not None:
                 assert task["id"] != task_id
         finally:
@@ -1792,7 +1789,6 @@ class TestOrphanDetection:
 
     def test_detects_stuck_pending_task(self):
         """check_orphaned_tasks logs ERROR for tasks pending >1hr with retry_count=0."""
-        import logging
         from sqlalchemy import text
         from app.db import engine
         from app.queue.scheduler import check_orphaned_tasks
@@ -1809,9 +1805,7 @@ class TestOrphanDetection:
             task_id = row[0]
 
         try:
-            with pytest.raises(Exception) if False else _capture_logs(
-                "app.queue.scheduler", logging.ERROR
-            ) as logs:
+            with _capture_logs("app.queue.scheduler", logging.ERROR) as logs:
                 check_orphaned_tasks()
 
             error_lines = [r.message for r in logs]
@@ -1826,7 +1820,6 @@ class TestOrphanDetection:
 
     def test_ignores_recent_pending_task(self):
         """check_orphaned_tasks ignores tasks pending <1hr."""
-        import logging
         from sqlalchemy import text
         from app.db import engine
         from app.queue.scheduler import check_orphaned_tasks
@@ -1858,25 +1851,25 @@ class _capture_logs:
     """Context manager to capture log records at a given level."""
 
     def __init__(self, logger_name, level):
-        self.logger = logging.getLogger(logger_name)
+        self.logger_name = logger_name
         self.level = level
-        self.handler = logging.Handler()
         self.records = []
 
+    def __enter__(self):
+        self._logger = logging.getLogger(self.logger_name)
+
         class Collector(logging.Handler):
-            def __init__(self, records):
+            def __init__(self_, records):
                 super().__init__()
-                self.records = records
+                self_.records = records
 
             def emit(self_, record):
-                self.records.append(record)
+                self_.records.append(record)
 
-        self.handler = Collector(self.records)
-        self.handler.setLevel(level)
-
-    def __enter__(self):
-        self.logger.addHandler(self.handler)
+        self._handler = Collector(self.records)
+        self._handler.setLevel(self.level)
+        self._logger.addHandler(self._handler)
         return self.records
 
     def __exit__(self, *args):
-        self.logger.removeHandler(self.handler)
+        self._logger.removeHandler(self._handler)
