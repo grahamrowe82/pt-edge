@@ -738,6 +738,38 @@ def check_task_health() -> None:
         )
 
 
+def check_orphaned_tasks() -> None:
+    """Log ERROR if any tasks are stuck in pending and never claimed.
+
+    A task pending for >1 hour with retry_count=0 has never been picked
+    up by the worker. Common causes: resource_type mismatch between
+    scheduler and worker, or a handler that was removed but tasks remain.
+    """
+    from app.queue.worker import CONCURRENT_RESOURCES
+
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT task_type, resource_type, count(*) AS n,
+                   min(created_at) AS oldest
+            FROM tasks
+            WHERE state = 'pending'
+              AND created_at < now() - interval '1 hour'
+              AND retry_count = 0
+            GROUP BY 1, 2
+        """)).fetchall()
+
+    valid_resources = set(CONCURRENT_RESOURCES) | {None}
+    for row in rows:
+        reason = ""
+        if row.resource_type not in valid_resources:
+            reason = f" (resource_type '{row.resource_type}' not in worker's CONCURRENT_RESOURCES)"
+        logger.error(
+            f"HEALTH: {row.n} orphaned {row.task_type} tasks pending since "
+            f"{row.oldest.strftime('%Y-%m-%d %H:%M') if row.oldest else '?'}, "
+            f"never claimed{reason}"
+        )
+
+
 def check_pipeline_freshness() -> None:
     """Log ERROR if critical pipeline outputs are stale."""
     with engine.connect() as conn:
@@ -809,6 +841,7 @@ def schedule_all() -> dict:
     # Health checks first
     check_task_health()
     check_pipeline_freshness()
+    check_orphaned_tasks()
     report_failure_summary()
 
     # Housekeeping
