@@ -56,7 +56,7 @@ This is a resource allocation failure, not a technical limitation.
 
 ### Known blind spots
 
-**Domains we don't search:** reinforcement learning, robotics, recommendation systems, time series/forecasting, graph neural networks, interpretability/XAI, federated learning, edge AI/TinyML, drug discovery/cheminformatics, audio AI/speech, game AI, quantum ML, climate/earth science AI, causal inference, simulation.
+**Domains we don't search:** LLM inference/serving, AI evaluation/observability, fine-tuning, document AI/OCR, AI safety/guardrails, recommendation systems, audio AI, synthetic data, time series/forecasting, multimodal AI, 3D vision, scientific ML. Also missing but lower priority (low tool-selection activity): reinforcement learning, robotics, graph neural networks, federated learning, interpretability, edge AI, drug discovery, simulation.
 
 **Repos we can't see via topic search:** ~15-20% of GitHub AI repos lack topic tags. These are invisible to our current discovery regardless of how many topics we search. Older repos, academic code, non-English projects, and quick-publish experiments tend not to tag.
 
@@ -88,29 +88,53 @@ The scheduler caps fine-grained tasks at 500 pending with 1,000 per batch, refil
 
 **Impact:** Discovery rate increases 7x for the same 3,000 calls per run. Incremental crawls (searching for repos pushed since the last run) become much more current — catching repos within 24 hours of their first push instead of within 7 days.
 
-### 1c. Add missing domains — NOT STARTED
+### 1c. Add 12 new domains — NOT STARTED
 
-Expand the topic list in `ai_repo_domains.py` to cover fields we're currently ignoring entirely.
+Expand the topic list in `ai_repo_domains.py` to cover categories where AI agents are regularly asked tool-selection questions but PT-Edge has no answer.
 
-> **Note:** One unplanned domain — `perception` (web scraping, browser automation) — was added separately. The 11 domains listed below remain to be added.
+> **Note:** One unplanned domain — `perception` (web scraping, browser automation) — was added separately. The original plan proposed 11 domains based on GitHub blind spots. This was revised on 7 April 2026 after a first-principles audit of what AI agents actually get asked about. The selection criterion changed from "fields with lots of GitHub repos" to "fields where developers ask 'what's the best X?' and expect a structured comparison." See `scratch/revised-domain-expansion.md` for the full analysis.
 
-**New domains and topics:**
+**Tier 1 — Clear gaps, high tool-selection intensity:**
 
-| Domain | GitHub topics | Estimated repos |
-|--------|-------------|----------------|
-| `reinforcement-learning` | `reinforcement-learning`, `rl`, `deep-reinforcement-learning`, `gym`, `multi-agent-reinforcement-learning` | 15,000-30,000 |
-| `robotics` | `robotics`, `ros`, `robot-learning`, `autonomous-driving`, `slam` | 10,000-20,000 |
-| `recommendation-systems` | `recommender-system`, `collaborative-filtering`, `recommendation-engine`, `content-based-filtering` | 10,000-15,000 |
-| `time-series` | `time-series`, `forecasting`, `time-series-analysis`, `anomaly-detection`, `predictive-analytics` | 8,000-12,000 |
-| `graph-neural-networks` | `graph-neural-network`, `gnn`, `graph-learning`, `knowledge-graph`, `graph-convolutional-network` | 5,000-10,000 |
-| `interpretability` | `explainability`, `interpretable-ml`, `xai`, `model-interpretability`, `feature-importance` | 5,000-8,000 |
-| `federated-learning` | `federated-learning`, `privacy-preserving-ml`, `differential-privacy` | 3,000-5,000 |
-| `edge-ai` | `tinyml`, `edge-ai`, `model-compression`, `quantization`, `pruning`, `knowledge-distillation` | 3,000-5,000 |
-| `drug-discovery` | `drug-discovery`, `molecular-generation`, `cheminformatics`, `protein-folding`, `computational-biology` | 3,000-5,000 |
-| `audio-ai` | `speech-synthesis`, `text-to-speech`, `audio-generation`, `music-generation`, `speech-recognition` | 5,000-10,000 |
-| `simulation` | `physics-simulation`, `scientific-computing`, `numerical-methods`, `differentiable-programming` | 3,000-5,000 |
+| Domain | What it covers | GitHub topics | Est. repos |
+|--------|---------------|---------------|------------|
+| `llm-inference` | Self-hosted LLM serving and local runners | `llm-inference`, `model-serving`, `llm-server`, `inference-engine`, `gguf`, `ollama` | 3,000-8,000 |
+| `ai-evals` | LLM evaluation, benchmarking, observability, tracing | `llm-evaluation`, `ai-evaluation`, `benchmarking`, `llm-observability`, `ai-observability`, `tracing` | 2,000-5,000 |
+| `fine-tuning` | LLM and model fine-tuning tools | `fine-tuning`, `finetuning`, `lora`, `qlora`, `peft`, `llm-finetuning` | 3,000-8,000 |
+| `document-ai` | Document parsing, OCR, table extraction for AI pipelines | `ocr`, `document-parsing`, `pdf-extraction`, `document-ai`, `table-extraction`, `pdf-to-text` | 3,000-6,000 |
+| `ai-safety` | Guardrails, content filtering, red teaming, adversarial robustness | `guardrails`, `ai-safety`, `llm-security`, `red-teaming`, `adversarial-robustness`, `content-moderation` | 1,500-4,000 |
 
-**Impact:** 70,000-125,000 new repos discovered over 2-3 weeks of daily crawls. Total repo count reaches 320K-370K.
+**Tier 2 — Real tool-selection activity, slightly less intense:**
+
+| Domain | What it covers | GitHub topics | Est. repos |
+|--------|---------------|---------------|------------|
+| `recommendation-systems` | Collaborative filtering, content-based, sequential recs | `recommender-system`, `collaborative-filtering`, `recommendation-engine`, `content-based-filtering` | 8,000-15,000 |
+| `audio-ai` | Music generation, source separation, audio classification (distinct from voice-ai's TTS/ASR) | `audio-generation`, `music-generation`, `audio-classification`, `source-separation`, `sound-event-detection` | 3,000-6,000 |
+| `synthetic-data` | Training data generation, augmentation, simulation for ML | `synthetic-data`, `data-augmentation`, `data-generation`, `synthetic-data-generation` | 2,000-5,000 |
+| `time-series` | Forecasting, anomaly detection, classification on temporal data | `time-series`, `forecasting`, `time-series-analysis`, `time-series-forecasting` | 5,000-10,000 |
+
+**Tier 3 — Emerging or niche but defensible:**
+
+| Domain | What it covers | GitHub topics | Est. repos |
+|--------|---------------|---------------|------------|
+| `multimodal` | Vision-language models, cross-modal retrieval, audio-visual | `multimodal`, `vision-language`, `vlm`, `multimodal-learning` | 2,000-5,000 |
+| `3d-ai` | NeRF, gaussian splatting, point clouds, 3D reconstruction | `nerf`, `gaussian-splatting`, `3d-reconstruction`, `point-cloud`, `3d-generation` | 1,500-3,000 |
+| `scientific-ml` | Physics-informed neural nets, neural operators, molecular ML | `physics-informed-neural-networks`, `scientific-computing`, `neural-operator`, `computational-biology` | 2,000-5,000 |
+
+**Domains considered and rejected:**
+
+| Domain | Why not |
+|--------|---------|
+| Reinforcement learning | Tool selection converged (Stable-Baselines3 + Gymnasium). Huge repo count, no active comparison debate. |
+| Robotics | Hardware-coupled, domain-specific. Not what AI agents get asked for tool recommendations. |
+| Graph neural networks | PyG vs DGL — conversation ended. Insufficient ongoing selection pressure. |
+| Federated learning | Academic field, near-zero practitioner tool-selection discussion. |
+| Interpretability/XAI | SHAP dominates. Minimal comparison activity outside research. |
+| Edge AI/TinyML | Small ecosystem, overlaps with model compression. Deployment target, not tool category. |
+| Simulation | Too niche standalone. Consumed within robotics/RL contexts. |
+| Drug discovery | "AI applied to chemistry" not "AI tooling." Revisit if demand signals appear. |
+
+**Impact:** 35,000-80,000 new repos discovered over 2-3 weeks of daily crawls. Total repo count reaches 283K-328K. Fewer repos than the original 11-domain plan but every new domain answers questions agents actually get asked.
 
 **Prerequisite:** Each new domain needs a corresponding quality view (`mv_*_quality`) and an entry in `DOMAIN_VIEW_MAP` (duplicated in `enrich_repo_brief.py` and `project_briefs.py`), `DOMAIN_CONFIG` (in `generate_site.py`), `DOMAIN_ORDER` (in `ai_repo_domains.py`), and `start.sh` for site generation. This is mechanical but not zero work.
 
@@ -120,8 +144,8 @@ Expand the topic list in `ai_repo_domains.py` to cover fields we're currently ig
 |--------|--------|-------|--------|
 | Backlog clear time | 55 days | 4 days | DONE |
 | Discovery frequency | Weekly | Daily | DONE |
-| Domains | 17 | 29 | 18 (added perception; 11 planned domains remain) |
-| Estimated repos | 248K | 320-370K | Pending domain expansion |
+| Domains | 18 | 30 | 18 (12 new domains to add) |
+| Estimated repos | 248K | 283-328K | Pending domain expansion |
 | GitHub REST utilisation | 12% | 60-80% during backlog, 30% steady state | DONE |
 | GitHub Search utilisation | 1% | 7% | DONE |
 
@@ -217,7 +241,7 @@ We already track HuggingFace models and datasets. Many have `source` or `github`
 | HuggingFace linking | 2,000-5,000 | ~500 REST calls | Weekly |
 | **Total** | **37,000-85,000** | | |
 
-Combined with Phase 1: **357K-455K repos.**
+Combined with Phase 1: **320K-413K repos.**
 
 ---
 
@@ -263,7 +287,7 @@ Repo resolution: ~50,000-100,000 GitHub REST calls over several days (well withi
 This is the highest-yield channel but requires:
 - External API integrations we don't have yet (Libraries.io or BigQuery)
 - A quality filter to avoid drowning in tutorial repos
-- Careful domain classification (a repo that depends on PyTorch could be in any of our 29 domains)
+- Careful domain classification (a repo that depends on PyTorch could be in any of our 30 domains)
 
 Phases 1 and 2 are higher leverage per unit of effort.
 
@@ -276,7 +300,7 @@ Phases 1 and 2 are higher leverage per unit of effort.
 | Crates.io reverse deps (10 seeds) | 2,000-5,000 | crates.io API | Monthly |
 | **Total** | **42,000-85,000** | | |
 
-Combined with Phases 1 and 2: **400K-540K repos.**
+Combined with Phases 1 and 2: **362K-498K repos.**
 
 ---
 
@@ -285,9 +309,9 @@ Combined with Phases 1 and 2: **400K-540K repos.**
 | | Repos | Domains | GitHub REST utilisation | Timeline |
 |---|---|---|---|---|
 | **Today** | 248K | 18 | 12% | — |
-| **After Phase 1** | 320-370K | 29 | 30% steady state | 2-3 weeks |
-| **After Phase 2** | 360-455K | 29 | 35% steady state | 1-2 months |
-| **After Phase 3** | 400-540K | 29+ | 40% steady state | 2-3 months |
+| **After Phase 1** | 283-328K | 30 | 30% steady state | 2-3 weeks |
+| **After Phase 2** | 320-413K | 30 | 35% steady state | 1-2 months |
+| **After Phase 3** | 362-498K | 30+ | 40% steady state | 2-3 months |
 
 Steady-state budget after all phases:
 
@@ -310,7 +334,7 @@ Even at 500K+ repos with continuous discovery, we never exceed 50% of the GitHub
 At 500K repos with full enrichment:
 
 - **500K pages** on the static site, each with a problem brief, quality scores, and comparison sentences. At the 1 visit/page/month baseline, that's 500K visits/month.
-- **Complete domain coverage** — practitioners in reinforcement learning, robotics, drug discovery, etc. find relevant tools instead of getting nothing.
+- **Complete domain coverage** — practitioners asking about LLM inference, fine-tuning, document parsing, AI safety, etc. find structured answers instead of getting nothing.
 - **Dependency-aware recommendations** — "projects that use the same stack" becomes possible with the Phase 3 data.
 - **Faster trend detection** — daily discovery catches breakout repos within 24 hours instead of 7 days.
 - **Higher-quality comparisons** — more repos in each domain means denser comparison graphs and more meaningful "use X instead of Y" guidance.

@@ -38,11 +38,11 @@ Switch `discover_ai_repos` from weekly to daily so incremental crawls catch new 
 
 ---
 
-#### PR 3 — Add 11 new domains — NOT STARTED
+#### PR 3 — Add 12 new domains — NOT STARTED
 
-Expand topic coverage from 18 to 29 domains: reinforcement-learning, robotics, recommendation-systems, time-series, graph-neural-networks, interpretability, federated-learning, edge-ai, drug-discovery, audio-ai, simulation.
+Expand topic coverage from 18 to 30 domains. The domain list was revised on 7 April 2026 from the original 11 (chosen by GitHub blind spots) to 12 domains chosen by tool-selection intensity — categories where developers regularly ask AI agents "what's the best X?" See `scratch/revised-domain-expansion.md` for the full analysis.
 
-> **Note:** The domain file currently references `ai_repo_domains.py` (not `ai_repos.py` as originally written). One unplanned domain — `perception` (web scraping, browser automation) — was added separately, bringing the current count to 18. The 11 planned domains above remain to be added.
+**New domains:** `llm-inference`, `ai-evals`, `fine-tuning`, `document-ai`, `ai-safety`, `recommendation-systems`, `audio-ai`, `synthetic-data`, `time-series`, `multimodal`, `3d-ai`, `scientific-ml`
 
 **Files changed:**
 - `app/ingest/ai_repo_domains.py` — add entries to `DOMAINS` dict (topics + `min_stars` per domain), extend `DOMAIN_ORDER`
@@ -52,7 +52,7 @@ Expand topic coverage from 18 to 29 domains: reinforcement-learning, robotics, r
 - `app/ingest/project_briefs.py` — add entry to the duplicate `DOMAIN_VIEW_MAP` (these two maps should be consolidated eventually)
 - New Alembic migration — create `mv_*_quality` materialised views for each new domain (follow the template in migration 051)
 
-**Risk:** Largest Phase 1 PR. The migration creates 11 new MVs which will be empty until the first discovery run populates repos in those domains. Site generation should handle empty domains gracefully (verify before merging).
+**Risk:** Largest Phase 1 PR. The migration creates 12 new MVs which will be empty until the first discovery run populates repos in those domains. Site generation should handle empty domains gracefully (verify before merging).
 
 **Dependencies:** Deploy after PRs 1 & 2 so new repos are discovered daily and enriched promptly.
 
@@ -163,7 +163,7 @@ Use PR 8's client to run the actual monthly discovery: look up dependents for al
 
 **Expected yield:** 42,000–85,000 repos across PyPI, npm, and crates.io dependents.
 
-**Risk:** Domain classification for dependency-discovered repos is harder — a repo that imports PyTorch could be in any of 29 domains. May need a classifier pass or fallback to embedding similarity.
+**Risk:** Domain classification for dependency-discovered repos is harder — a repo that imports PyTorch could be in any of 30 domains. May need a classifier pass or fallback to embedding similarity.
 
 **Dependencies:** PR 8.
 
@@ -193,7 +193,7 @@ PR 3 (domains) ──┘                       ├── PR 5 (description searc
 |----|-------|-------|-----------|-------------|--------|
 | 1 — Backlog throttle | 1 | Constants only | `scheduler.py` | None | ✅ Shipped |
 | 2 — Daily discovery | 1 | One-line config | `scheduler.py` | None | ✅ Shipped |
-| 3 — 11 new domains | 1 | Config + migration + site gen | `ai_repo_domains.py`, `generate_site.py`, `start.sh`, `enrich_repo_brief.py`, `project_briefs.py`, migration | None (deploy after 1 & 2) | Not started |
+| 3 — 12 new domains | 1 | Config + migration + site gen | `ai_repo_domains.py`, `generate_site.py`, `start.sh`, `enrich_repo_brief.py`, `project_briefs.py`, migration | None (deploy after 1 & 2) | Not started |
 | 4 — PyPI classifiers | 2 | New handler + ingest | New `pypi_discovery.py` + handler | Phase 1 | Not started |
 | 5 — Description search | 2 | New ingest module | New `description_discovery.py` + handler | Phase 1 | Not started |
 | 6 — Awesome lists | 2 | New handler | New `awesome_list_discovery.py` + handler | Phase 1 | Not started (DB tables exist) |
