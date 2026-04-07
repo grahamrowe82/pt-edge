@@ -3,13 +3,15 @@ from datetime import datetime, timezone
 
 from sqlalchemy import text
 
+from app.config.domains import DOMAIN_VIEW_MAP
 from app.db import engine
 from app.db import SessionLocal
 from app.models import SyncLog
 
 logger = logging.getLogger(__name__)
 
-VIEWS_IN_ORDER = [
+# Non-quality views in dependency order (before and after quality views)
+_VIEWS_BEFORE_QUALITY = [
     "mv_dep_resolution",       # base: maps dep_name → repo_id (needed before quality views)
     "mv_momentum",             # base: no dependencies
     "mv_hype_ratio",           # base: no dependencies
@@ -25,28 +27,20 @@ VIEWS_IN_ORDER = [
     "mv_ai_repo_ecosystem",    # standalone: ai_repos stats by domain+subcategory
     "mv_nucleation_project",   # standalone: project-level nucleation signals
     "mv_nucleation_category",  # standalone: category creation velocity
-    "mv_mcp_quality",          # standalone: quality scores for MCP-domain repos
-    "mv_agents_quality",       # standalone: quality scores for agents-domain repos
-    "mv_rag_quality",          # standalone: quality scores for rag-domain repos
-    "mv_ai_coding_quality",    # standalone: quality scores for ai-coding-domain repos
-    "mv_voice_ai_quality",     # standalone: quality scores for voice-ai-domain repos
-    "mv_diffusion_quality",    # standalone: quality scores for diffusion-domain repos
-    "mv_vector_db_quality",    # standalone: quality scores for vector-db-domain repos
-    "mv_embeddings_quality",   # standalone: quality scores for embeddings-domain repos
-    "mv_prompt_eng_quality",   # standalone: quality scores for prompt-engineering-domain repos
-    "mv_ml_frameworks_quality",  # standalone: quality scores for ml-frameworks-domain repos
-    "mv_llm_tools_quality",      # standalone: quality scores for llm-tools-domain repos
-    "mv_nlp_quality",            # standalone: quality scores for nlp-domain repos
-    "mv_transformers_quality",   # standalone: quality scores for transformers-domain repos
-    "mv_generative_ai_quality",  # standalone: quality scores for generative-ai-domain repos
-    "mv_computer_vision_quality",# standalone: quality scores for computer-vision-domain repos
-    "mv_data_engineering_quality",# standalone: quality scores for data-engineering-domain repos
-    "mv_mlops_quality",          # standalone: quality scores for mlops-domain repos
-    "mv_perception_quality",     # standalone: quality scores for perception-domain repos
+]
+
+_VIEWS_AFTER_QUALITY = [
     "mv_access_bot_demand",      # standalone: bot crawl demand from http_access_log
     "mv_allocation_scores",      # depends on: all quality views + ai_repo_snapshots + gsc + umami
     "mv_owner_demand",           # depends on: mv_access_bot_demand + ai_repos
 ]
+
+# Quality views are derived from the domain registry — no manual list needed.
+VIEWS_IN_ORDER = (
+    _VIEWS_BEFORE_QUALITY
+    + sorted(DOMAIN_VIEW_MAP.values())  # standalone: one per domain
+    + _VIEWS_AFTER_QUALITY
+)
 
 
 def refresh_all_views():
@@ -116,18 +110,10 @@ def refresh_all_views():
     except Exception as e:
         logger.warning(f"Could not snapshot MCP quality scores: {e}")
 
-    # Snapshot quality scores for agents, rag, ai-coding domains
-    for domain, view in [
-        ("agents", "mv_agents_quality"), ("rag", "mv_rag_quality"), ("ai-coding", "mv_ai_coding_quality"),
-        ("voice-ai", "mv_voice_ai_quality"), ("diffusion", "mv_diffusion_quality"),
-        ("vector-db", "mv_vector_db_quality"), ("embeddings", "mv_embeddings_quality"),
-        ("prompt-engineering", "mv_prompt_eng_quality"),
-        ("ml-frameworks", "mv_ml_frameworks_quality"), ("llm-tools", "mv_llm_tools_quality"),
-        ("nlp", "mv_nlp_quality"), ("transformers", "mv_transformers_quality"),
-        ("generative-ai", "mv_generative_ai_quality"), ("computer-vision", "mv_computer_vision_quality"),
-        ("data-engineering", "mv_data_engineering_quality"), ("mlops", "mv_mlops_quality"),
-        ("perception", "mv_perception_quality"),
-    ]:
+    # Snapshot quality scores for all non-MCP domains (derived from registry)
+    for domain, view in (
+        (d, v) for d, v in DOMAIN_VIEW_MAP.items() if d != "mcp"
+    ):
         try:
             with engine.connect() as conn:
                 conn.execute(text(f"""
