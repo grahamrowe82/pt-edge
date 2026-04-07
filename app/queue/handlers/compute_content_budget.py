@@ -12,8 +12,10 @@ async def handle_compute_content_budget(task: dict) -> dict:
     """Recompute the content budget allocation table.
 
     subject_id is unused (coarse-grained task).
+    Runs in a thread so the event loop stays responsive.
     """
+    import asyncio
     from app.allocation.budget import compute_and_write_budget
     from app.settings import settings
-    result = compute_and_write_budget(settings.LLM_BUDGET_MULTIPLIER)
+    result = await asyncio.to_thread(compute_and_write_budget, settings.LLM_BUDGET_MULTIPLIER)
     return result
