@@ -1407,45 +1407,17 @@ def test_domain_config_matches_directories():
 
 def test_domain_quality_views_in_refresh():
     """Every domain in DOMAIN_CONFIG has a quality MV in the refresh cycle."""
-    from pathlib import Path
-    import ast
-    root = Path(__file__).parent.parent
+    from app.views.refresh import VIEWS_IN_ORDER
+    from app.config.domains import DOMAIN_VIEW_MAP
 
-    # Get DOMAIN_CONFIG view names
-    site_script = (root / "scripts" / "generate_site.py").read_text()
-    tree = ast.parse(site_script)
-    config_views = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "DOMAIN_CONFIG":
-                    if isinstance(node.value, ast.Dict):
-                        for val in node.value.values:
-                            if isinstance(val, ast.Dict):
-                                for k, v in zip(val.keys, val.values):
-                                    if isinstance(k, ast.Constant) and k.value == "view":
-                                        if isinstance(v, ast.Constant):
-                                            config_views.add(v.value)
+    refresh_views = set(VIEWS_IN_ORDER)
+    config_views = set(DOMAIN_VIEW_MAP.values())
 
-    # Get VIEWS_IN_ORDER from refresh.py
-    refresh_script = (root / "app" / "views" / "refresh.py").read_text()
-    tree2 = ast.parse(refresh_script)
-    refresh_views = set()
-    for node in ast.walk(tree2):
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id == "VIEWS_IN_ORDER":
-                    if isinstance(node.value, ast.List):
-                        for elt in node.value.elts:
-                            if isinstance(elt, ast.Constant):
-                                refresh_views.add(elt.value)
-
-    assert config_views, "Could not parse quality views from DOMAIN_CONFIG"
-    assert refresh_views, "Could not parse VIEWS_IN_ORDER from refresh.py"
+    assert config_views, "DOMAIN_VIEW_MAP is empty"
 
     missing = config_views - refresh_views
     assert not missing, (
-        f"Quality views in DOMAIN_CONFIG but missing from VIEWS_IN_ORDER: {missing}. "
+        f"Quality views in DOMAIN_VIEW_MAP but missing from VIEWS_IN_ORDER: {missing}. "
         f"These views won't be refreshed during the daily cycle."
     )
 
@@ -1560,13 +1532,16 @@ def test_cta_quality_route_registered():
 
 
 def test_cta_quality_endpoint_covers_all_domains():
-    """The DOMAIN_VIEWS dict must cover all 18 domains that generate category pages."""
+    """The DOMAIN_VIEWS dict must cover all 30 domains that generate category pages."""
     from app.api.queries import DOMAIN_VIEWS
     expected_domains = {
         "mcp", "agents", "rag", "ai-coding", "voice-ai", "diffusion",
         "vector-db", "embeddings", "prompt-engineering", "ml-frameworks",
         "llm-tools", "nlp", "transformers", "generative-ai",
         "computer-vision", "data-engineering", "mlops", "perception",
+        "llm-inference", "ai-evals", "fine-tuning", "document-ai",
+        "ai-safety", "recommendation-systems", "audio-ai", "synthetic-data",
+        "time-series", "multimodal", "3d-ai", "scientific-ml",
     }
     assert set(DOMAIN_VIEWS.keys()) == expected_domains, \
         f"DOMAIN_VIEWS missing domains: {expected_domains - set(DOMAIN_VIEWS.keys())}"

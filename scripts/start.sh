@@ -20,6 +20,18 @@ python scripts/generate_site.py --domain computer-vision --output-dir site/compu
 python scripts/generate_site.py --domain data-engineering --output-dir site/data-engineering
 python scripts/generate_site.py --domain mlops --output-dir site/mlops
 python scripts/generate_site.py --domain perception --output-dir site/perception
+python scripts/generate_site.py --domain llm-inference --output-dir site/llm-inference
+python scripts/generate_site.py --domain ai-evals --output-dir site/ai-evals
+python scripts/generate_site.py --domain fine-tuning --output-dir site/fine-tuning
+python scripts/generate_site.py --domain document-ai --output-dir site/document-ai
+python scripts/generate_site.py --domain ai-safety --output-dir site/ai-safety
+python scripts/generate_site.py --domain recommendation-systems --output-dir site/recommendation-systems
+python scripts/generate_site.py --domain audio-ai --output-dir site/audio-ai
+python scripts/generate_site.py --domain synthetic-data --output-dir site/synthetic-data
+python scripts/generate_site.py --domain time-series --output-dir site/time-series
+python scripts/generate_site.py --domain multimodal --output-dir site/multimodal
+python scripts/generate_site.py --domain 3d-ai --output-dir site/3d-ai
+python scripts/generate_site.py --domain scientific-ml --output-dir site/scientific-ml
 
 echo "Generating portal homepage..."
 python scripts/generate_site.py --portal --output-dir site

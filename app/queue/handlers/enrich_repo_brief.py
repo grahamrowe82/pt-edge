@@ -12,25 +12,11 @@ from datetime import datetime, timezone
 
 from sqlalchemy import text
 
+from app.config.domains import DOMAIN_VIEW_MAP
 from app.db import engine
 from app.ingest.llm import call_llm
 
 logger = logging.getLogger(__name__)
-
-DOMAIN_VIEW_MAP = {
-    "mcp": "mv_mcp_quality", "agents": "mv_agents_quality",
-    "rag": "mv_rag_quality", "ai-coding": "mv_ai_coding_quality",
-    "voice-ai": "mv_voice_ai_quality", "diffusion": "mv_diffusion_quality",
-    "vector-db": "mv_vector_db_quality", "embeddings": "mv_embeddings_quality",
-    "prompt-engineering": "mv_prompt_eng_quality",
-    "ml-frameworks": "mv_ml_frameworks_quality",
-    "llm-tools": "mv_llm_tools_quality", "nlp": "mv_nlp_quality",
-    "transformers": "mv_transformers_quality",
-    "generative-ai": "mv_generative_ai_quality",
-    "computer-vision": "mv_computer_vision_quality",
-    "data-engineering": "mv_data_engineering_quality",
-    "mlops": "mv_mlops_quality", "perception": "mv_perception_quality",
-}
 
 REPO_BRIEF_PROMPT = """\
 You are a technology consultant advising people on whether to depend on \
