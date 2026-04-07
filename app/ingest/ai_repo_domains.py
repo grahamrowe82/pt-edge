@@ -78,6 +78,55 @@ DOMAINS: dict[str, dict] = {
         "topics": ["machine-learning", "deep-learning", "artificial-intelligence"],
         "min_stars": 5,
     },
+    # --- New domains (added 2026-04-07) ---
+    "llm-inference": {
+        "topics": ["llm-inference", "model-serving", "llm-server", "inference-engine", "gguf", "ollama"],
+        "min_stars": 3,
+    },
+    "ai-evals": {
+        "topics": ["llm-evaluation", "ai-evaluation", "benchmarking", "llm-observability", "ai-observability", "tracing"],
+        "min_stars": 2,
+    },
+    "fine-tuning": {
+        "topics": ["fine-tuning", "finetuning", "lora", "qlora", "peft", "llm-finetuning"],
+        "min_stars": 2,
+    },
+    "document-ai": {
+        "topics": ["ocr", "document-parsing", "pdf-extraction", "document-ai", "table-extraction", "pdf-to-text"],
+        "min_stars": 2,
+    },
+    "ai-safety": {
+        "topics": ["guardrails", "ai-safety", "llm-security", "red-teaming", "adversarial-robustness", "content-moderation"],
+        "min_stars": 2,
+    },
+    "recommendation-systems": {
+        "topics": ["recommender-system", "collaborative-filtering", "recommendation-engine", "content-based-filtering"],
+        "min_stars": 3,
+    },
+    "audio-ai": {
+        "topics": ["audio-generation", "music-generation", "audio-classification", "source-separation", "sound-event-detection"],
+        "min_stars": 2,
+    },
+    "synthetic-data": {
+        "topics": ["synthetic-data", "data-augmentation", "data-generation", "synthetic-data-generation"],
+        "min_stars": 3,
+    },
+    "time-series": {
+        "topics": ["time-series", "forecasting", "time-series-analysis", "time-series-forecasting"],
+        "min_stars": 3,
+    },
+    "multimodal": {
+        "topics": ["multimodal", "vision-language", "vlm", "multimodal-learning"],
+        "min_stars": 3,
+    },
+    "3d-ai": {
+        "topics": ["nerf", "gaussian-splatting", "3d-reconstruction", "point-cloud", "3d-generation"],
+        "min_stars": 2,
+    },
+    "scientific-ml": {
+        "topics": ["physics-informed-neural-networks", "scientific-computing", "neural-operator", "computational-biology"],
+        "min_stars": 3,
+    },
 }
 
 # Ordered from most specific to most general — controls domain assignment priority.
@@ -90,9 +139,21 @@ DOMAIN_ORDER: list[str] = [
     "agents",
     "perception",
     "ai-coding",
+    "llm-inference",
+    "fine-tuning",
+    "ai-evals",
+    "ai-safety",
+    "document-ai",
+    "3d-ai",
+    "audio-ai",
     "prompt-engineering",
     "diffusion",
     "voice-ai",
+    "recommendation-systems",
+    "time-series",
+    "synthetic-data",
+    "multimodal",
+    "scientific-ml",
     "nlp",
     "computer-vision",
     "transformers",

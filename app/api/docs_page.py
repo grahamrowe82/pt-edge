@@ -32,6 +32,18 @@ _DIRECTORIES = [
     {"path": "/data-engineering/", "label": "Data Eng", "domain": "data-engineering"},
     {"path": "/mlops/", "label": "MLOps", "domain": "mlops"},
     {"path": "/perception/", "label": "Perception", "domain": "perception"},
+    {"path": "/llm-inference/", "label": "LLM Inference", "domain": "llm-inference"},
+    {"path": "/ai-evals/", "label": "AI Evals", "domain": "ai-evals"},
+    {"path": "/fine-tuning/", "label": "Fine-Tuning", "domain": "fine-tuning"},
+    {"path": "/document-ai/", "label": "Document AI", "domain": "document-ai"},
+    {"path": "/ai-safety/", "label": "AI Safety", "domain": "ai-safety"},
+    {"path": "/recommendation-systems/", "label": "RecSys", "domain": "recommendation-systems"},
+    {"path": "/audio-ai/", "label": "Audio AI", "domain": "audio-ai"},
+    {"path": "/synthetic-data/", "label": "Synthetic Data", "domain": "synthetic-data"},
+    {"path": "/time-series/", "label": "Time Series", "domain": "time-series"},
+    {"path": "/multimodal/", "label": "Multimodal", "domain": "multimodal"},
+    {"path": "/3d-ai/", "label": "3D AI", "domain": "3d-ai"},
+    {"path": "/scientific-ml/", "label": "Scientific ML", "domain": "scientific-ml"},
 ]
 
 
