@@ -9,6 +9,8 @@ import ast
 import re
 from pathlib import Path
 
+import pytest
+
 from app.ingest.ai_repo_domains import DOMAINS
 
 
@@ -88,3 +90,54 @@ def test_smoke_expected_domains():
         f"test_smoke.py expected_domains missing: {_expected() - found}; "
         f"extra: {found - _expected()}"
     )
+
+
+# ---------------------------------------------------------------------------
+# DB-dependent tests: verify MV schemas match across all domains
+# ---------------------------------------------------------------------------
+
+def _db_available() -> bool:
+    try:
+        from sqlalchemy import text
+        from app.db import engine
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
+
+
+@pytest.mark.skipif(not _db_available(), reason="No database connection")
+def test_all_quality_mvs_have_same_columns():
+    """Every domain quality MV must have identical columns to mv_mcp_quality.
+
+    Catches stale MV templates where new columns were added to some views
+    but not others (e.g. migration 087 missing problem_domains).
+    """
+    from sqlalchemy import text
+    from app.db import engine
+    from app.config.domains import DOMAIN_VIEW_MAP
+
+    _COL_SQL = text("""
+        SELECT a.attname
+        FROM pg_attribute a
+        JOIN pg_class c ON a.attrelid = c.oid
+        WHERE c.relname = :view
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+        ORDER BY a.attnum
+    """)
+
+    with engine.connect() as conn:
+        ref = conn.execute(_COL_SQL, {"view": "mv_mcp_quality"}).fetchall()
+        ref_cols = [r[0] for r in ref]
+        assert len(ref_cols) > 0, "mv_mcp_quality has no columns — reference view missing?"
+
+        for domain, view in sorted(DOMAIN_VIEW_MAP.items()):
+            cols = conn.execute(_COL_SQL, {"view": view}).fetchall()
+            actual_cols = [r[0] for r in cols]
+            assert actual_cols == ref_cols, (
+                f"{view} (domain={domain}) columns don't match mv_mcp_quality. "
+                f"Missing: {set(ref_cols) - set(actual_cols)}, "
+                f"Extra: {set(actual_cols) - set(ref_cols)}"
+            )
