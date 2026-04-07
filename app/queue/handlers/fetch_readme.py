@@ -56,7 +56,7 @@ async def handle_fetch_readme(task: dict) -> dict:
     """
     full_name = task["subject_id"]
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
         resp = await client.get(
             f"https://api.github.com/repos/{full_name}/readme",
             headers=_github_headers(),
