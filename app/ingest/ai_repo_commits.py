@@ -13,6 +13,7 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine
+from app.ingest.budget import acquire_budget, record_call, record_success
 from app.models import SyncLog
 from app.db import SessionLocal
 from app.settings import settings
@@ -57,16 +58,21 @@ async def _fetch_batch(
     query = _build_graphql_query(repos)
 
     async with semaphore:
+        if not await acquire_budget("github_api"):
+            return []
         try:
             resp = await client.post(
                 "https://api.github.com/graphql",
                 json={"query": query},
                 timeout=60.0,
             )
+            await record_call("github_api")
         except Exception as e:
             logger.error(f"GraphQL request failed: {e}")
             return []
 
+    if resp.status_code == 200:
+        await record_success("github_api")
     if resp.status_code != 200:
         logger.warning(f"GraphQL HTTP {resp.status_code}: {resp.text[:200]}")
         return []

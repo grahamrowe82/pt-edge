@@ -14,7 +14,12 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine
-from app.ingest.budget import ResourceThrottledError
+from app.ingest.budget import (
+    ResourceExhaustedError,
+    ResourceThrottledError,
+    acquire_budget,
+    record_call,
+)
 from app.queue.errors import PermanentTaskError
 from app.settings import settings
 
@@ -51,8 +56,12 @@ async def handle_backfill_created_at(task: dict) -> dict:
     if settings.GITHUB_TOKEN:
         headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
 
+    if not await acquire_budget("github_api"):
+        raise ResourceExhaustedError("github_api")
+
     async with httpx.AsyncClient(headers=headers, timeout=10, follow_redirects=True) as client:
         resp = await client.get(f"https://api.github.com/repos/{full_name}")
+    await record_call("github_api")
 
     if resp.status_code == 404:
         return {"status": "not_found"}
