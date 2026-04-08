@@ -16,7 +16,12 @@ import socket
 from sqlalchemy import text
 
 from app.db import engine
-from app.ingest.budget import ResourceExhaustedError, ResourceThrottledError
+from app.ingest.budget import (
+    ResourceExhaustedError,
+    ResourceThrottledError,
+    record_success,
+    record_throttle,
+)
 from app.queue.errors import PermanentTaskError
 
 logger = logging.getLogger(__name__)
@@ -218,11 +223,15 @@ async def _execute_task(task: dict, handlers: dict) -> None:
     try:
         result = await handler(task)
         mark_done(task_id, result)
+        if task.get("resource_type"):
+            await record_success(task["resource_type"])
         logger.info(f"Completed task {task_id}: {task_type} {subject} -> {result}")
     except (ResourceExhaustedError, ResourceThrottledError) as e:
         # Infrastructure signals — requeue without counting as a retry.
-        # The worker will stop claiming tasks for this resource until
-        # the budget resets or backoff expires.
+        # Record throttle so the backoff system activates and the worker
+        # stops claiming tasks for this resource until backoff expires.
+        if isinstance(e, ResourceThrottledError) and task.get("resource_type"):
+            await record_throttle(task["resource_type"])
         requeue(task_id, str(e), increment_retry=False)
         logger.info(f"Task {task_id} requeued ({type(e).__name__}): {e}")
     except PermanentTaskError as e:
