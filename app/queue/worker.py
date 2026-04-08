@@ -80,36 +80,13 @@ _CLAIM_FOR_RESOURCE_SQL = text("""
               retry_count, max_retries
 """)
 
-# SQL: claim any pending task (for tasks with NULL resource_type, or fallback)
+# SQL: claim a pending task with no resource_type (MV refresh, site export, etc.)
 _CLAIM_ANY_SQL = text("""
-    WITH budget_check AS (
-        SELECT resource_type,
-               CASE
-                 WHEN backoff_until IS NOT NULL AND now() < backoff_until
-                 THEN 0
-                 WHEN reset_mode = 'rolling'
-                   AND now() >= period_start + (period_hours || ' hours')::interval
-                 THEN budget
-                 WHEN reset_mode = 'calendar'
-                   AND period_start < (
-                     date_trunc('day', now() AT TIME ZONE reset_tz)
-                     + (reset_hour || ' hours')::interval
-                   ) AT TIME ZONE reset_tz
-                   AND now() >= (
-                     date_trunc('day', now() AT TIME ZONE reset_tz)
-                     + (reset_hour || ' hours')::interval
-                   ) AT TIME ZONE reset_tz
-                 THEN budget
-                 ELSE budget - consumed
-               END AS remaining
-        FROM resource_budgets
-    ),
-    next_task AS (
+    WITH next_task AS (
         SELECT t.id
         FROM tasks t
-        LEFT JOIN budget_check bc ON bc.resource_type = t.resource_type
         WHERE t.state = 'pending'
-          AND (t.resource_type IS NULL OR bc.remaining > 0)
+          AND t.resource_type IS NULL
         ORDER BY t.priority DESC, t.created_at ASC
         LIMIT 1
         FOR UPDATE OF t SKIP LOCKED
@@ -268,6 +245,9 @@ CONCURRENT_RESOURCES = [
     "dockerhub",
     "hn_algolia",
     "db_only",
+    "vscode",
+    "v2ex",
+    "crates",
 ]
 
 

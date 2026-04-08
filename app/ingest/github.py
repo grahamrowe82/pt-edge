@@ -7,6 +7,13 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
+from app.ingest.budget import (
+    ResourceThrottledError,
+    acquire_budget,
+    record_call,
+    record_success,
+    record_throttle,
+)
 from app.models import Project, SyncLog
 from app.settings import settings
 
@@ -43,28 +50,41 @@ async def fetch_repo(client: httpx.AsyncClient, owner: str, repo: str) -> dict |
     global _github_available
     if not _github_available:
         return None
-    resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}")
-    if resp.status_code == 200:
-        return resp.json()
-    if resp.status_code == 403:
+    if not await acquire_budget("github_api"):
         _github_available = False
-        logger.error(f"GitHub API 403 for {owner}/{repo} — aborting remaining requests")
+        return None
+    resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}")
+    await record_call("github_api")
+    if resp.status_code == 200:
+        await record_success("github_api")
+        return resp.json()
+    if resp.status_code in (403, 429):
+        await record_throttle("github_api")
+        _github_available = False
+        logger.error(f"GitHub API {resp.status_code} for {owner}/{repo} — aborting remaining requests")
         return None
     logger.warning(f"GitHub API {resp.status_code} for {owner}/{repo}")
     return None
 
 
 async def fetch_commit_activity(client: httpx.AsyncClient, owner: str, repo: str) -> int:
+    if not _github_available or not await acquire_budget("github_api"):
+        return 0
     url = f"https://api.github.com/repos/{owner}/{repo}/stats/commit_activity"
     resp = await client.get(url)
+    await record_call("github_api")
     # GitHub returns 202 when stats are being computed async — retry with exponential backoff
     backoff = [2.0, 5.0, 10.0]
     for delay in backoff:
         if resp.status_code != 202:
             break
         await asyncio.sleep(delay)
+        if not await acquire_budget("github_api"):
+            return 0
         resp = await client.get(url)
+        await record_call("github_api")
     if resp.status_code == 200:
+        await record_success("github_api")
         weeks = resp.json()
         if isinstance(weeks, list) and len(weeks) >= 4:
             return sum(w.get("total", 0) for w in weeks[-4:])
@@ -80,11 +100,14 @@ async def fetch_commit_count_simple(
     (common for repos < 4 weeks old). Uses the same pagination trick as
     fetch_contributor_count — request per_page=1 and read the last page number.
     """
+    if not _github_available or not await acquire_budget("github_api"):
+        return 0
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     resp = await client.get(
         f"https://api.github.com/repos/{owner}/{repo}/commits",
         params={"since": since, "per_page": 1},
     )
+    await record_call("github_api")
     if resp.status_code != 200:
         return 0
     link = resp.headers.get("Link", "")
@@ -100,10 +123,13 @@ async def fetch_commit_count_simple(
 
 
 async def fetch_contributor_count(client: httpx.AsyncClient, owner: str, repo: str) -> int:
+    if not _github_available or not await acquire_budget("github_api"):
+        return -1
     resp = await client.get(
         f"https://api.github.com/repos/{owner}/{repo}/contributors",
         params={"per_page": 1, "anon": "true"},
     )
+    await record_call("github_api")
     count = 0
     if resp.status_code == 200:
         link = resp.headers.get("Link", "")
@@ -121,15 +147,20 @@ async def fetch_contributor_count(client: httpx.AsyncClient, owner: str, repo: s
     # Fallback: if pagination trick returned 0 or 1, try stats/contributors endpoint
     if count <= 1:
         try:
-            await asyncio.sleep(0.1)
+            if not await acquire_budget("github_api"):
+                return count if count > 0 else -1
             stats_url = f"https://api.github.com/repos/{owner}/{repo}/stats/contributors"
             stats_resp = await client.get(stats_url)
+            await record_call("github_api")
             # GitHub returns 202 when stats are being computed — retry with exponential backoff
             for delay in [2.0, 5.0, 10.0]:
                 if stats_resp.status_code != 202:
                     break
                 await asyncio.sleep(delay)
+                if not await acquire_budget("github_api"):
+                    break
                 stats_resp = await client.get(stats_url)
+                await record_call("github_api")
             if stats_resp.status_code == 200:
                 stats_data = stats_resp.json()
                 if isinstance(stats_data, list) and len(stats_data) > count:

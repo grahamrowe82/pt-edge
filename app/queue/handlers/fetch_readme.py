@@ -13,7 +13,12 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine
-from app.ingest.budget import ResourceThrottledError
+from app.ingest.budget import (
+    ResourceExhaustedError,
+    ResourceThrottledError,
+    acquire_budget,
+    record_call,
+)
 from app.queue.errors import PermanentTaskError
 from app.settings import settings
 
@@ -56,11 +61,15 @@ async def handle_fetch_readme(task: dict) -> dict:
     """
     full_name = task["subject_id"]
 
+    if not await acquire_budget("github_api"):
+        raise ResourceExhaustedError("github_api")
+
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
         resp = await client.get(
             f"https://api.github.com/repos/{full_name}/readme",
             headers=_github_headers(),
         )
+    await record_call("github_api")
 
     if resp.status_code == 404:
         _upsert_raw_cache("github_readme", full_name, None)
