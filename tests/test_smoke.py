@@ -1725,6 +1725,162 @@ class TestWorkerIntegration:
 
 
 @pytest.mark.skipif(not _db_available(), reason="No database connection")
+class TestWorkerBackoff:
+    """Tests that the worker activates backoff on throttle and clears it on success."""
+
+    def _create_task(self, conn, resource_type="github_api"):
+        from sqlalchemy import text
+        row = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, state, priority, resource_type)
+            VALUES ('_test_backoff', '_test_' || gen_random_uuid()::text, 'claimed', 1, :rt)
+            RETURNING id, task_type, subject_id, priority, resource_type, retry_count, max_retries
+        """), {"rt": resource_type}).fetchone()
+        conn.commit()
+        return dict(row._mapping)
+
+    def _cleanup_task(self, conn, task_id):
+        from sqlalchemy import text
+        conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
+        conn.commit()
+
+    def _get_backoff(self, conn, resource_type):
+        from sqlalchemy import text
+        return conn.execute(text("""
+            SELECT backoff_count, backoff_until
+            FROM resource_budgets WHERE resource_type = :rt
+        """), {"rt": resource_type}).fetchone()
+
+    def _reset_backoff(self, conn, resource_type):
+        from sqlalchemy import text
+        conn.execute(text("""
+            UPDATE resource_budgets
+            SET backoff_count = 0, backoff_until = NULL
+            WHERE resource_type = :rt
+        """), {"rt": resource_type})
+        conn.commit()
+
+    def test_record_throttle_called_on_throttled_error(self):
+        """ResourceThrottledError sets backoff_until on the resource."""
+        import asyncio
+        from app.db import engine
+        from app.queue.worker import _execute_task
+
+        with engine.connect() as conn:
+            self._reset_backoff(conn, "github_api")
+            task = self._create_task(conn)
+
+        async def _boom(t):
+            from app.ingest.budget import ResourceThrottledError
+            raise ResourceThrottledError("GitHub rate limited (403)")
+
+        try:
+            asyncio.run(_execute_task(task, {task["task_type"]: _boom}))
+            with engine.connect() as conn:
+                row = self._get_backoff(conn, "github_api")
+            assert row.backoff_count >= 1
+            assert row.backoff_until is not None
+        finally:
+            with engine.connect() as conn:
+                self._cleanup_task(conn, task["id"])
+                self._reset_backoff(conn, "github_api")
+
+    def test_record_success_clears_backoff(self):
+        """Successful task completion clears backoff state."""
+        import asyncio
+        from sqlalchemy import text
+        from app.db import engine
+        from app.queue.worker import _execute_task
+
+        with engine.connect() as conn:
+            # Set artificial backoff
+            conn.execute(text("""
+                UPDATE resource_budgets
+                SET backoff_count = 2, backoff_until = now() + interval '1 hour'
+                WHERE resource_type = 'github_api'
+            """))
+            conn.commit()
+            task = self._create_task(conn)
+
+        async def _ok(t):
+            return {"status": "ok"}
+
+        try:
+            asyncio.run(_execute_task(task, {task["task_type"]: _ok}))
+            with engine.connect() as conn:
+                row = self._get_backoff(conn, "github_api")
+            assert row.backoff_count == 0
+            assert row.backoff_until is None
+        finally:
+            with engine.connect() as conn:
+                self._cleanup_task(conn, task["id"])
+                self._reset_backoff(conn, "github_api")
+
+    def test_exhausted_error_does_not_set_backoff(self):
+        """ResourceExhaustedError requeues but does NOT set backoff."""
+        import asyncio
+        from app.db import engine
+        from app.queue.worker import _execute_task
+
+        with engine.connect() as conn:
+            self._reset_backoff(conn, "github_api")
+            task = self._create_task(conn)
+
+        async def _exhausted(t):
+            from app.ingest.budget import ResourceExhaustedError
+            raise ResourceExhaustedError("Budget exhausted")
+
+        try:
+            asyncio.run(_execute_task(task, {task["task_type"]: _exhausted}))
+            with engine.connect() as conn:
+                row = self._get_backoff(conn, "github_api")
+            assert row.backoff_count == 0
+            assert row.backoff_until is None
+        finally:
+            with engine.connect() as conn:
+                self._cleanup_task(conn, task["id"])
+                self._reset_backoff(conn, "github_api")
+
+    def test_claim_blocked_during_backoff(self):
+        """Tasks are not claimed when their resource is backed off."""
+        from sqlalchemy import text
+        from app.db import engine
+        from app.queue.worker import claim_next_task
+
+        with engine.connect() as conn:
+            # Set backoff into the future
+            conn.execute(text("""
+                UPDATE resource_budgets
+                SET backoff_count = 1, backoff_until = now() + interval '1 hour'
+                WHERE resource_type = 'github_api'
+            """))
+            conn.commit()
+            # Create a pending task for this resource
+            row = conn.execute(text("""
+                INSERT INTO tasks (task_type, subject_id, state, priority, resource_type)
+                VALUES ('_test_backoff', '_test_' || gen_random_uuid()::text, 'pending', 99, 'github_api')
+                RETURNING id
+            """)).fetchone()
+            conn.commit()
+            task_id = row[0]
+
+        try:
+            # Named resource claim should be blocked
+            task = claim_next_task("test-worker", resource_type="github_api")
+            if task is not None:
+                assert task["id"] != task_id, "Should not claim task during backoff"
+
+            # NULL resource claim should also not grab backed-off tasks
+            task2 = claim_next_task("test-worker", resource_type=None)
+            if task2 is not None:
+                assert task2["id"] != task_id, "NULL-resource claim should not grab backed-off task"
+        finally:
+            with engine.connect() as conn:
+                conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
+                self._reset_backoff(conn, "github_api")
+                conn.commit()
+
+
+@pytest.mark.skipif(not _db_available(), reason="No database connection")
 class TestWorkerNullResourceClaiming:
     """Tests that the worker can claim tasks with NULL resource_type."""
 
