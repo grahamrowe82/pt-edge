@@ -19,7 +19,6 @@ from app.db import engine
 from app.ingest.budget import (
     ResourceExhaustedError,
     ResourceThrottledError,
-    record_success,
     record_throttle,
 )
 from app.queue.errors import PermanentTaskError
@@ -200,8 +199,6 @@ async def _execute_task(task: dict, handlers: dict) -> None:
     try:
         result = await handler(task)
         mark_done(task_id, result)
-        if task.get("resource_type"):
-            await record_success(task["resource_type"])
         logger.info(f"Completed task {task_id}: {task_type} {subject} -> {result}")
     except (ResourceExhaustedError, ResourceThrottledError) as e:
         # Infrastructure signals — requeue without counting as a retry.

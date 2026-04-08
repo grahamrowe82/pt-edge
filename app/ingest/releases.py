@@ -16,7 +16,6 @@ from sqlalchemy import text
 
 from app.db import engine, SessionLocal
 from app.embeddings import is_enabled as embeddings_enabled, build_release_text, embed_batch
-from app.ingest.budget import acquire_budget, record_call, record_success
 from app.models import Project, SyncLog
 from app.settings import settings
 
@@ -56,12 +55,8 @@ async def _summarise_release(body: str, project_name: str, version: str, title: 
 
 
 async def fetch_releases(client: httpx.AsyncClient, owner: str, repo: str) -> list[dict]:
-    if not await acquire_budget("github_api"):
-        return []
     resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}/releases", params={"per_page": 10})
-    await record_call("github_api")
     if resp.status_code == 200:
-        await record_success("github_api")
         return resp.json()
     logger.warning(f"GitHub releases API {resp.status_code} for {owner}/{repo}")
     return []

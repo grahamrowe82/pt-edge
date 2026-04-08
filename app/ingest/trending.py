@@ -8,7 +8,6 @@ import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
-from app.ingest.budget import acquire_budget, record_call, record_success
 from app.models import SyncLog
 from app.settings import settings
 
@@ -63,13 +62,7 @@ async def ingest_trending() -> dict:
                 url = f"https://api.github.com/search/repositories?q=topic:{topic}+pushed:>{cutoff}&sort=stars&per_page=30"
 
                 try:
-                    if not await acquire_budget("github_api"):
-                        logger.warning("GitHub budget exhausted — stopping trending search")
-                        break
                     resp = await client.get(url)
-                    await record_call("github_api")
-                    if resp.status_code == 200:
-                        await record_success("github_api")
                     if resp.status_code != 200:
                         logger.warning(f"GitHub search failed for topic {topic}: {resp.status_code}")
                         error_count += 1
