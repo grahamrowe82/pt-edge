@@ -125,13 +125,16 @@ _RECORD_CALL_SQL = text("""
 _THROTTLE_SQL = text("""
     UPDATE resource_budgets
     SET backoff_count = backoff_count + 1,
-        backoff_until = now() + CASE backoff_count
-          WHEN 0 THEN interval '1 minute'
-          WHEN 1 THEN interval '5 minutes'
-          WHEN 2 THEN interval '30 minutes'
-          WHEN 3 THEN interval '2 hours'
-          ELSE interval '8 hours'
-        END
+        backoff_until = now() + LEAST(
+          CASE backoff_count
+            WHEN 0 THEN interval '1 minute'
+            WHEN 1 THEN interval '5 minutes'
+            WHEN 2 THEN interval '30 minutes'
+            WHEN 3 THEN interval '2 hours'
+            ELSE interval '8 hours'
+          END,
+          (period_hours || ' hours')::interval
+        )
     WHERE resource_type = :rt
 """)
 
