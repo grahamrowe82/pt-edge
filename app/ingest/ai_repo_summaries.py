@@ -25,7 +25,6 @@ import sys
 import os
 from datetime import datetime, timezone
 
-import httpx
 from sqlalchemy import text
 
 from app.db import engine
@@ -78,39 +77,21 @@ README (truncated):
 {readme_text}"""
 
 
-def _github_headers():
-    headers = {"Accept": "application/vnd.github.raw+json"}
-    if settings.GITHUB_TOKEN:
-        headers["Authorization"] = f"token {settings.GITHUB_TOKEN}"
-    return headers
-
-
-async def _check_github_budget(client: httpx.AsyncClient) -> int | None:
-    """Check GitHub API remaining budget. Returns remaining count or None on error."""
-    try:
-        resp = await client.get(
-            "https://api.github.com/rate_limit",
-            headers=_github_headers(),
-        )
-        if resp.status_code == 200:
-            return resp.json().get("resources", {}).get("core", {}).get("remaining", 0)
-    except Exception as e:
-        logger.warning(f"GitHub rate limit check failed: {e}")
-    return None
-
-
 _readme_rate_limited = False
 
 
-async def fetch_readme(client: httpx.AsyncClient, full_name: str) -> str | None:
+async def fetch_readme(full_name: str) -> str | None:
     """Fetch raw README text from GitHub. Returns truncated text or None."""
     global _readme_rate_limited
     if _readme_rate_limited:
         return None
+    from app.github_client import GitHubRateLimitError, get_github_client
+    gh = get_github_client()
     try:
-        resp = await client.get(
-            f"https://api.github.com/repos/{full_name}/readme",
-            headers=_github_headers(),
+        resp = await gh.get(
+            f"/repos/{full_name}/readme",
+            caller="ingest.ai_repo_summaries",
+            accept="application/vnd.github.raw+json",
         )
         if resp.status_code == 200:
             readme_text = resp.text[:README_MAX_CHARS]
@@ -120,12 +101,17 @@ async def fetch_readme(client: httpx.AsyncClient, full_name: str) -> str | None:
         if resp.status_code == 404:
             return None
         if resp.status_code == 403:
-            _readme_rate_limited = True
-            logger.error(f"GitHub 403 for README {full_name} — aborting remaining fetches")
+            kind = gh.classify_403(resp)
+            if kind in ("rate_limit", "secondary_rate_limit"):
+                _readme_rate_limited = True
+                logger.error(f"GitHub rate limited for README {full_name} — aborting remaining fetches")
             return None
         logger.warning(f"GitHub README {resp.status_code} for {full_name}")
         return None
-    except httpx.HTTPError as e:
+    except GitHubRateLimitError:
+        _readme_rate_limited = True
+        return None
+    except Exception as e:
         logger.warning(f"GitHub README fetch error for {full_name}: {e}")
         return None
 
@@ -279,49 +265,49 @@ async def generate_ai_summaries(
     global _readme_rate_limited
     _readme_rate_limited = False
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        # Pre-flight: check GitHub budget
-        remaining = await _check_github_budget(client)
-        if remaining is not None and remaining < GITHUB_SAFETY_FLOOR:
-            logger.warning(
-                f"GitHub budget too low ({remaining} remaining, "
-                f"floor={GITHUB_SAFETY_FLOOR}) — skipping README fetches"
-            )
-            return {"processed": 0, "generated": 0, "skipped": "github_budget_low",
-                    "github_remaining": remaining}
-        if remaining is not None:
-            logger.info(f"GitHub budget: {remaining} remaining")
+    # Pre-flight: check GitHub budget via gateway
+    from app.github_client import get_github_client
+    gh = get_github_client()
+    remaining = gh.remaining()
+    if remaining < GITHUB_SAFETY_FLOOR:
+        logger.warning(
+            f"GitHub budget too low ({remaining} remaining, "
+            f"floor={GITHUB_SAFETY_FLOOR}) — skipping README fetches"
+        )
+        return {"processed": 0, "generated": 0, "skipped": "github_budget_low",
+                "github_remaining": remaining}
+    logger.info(f"GitHub budget: {remaining} remaining")
 
-        for i, repo in enumerate(candidates):
-            # ── GitHub budget check every N fetches ──────────────────
-            if (github_fetches > 0
-                    and github_fetches % GITHUB_CHECK_INTERVAL == 0
-                    and not _readme_rate_limited):
-                remaining = await _check_github_budget(client)
-                if remaining is not None and remaining < GITHUB_SAFETY_FLOOR:
-                    logger.warning(
-                        f"GitHub budget low ({remaining} remaining) — "
-                        f"stopping README fetches after {github_fetches} fetches"
-                    )
-                    _readme_rate_limited = True
-                    stopped_reason = "github_budget_low"
+    for i, repo in enumerate(candidates):
+        # ── GitHub budget check every N fetches ──────────────────
+        if (github_fetches > 0
+                and github_fetches % GITHUB_CHECK_INTERVAL == 0
+                and not _readme_rate_limited):
+            remaining = gh.remaining()
+            if remaining < GITHUB_SAFETY_FLOOR:
+                logger.warning(
+                    f"GitHub budget low ({remaining} remaining) — "
+                    f"stopping README fetches after {github_fetches} fetches"
+                )
+                _readme_rate_limited = True
+                stopped_reason = "github_budget_low"
 
-            # ── Use cached README or fetch from GitHub ───────────────
-            fetched_readme = None
-            if _readme_cache_fresh(repo):
-                readme = repo["readme_cache"]
-                cache_hits += 1
-            elif _readme_rate_limited:
-                # Can't fetch — skip repos without cached README
-                _mark_no_readme(repo["id"])
-                skipped += 1
-                continue
-            else:
-                async with sem:
-                    readme = await fetch_readme(client, repo["full_name"])
-                    await asyncio.sleep(0.2)  # respect GitHub rate limits
-                github_fetches += 1
-                fetched_readme = readme
+        # ── Use cached README or fetch from GitHub ───────────────
+        fetched_readme = None
+        if _readme_cache_fresh(repo):
+            readme = repo["readme_cache"]
+            cache_hits += 1
+        elif _readme_rate_limited:
+            # Can't fetch — skip repos without cached README
+            _mark_no_readme(repo["id"])
+            skipped += 1
+            continue
+        else:
+            async with sem:
+                readme = await fetch_readme(repo["full_name"])
+                await asyncio.sleep(0.2)  # respect GitHub rate limits
+            github_fetches += 1
+            fetched_readme = readme
 
             if not readme:
                 _mark_no_readme(repo["id"])

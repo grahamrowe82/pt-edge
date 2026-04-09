@@ -17,12 +17,10 @@ import logging
 import time
 from datetime import datetime, timezone
 
-import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
 from app.models import SyncLog
-from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -31,19 +29,24 @@ REQUEST_DELAY = 0.8    # seconds between requests — paces to ~4,500/hour
 TIME_BUDGET_HOURS = 10 # stop after this many hours regardless
 
 
-async def _fetch_created_at(
-    client: httpx.AsyncClient,
-    full_name: str,
-) -> str | None:
+async def _fetch_created_at(full_name: str) -> str | None:
     """Fetch created_at for a single repo. Returns ISO string or None."""
+    from app.github_client import GitHubRateLimitError, get_github_client
+    gh = get_github_client()
     try:
-        resp = await client.get(f"https://api.github.com/repos/{full_name}")
+        resp = await gh.get(f"/repos/{full_name}", caller="ingest.ai_repo_created_at")
         if resp.status_code == 404:
             return None
         if resp.status_code == 403:
-            return "RATE_LIMITED"
-        resp.raise_for_status()
+            kind = gh.classify_403(resp)
+            if kind in ("rate_limit", "secondary_rate_limit"):
+                return "RATE_LIMITED"
+            return None  # access denied — skip this repo
+        if resp.status_code != 200:
+            return None
         return resp.json().get("created_at")
+    except GitHubRateLimitError:
+        return "RATE_LIMITED"
     except Exception as e:
         logger.debug(f"Failed {full_name}: {e}")
         return None
@@ -90,65 +93,59 @@ async def ingest_ai_repo_created_at() -> dict:
 
     logger.info(f"ai_repo_created_at: {remaining} repos to backfill")
 
-    headers = {"Accept": "application/vnd.github+json"}
-    token = settings.GITHUB_TOKEN
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-
     total_fetched = 0
     total_updated = 0
     stop_reason = "queue_empty"
 
-    async with httpx.AsyncClient(headers=headers, timeout=10, follow_redirects=True) as client:
-        while True:
-            # Check time budget
-            elapsed = time.monotonic() - wall_start
-            if elapsed >= budget_seconds:
-                stop_reason = "time_budget"
-                logger.info(f"ai_repo_created_at: time budget reached ({elapsed / 3600:.1f}h)")
+    while True:
+        # Check time budget
+        elapsed = time.monotonic() - wall_start
+        if elapsed >= budget_seconds:
+            stop_reason = "time_budget"
+            logger.info(f"ai_repo_created_at: time budget reached ({elapsed / 3600:.1f}h)")
+            break
+
+        # Fetch next chunk of NULL repos
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT id, full_name
+                FROM ai_repos
+                WHERE created_at IS NULL
+                ORDER BY stars DESC NULLS LAST
+                LIMIT :limit
+            """), {"limit": WRITE_CHUNK}).fetchall()
+
+        if not rows:
+            stop_reason = "queue_empty"
+            break
+
+        # Fetch created_at for each repo, sequentially
+        chunk_updates = []
+        for repo_id, full_name in rows:
+            created_at = await _fetch_created_at(full_name)
+
+            if created_at == "RATE_LIMITED":
+                stop_reason = "rate_limited"
+                logger.warning("ai_repo_created_at: GitHub rate limit hit, stopping early")
                 break
 
-            # Fetch next chunk of NULL repos
-            with engine.connect() as conn:
-                rows = conn.execute(text("""
-                    SELECT id, full_name
-                    FROM ai_repos
-                    WHERE created_at IS NULL
-                    ORDER BY stars DESC NULLS LAST
-                    LIMIT :limit
-                """), {"limit": WRITE_CHUNK}).fetchall()
+            if created_at:
+                chunk_updates.append({"id": repo_id, "created_at": created_at})
 
-            if not rows:
-                stop_reason = "queue_empty"
-                break
+            await asyncio.sleep(REQUEST_DELAY)
 
-            # Fetch created_at for each repo, sequentially
-            chunk_updates = []
-            for repo_id, full_name in rows:
-                created_at = await _fetch_created_at(client, full_name)
+        # Write whatever we got from this chunk
+        chunk_written = _write_chunk(chunk_updates)
+        total_fetched += len(rows) if stop_reason != "rate_limited" else len(chunk_updates)
+        total_updated += chunk_written
 
-                if created_at == "RATE_LIMITED":
-                    stop_reason = "rate_limited"
-                    logger.warning("ai_repo_created_at: GitHub rate limit hit, stopping early")
-                    break
+        logger.info(
+            f"ai_repo_created_at: chunk done — {chunk_written} written, "
+            f"{total_updated} total, {elapsed / 60:.0f}min elapsed"
+        )
 
-                if created_at:
-                    chunk_updates.append({"id": repo_id, "created_at": created_at})
-
-                await asyncio.sleep(REQUEST_DELAY)
-
-            # Write whatever we got from this chunk
-            chunk_written = _write_chunk(chunk_updates)
-            total_fetched += len(rows) if stop_reason != "rate_limited" else len(chunk_updates)
-            total_updated += chunk_written
-
-            logger.info(
-                f"ai_repo_created_at: chunk done — {chunk_written} written, "
-                f"{total_updated} total, {elapsed / 60:.0f}min elapsed"
-            )
-
-            if stop_reason == "rate_limited":
-                break
+        if stop_reason == "rate_limited":
+            break
 
     # Final remaining count
     with engine.connect() as conn:

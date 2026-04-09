@@ -4,12 +4,11 @@ import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
 
-import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
+from app.github_client import get_github_client
 from app.models import SyncLog
-from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -49,54 +48,57 @@ async def ingest_trending() -> dict:
 
     candidates = []
     error_count = 0
-
-    headers = {"User-Agent": "pt-edge/1.0"}
-    if settings.GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+    gh = get_github_client()
 
     semaphore = asyncio.Semaphore(2)
-    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
-        for topic in TOPICS:
-            async with semaphore:
-                cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d")
-                url = f"https://api.github.com/search/repositories?q=topic:{topic}+pushed:>{cutoff}&sort=stars&per_page=30"
+    for topic in TOPICS:
+        async with semaphore:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d")
 
-                try:
-                    resp = await client.get(url)
-                    if resp.status_code != 200:
-                        logger.warning(f"GitHub search failed for topic {topic}: {resp.status_code}")
-                        error_count += 1
+            try:
+                resp = await gh.get(
+                    "/search/repositories",
+                    caller="ingest.trending",
+                    params={
+                        "q": f"topic:{topic} pushed:>{cutoff}",
+                        "sort": "stars",
+                        "per_page": 30,
+                    },
+                )
+                if resp.status_code != 200:
+                    logger.warning(f"GitHub search failed for topic {topic}: {resp.status_code}")
+                    error_count += 1
+                    continue
+
+                data = resp.json()
+                for repo in data.get("items", []):
+                    owner = repo["owner"]["login"]
+                    name = repo["name"]
+                    full = f"{owner}/{name}".lower()
+                    github_url = f"https://github.com/{owner}/{name}"
+
+                    if full in tracked or github_url.lower() in existing:
                         continue
 
-                    data = resp.json()
-                    for repo in data.get("items", []):
-                        owner = repo["owner"]["login"]
-                        name = repo["name"]
-                        full = f"{owner}/{name}".lower()
-                        github_url = f"https://github.com/{owner}/{name}"
+                    candidates.append({
+                        "github_url": github_url,
+                        "github_owner": owner,
+                        "github_repo": name,
+                        "name": repo.get("name"),
+                        "description": (repo.get("description") or "")[:500],
+                        "stars": repo.get("stargazers_count", 0),
+                        "language": repo.get("language"),
+                        "topics": repo.get("topics") or [],
+                        "source": "trending",
+                        "source_detail": f"GitHub topic: {topic}",
+                    })
+                    existing.add(github_url.lower())  # dedupe across topics
 
-                        if full in tracked or github_url.lower() in existing:
-                            continue
+            except Exception as e:
+                error_count += 1
+                logger.error(f"Error searching topic {topic}: {e}")
 
-                        candidates.append({
-                            "github_url": github_url,
-                            "github_owner": owner,
-                            "github_repo": name,
-                            "name": repo.get("name"),
-                            "description": (repo.get("description") or "")[:500],
-                            "stars": repo.get("stargazers_count", 0),
-                            "language": repo.get("language"),
-                            "topics": repo.get("topics") or [],
-                            "source": "trending",
-                            "source_detail": f"GitHub topic: {topic}",
-                        })
-                        existing.add(github_url.lower())  # dedupe across topics
-
-                except Exception as e:
-                    error_count += 1
-                    logger.error(f"Error searching topic {topic}: {e}")
-
-                await asyncio.sleep(2)  # Rate limit: 10 search requests/min
+            await asyncio.sleep(2)  # Rate limit: 10 search requests/min
 
     # Batch insert candidates
     if candidates:
