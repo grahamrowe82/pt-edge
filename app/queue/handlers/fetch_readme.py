@@ -9,30 +9,16 @@ the migration period.
 """
 import logging
 
-import httpx
 from sqlalchemy import text
 
 from app.db import engine
-from app.ingest.budget import (
-    ResourceExhaustedError,
-    ResourceThrottledError,
-    acquire_budget,
-    record_call,
-)
+from app.github_client import GitHubRateLimitError, get_github_client
 from app.queue.errors import PermanentTaskError
-from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
 README_MAX_CHARS = 8000
 MIN_README_LENGTH = 100
-
-
-def _github_headers() -> dict:
-    headers = {"Accept": "application/vnd.github.raw+json"}
-    if settings.GITHUB_TOKEN:
-        headers["Authorization"] = f"token {settings.GITHUB_TOKEN}"
-    return headers
 
 
 def _upsert_raw_cache(source: str, subject_id: str, payload: str | None) -> None:
@@ -56,27 +42,33 @@ async def handle_fetch_readme(task: dict) -> dict:
         {"status": "too_short"} if README is under MIN_README_LENGTH
 
     Raises:
-        RuntimeError on 403 (rate limited) — triggers requeue
-        RuntimeError on other HTTP errors — triggers requeue
+        GitHubRateLimitError on rate limit (triggers requeue via worker)
+        PermanentTaskError on 451/410 (DMCA, gone)
+        PermanentTaskError on access-denied 403 (private repo)
+        RuntimeError on other HTTP errors (triggers retry)
     """
     full_name = task["subject_id"]
+    gh = get_github_client()
 
-    if not await acquire_budget("github_api"):
-        raise ResourceExhaustedError("github_api")
-
-    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
-        resp = await client.get(
-            f"https://api.github.com/repos/{full_name}/readme",
-            headers=_github_headers(),
-        )
-    await record_call("github_api")
+    resp = await gh.get(
+        f"/repos/{full_name}/readme",
+        caller="handler.fetch_readme",
+        accept="application/vnd.github.raw+json",
+    )
 
     if resp.status_code == 404:
         _upsert_raw_cache("github_readme", full_name, None)
         return {"status": "no_readme"}
 
     if resp.status_code == 403:
-        raise ResourceThrottledError(f"GitHub rate limited (403) for {full_name}")
+        kind = gh.classify_403(resp)
+        if kind == "rate_limit":
+            raise GitHubRateLimitError(gh._core_reset)
+        elif kind == "secondary_rate_limit":
+            raise GitHubRateLimitError(gh._core_reset)
+        else:
+            # Access denied — private repo, DMCA, etc. Don't retry.
+            raise PermanentTaskError(f"GitHub 403 access denied for {full_name}")
 
     if resp.status_code in (451, 410):
         raise PermanentTaskError(f"GitHub {resp.status_code} for {full_name}")

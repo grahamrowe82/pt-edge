@@ -4,24 +4,14 @@ Fine-grained — one GitHub API call per task. At priority 2, these
 naturally yield to all higher-priority work. The scheduler creates
 them in batches of 1000, capping pending tasks at 500 to avoid
 flooding the table.
-
-No delay between requests needed — the resource_budgets table handles
-rate limiting at the claim level (4500/hr GitHub budget).
 """
 import logging
 
-import httpx
 from sqlalchemy import text
 
 from app.db import engine
-from app.ingest.budget import (
-    ResourceExhaustedError,
-    ResourceThrottledError,
-    acquire_budget,
-    record_call,
-)
+from app.github_client import GitHubRateLimitError, get_github_client
 from app.queue.errors import PermanentTaskError
-from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +27,9 @@ async def handle_backfill_created_at(task: dict) -> dict:
         {"status": "no_data"} if response has no created_at field
 
     Raises:
-        RuntimeError on 403 (rate limited) or other HTTP errors
+        GitHubRateLimitError on rate limit (triggers requeue via worker)
+        PermanentTaskError on 451/410 or access-denied 403
+        RuntimeError on other HTTP errors (triggers retry)
     """
     repo_id = int(task["subject_id"])
 
@@ -51,23 +43,21 @@ async def handle_backfill_created_at(task: dict) -> dict:
         return {"status": "repo_not_in_db"}
 
     full_name = row[0]
+    gh = get_github_client()
 
-    headers = {"Accept": "application/vnd.github+json"}
-    if settings.GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
-
-    if not await acquire_budget("github_api"):
-        raise ResourceExhaustedError("github_api")
-
-    async with httpx.AsyncClient(headers=headers, timeout=10, follow_redirects=True) as client:
-        resp = await client.get(f"https://api.github.com/repos/{full_name}")
-    await record_call("github_api")
+    resp = await gh.get(f"/repos/{full_name}", caller="handler.backfill_created_at")
 
     if resp.status_code == 404:
         return {"status": "not_found"}
 
     if resp.status_code == 403:
-        raise ResourceThrottledError(f"GitHub rate limited (403) for {full_name}")
+        kind = gh.classify_403(resp)
+        if kind == "rate_limit":
+            raise GitHubRateLimitError(gh._core_reset)
+        elif kind == "secondary_rate_limit":
+            raise GitHubRateLimitError(gh._core_reset)
+        else:
+            raise PermanentTaskError(f"GitHub 403 access denied for {full_name}")
 
     if resp.status_code in (451, 410):
         raise PermanentTaskError(f"GitHub {resp.status_code} for {full_name}")

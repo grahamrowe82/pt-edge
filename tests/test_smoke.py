@@ -1582,11 +1582,15 @@ class TestWorkerIntegration:
     """Tests that exercise mark_done with data that has historically broken it."""
 
     def _create_test_task(self, conn):
-        """Create a throwaway task and return its id."""
+        """Create a throwaway task and return its id.
+
+        Uses resource_type='_test' so the live worker never claims it
+        (_test is not in CONCURRENT_RESOURCES and is not NULL).
+        """
         from sqlalchemy import text
         row = conn.execute(text("""
-            INSERT INTO tasks (task_type, subject_id, state, priority)
-            VALUES ('_test_smoke', '_test_' || gen_random_uuid()::text, 'claimed', 1)
+            INSERT INTO tasks (task_type, subject_id, state, priority, resource_type)
+            VALUES ('_test_smoke', '_test_' || gen_random_uuid()::text, 'claimed', 1, '_test')
             RETURNING id
         """)).fetchone()
         conn.commit()
@@ -1726,15 +1730,29 @@ class TestWorkerIntegration:
 
 @pytest.mark.skipif(not _db_available(), reason="No database connection")
 class TestWorkerBackoff:
-    """Tests that the worker activates backoff on throttle and clears it on success."""
+    """Tests that the worker activates backoff on throttle and clears it on success.
 
-    def _create_task(self, conn, resource_type="github_api"):
+    Uses '_test_bo' resource type to avoid racing with the live worker
+    which actively modifies github_api backoff state.
+    """
+    _RT = "_test_bo"
+
+    def _ensure_budget(self, conn):
+        from sqlalchemy import text
+        conn.execute(text("""
+            INSERT INTO resource_budgets (resource_type, period_hours, budget)
+            VALUES (:rt, 1, 999999)
+            ON CONFLICT (resource_type) DO NOTHING
+        """), {"rt": self._RT})
+        conn.commit()
+
+    def _create_task(self, conn):
         from sqlalchemy import text
         row = conn.execute(text("""
             INSERT INTO tasks (task_type, subject_id, state, priority, resource_type)
             VALUES ('_test_backoff', '_test_' || gen_random_uuid()::text, 'claimed', 1, :rt)
             RETURNING id, task_type, subject_id, priority, resource_type, retry_count, max_retries
-        """), {"rt": resource_type}).fetchone()
+        """), {"rt": self._RT}).fetchone()
         conn.commit()
         return dict(row._mapping)
 
@@ -1743,20 +1761,26 @@ class TestWorkerBackoff:
         conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
         conn.commit()
 
-    def _get_backoff(self, conn, resource_type):
+    def _get_backoff(self, conn):
         from sqlalchemy import text
         return conn.execute(text("""
             SELECT backoff_count, backoff_until
             FROM resource_budgets WHERE resource_type = :rt
-        """), {"rt": resource_type}).fetchone()
+        """), {"rt": self._RT}).fetchone()
 
-    def _reset_backoff(self, conn, resource_type):
+    def _reset_backoff(self, conn):
         from sqlalchemy import text
         conn.execute(text("""
             UPDATE resource_budgets
             SET backoff_count = 0, backoff_until = NULL
             WHERE resource_type = :rt
-        """), {"rt": resource_type})
+        """), {"rt": self._RT})
+        conn.commit()
+
+    def _cleanup_budget(self, conn):
+        from sqlalchemy import text
+        conn.execute(text("DELETE FROM resource_budgets WHERE resource_type = :rt"),
+                     {"rt": self._RT})
         conn.commit()
 
     def test_record_throttle_called_on_throttled_error(self):
@@ -1766,7 +1790,8 @@ class TestWorkerBackoff:
         from app.queue.worker import _execute_task
 
         with engine.connect() as conn:
-            self._reset_backoff(conn, "github_api")
+            self._ensure_budget(conn)
+            self._reset_backoff(conn)
             task = self._create_task(conn)
 
         async def _boom(t):
@@ -1776,28 +1801,30 @@ class TestWorkerBackoff:
         try:
             asyncio.run(_execute_task(task, {task["task_type"]: _boom}))
             with engine.connect() as conn:
-                row = self._get_backoff(conn, "github_api")
+                row = self._get_backoff(conn)
             assert row.backoff_count >= 1
             assert row.backoff_until is not None
         finally:
             with engine.connect() as conn:
                 self._cleanup_task(conn, task["id"])
-                self._reset_backoff(conn, "github_api")
+                self._cleanup_budget(conn)
 
-    def test_record_success_clears_backoff(self):
-        """Successful task completion clears backoff state."""
+    def test_successful_task_does_not_clear_backoff(self):
+        """Successful task does NOT clear backoff — backoff clears only when
+        the period expires naturally (PR #236 design: no eager record_success)."""
         import asyncio
         from sqlalchemy import text
         from app.db import engine
         from app.queue.worker import _execute_task
 
         with engine.connect() as conn:
+            self._ensure_budget(conn)
             # Set artificial backoff
             conn.execute(text("""
                 UPDATE resource_budgets
                 SET backoff_count = 2, backoff_until = now() + interval '1 hour'
-                WHERE resource_type = 'github_api'
-            """))
+                WHERE resource_type = :rt
+            """), {"rt": self._RT})
             conn.commit()
             task = self._create_task(conn)
 
@@ -1807,13 +1834,13 @@ class TestWorkerBackoff:
         try:
             asyncio.run(_execute_task(task, {task["task_type"]: _ok}))
             with engine.connect() as conn:
-                row = self._get_backoff(conn, "github_api")
-            assert row.backoff_count == 0
-            assert row.backoff_until is None
+                row = self._get_backoff(conn)
+            # backoff_count stays — worker no longer calls record_success
+            assert row.backoff_count == 2
         finally:
             with engine.connect() as conn:
                 self._cleanup_task(conn, task["id"])
-                self._reset_backoff(conn, "github_api")
+                self._cleanup_budget(conn)
 
     def test_exhausted_error_does_not_set_backoff(self):
         """ResourceExhaustedError requeues but does NOT set backoff."""
@@ -1822,7 +1849,8 @@ class TestWorkerBackoff:
         from app.queue.worker import _execute_task
 
         with engine.connect() as conn:
-            self._reset_backoff(conn, "github_api")
+            self._ensure_budget(conn)
+            self._reset_backoff(conn)
             task = self._create_task(conn)
 
         async def _exhausted(t):
@@ -1832,13 +1860,13 @@ class TestWorkerBackoff:
         try:
             asyncio.run(_execute_task(task, {task["task_type"]: _exhausted}))
             with engine.connect() as conn:
-                row = self._get_backoff(conn, "github_api")
+                row = self._get_backoff(conn)
             assert row.backoff_count == 0
             assert row.backoff_until is None
         finally:
             with engine.connect() as conn:
                 self._cleanup_task(conn, task["id"])
-                self._reset_backoff(conn, "github_api")
+                self._cleanup_budget(conn)
 
     def test_claim_blocked_during_backoff(self):
         """Tasks are not claimed when their resource is backed off."""
@@ -1847,36 +1875,32 @@ class TestWorkerBackoff:
         from app.queue.worker import claim_next_task
 
         with engine.connect() as conn:
+            self._ensure_budget(conn)
             # Set backoff into the future
             conn.execute(text("""
                 UPDATE resource_budgets
                 SET backoff_count = 1, backoff_until = now() + interval '1 hour'
-                WHERE resource_type = 'github_api'
-            """))
+                WHERE resource_type = :rt
+            """), {"rt": self._RT})
             conn.commit()
             # Create a pending task for this resource
             row = conn.execute(text("""
                 INSERT INTO tasks (task_type, subject_id, state, priority, resource_type)
-                VALUES ('_test_backoff', '_test_' || gen_random_uuid()::text, 'pending', 99, 'github_api')
+                VALUES ('_test_backoff', '_test_' || gen_random_uuid()::text, 'pending', 99, :rt)
                 RETURNING id
-            """)).fetchone()
+            """), {"rt": self._RT}).fetchone()
             conn.commit()
             task_id = row[0]
 
         try:
-            # Named resource claim should be blocked
-            task = claim_next_task("test-worker", resource_type="github_api")
+            # Named resource claim should be blocked by backoff
+            task = claim_next_task("test-worker", resource_type=self._RT)
             if task is not None:
                 assert task["id"] != task_id, "Should not claim task during backoff"
-
-            # NULL resource claim should also not grab backed-off tasks
-            task2 = claim_next_task("test-worker", resource_type=None)
-            if task2 is not None:
-                assert task2["id"] != task_id, "NULL-resource claim should not grab backed-off task"
         finally:
             with engine.connect() as conn:
                 conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
-                self._reset_backoff(conn, "github_api")
+                self._cleanup_budget(conn)
                 conn.commit()
 
 
@@ -1884,46 +1908,62 @@ class TestWorkerBackoff:
 class TestWorkerNullResourceClaiming:
     """Tests that the worker can claim tasks with NULL resource_type."""
 
-    def test_claim_null_resource_task(self):
-        """claim_next_task(resource_type=None) claims NULL-resource tasks."""
+    def _ensure_test_budget(self, conn):
+        """Create a resource_budgets row for '_test' so claim SQL passes budget check."""
+        from sqlalchemy import text
+        conn.execute(text("""
+            INSERT INTO resource_budgets (resource_type, period_hours, budget)
+            VALUES ('_test', 1, 999999)
+            ON CONFLICT (resource_type) DO NOTHING
+        """))
+        conn.commit()
+
+    def _cleanup_test_budget(self, conn):
+        from sqlalchemy import text
+        conn.execute(text("DELETE FROM resource_budgets WHERE resource_type = '_test'"))
+        conn.commit()
+
+    def test_claim_resource_task(self):
+        """claim_next_task(resource_type=X) claims tasks for that resource.
+
+        Uses '_test' resource type to avoid racing with the live worker
+        (which only claims CONCURRENT_RESOURCES and NULL-resource tasks).
+        """
         from sqlalchemy import text
         from app.db import engine
         from app.queue.worker import claim_next_task
 
         with engine.connect() as conn:
+            self._ensure_test_budget(conn)
             row = conn.execute(text("""
                 INSERT INTO tasks (task_type, subject_id, state, priority, resource_type)
-                VALUES ('_test_null_resource', '_test_' || gen_random_uuid()::text, 'pending', 99, NULL)
+                VALUES ('_test_claim', '_test_' || gen_random_uuid()::text, 'pending', 99, '_test')
                 RETURNING id
             """)).fetchone()
             conn.commit()
             task_id = row[0]
 
         try:
-            task = claim_next_task("test-worker", resource_type=None)
+            task = claim_next_task("test-worker", resource_type="_test")
             assert task is not None
-            assert task["task_type"] == "_test_null_resource"
+            assert task["task_type"] == "_test_claim"
         finally:
             with engine.connect() as conn:
                 conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
-                if task and task["id"] != task_id:
-                    conn.execute(text("""
-                        UPDATE tasks SET state = 'pending', claimed_by = NULL,
-                               claimed_at = NULL, heartbeat_at = NULL
-                        WHERE id = :id
-                    """), {"id": task["id"]})
+                self._cleanup_test_budget(conn)
                 conn.commit()
 
-    def test_claim_named_resource_does_not_grab_null(self):
-        """claim_next_task(resource_type='github_api') ignores NULL-resource tasks."""
+    def test_claim_named_resource_does_not_grab_other(self):
+        """claim_next_task(resource_type='github_api') ignores tasks on other resources."""
         from sqlalchemy import text
         from app.db import engine
         from app.queue.worker import claim_next_task
 
         with engine.connect() as conn:
+            self._ensure_test_budget(conn)
             row = conn.execute(text("""
                 INSERT INTO tasks (task_type, subject_id, state, priority, resource_type)
-                VALUES ('_test_null_resource', '_test_' || gen_random_uuid()::text, 'pending', 1, NULL)
+                VALUES ('_test_claim', '_test_' || gen_random_uuid()::text, 'pending', 1, '_test')
                 RETURNING id
             """)).fetchone()
             conn.commit()
@@ -1936,6 +1976,7 @@ class TestWorkerNullResourceClaiming:
         finally:
             with engine.connect() as conn:
                 conn.execute(text("DELETE FROM tasks WHERE id = :id"), {"id": task_id})
+                self._cleanup_test_budget(conn)
                 conn.commit()
 
 
