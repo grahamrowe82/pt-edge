@@ -340,38 +340,36 @@ async def _extract_candidates(posts: list[dict]) -> int:
     if not new_refs:
         return 0
 
-    # Fetch GitHub stats for each new repo
-    headers = {"User-Agent": "pt-edge/1.0"}
-    if settings.GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+    # Fetch GitHub stats for each new repo (via gateway)
+    from app.github_client import get_github_client
+    gh = get_github_client()
 
     candidates = []
     semaphore = asyncio.Semaphore(5)
-    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
-        for full, source_url in new_refs.items():
-            owner, repo = full.split("/", 1)
-            async with semaphore:
-                try:
-                    resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}")
-                    if resp.status_code != 200:
-                        logger.warning(f"GitHub API {resp.status_code} for {owner}/{repo}")
-                        continue
-                    data = resp.json()
-                    candidates.append({
-                        "github_url": f"https://github.com/{owner}/{repo}",
-                        "github_owner": owner,
-                        "github_repo": repo,
-                        "name": data.get("name"),
-                        "description": (data.get("description") or "")[:500],
-                        "stars": data.get("stargazers_count", 0),
-                        "language": data.get("language"),
-                        "topics": data.get("topics") or [],
-                        "source": "hn",
-                        "source_detail": source_url,
-                    })
-                except Exception as e:
-                    logger.error(f"Error fetching GitHub repo {owner}/{repo}: {e}")
-                await asyncio.sleep(0.1)
+    for full, source_url in new_refs.items():
+        owner, repo = full.split("/", 1)
+        async with semaphore:
+            try:
+                resp = await gh.get(f"/repos/{owner}/{repo}", caller="ingest.hn")
+                if resp.status_code != 200:
+                    logger.warning(f"GitHub API {resp.status_code} for {owner}/{repo}")
+                    continue
+                data = resp.json()
+                candidates.append({
+                    "github_url": f"https://github.com/{owner}/{repo}",
+                    "github_owner": owner,
+                    "github_repo": repo,
+                    "name": data.get("name"),
+                    "description": (data.get("description") or "")[:500],
+                    "stars": data.get("stargazers_count", 0),
+                    "language": data.get("language"),
+                    "topics": data.get("topics") or [],
+                    "source": "hn",
+                    "source_detail": source_url,
+                })
+            except Exception as e:
+                logger.error(f"Error fetching GitHub repo {owner}/{repo}: {e}")
+            await asyncio.sleep(0.1)
 
     # Batch insert candidates
     if candidates:

@@ -28,13 +28,14 @@ MIN_AGE = timedelta(hours=24)
 
 
 async def _rescore_candidate(
-    client: httpx.AsyncClient, candidate: dict, semaphore: asyncio.Semaphore,
+    candidate: dict, semaphore: asyncio.Semaphore,
 ) -> dict | None:
     """Fetch current star count and enrichment data for a candidate repo.
 
     Enrichment (created_at, commit_trend, contributor_count) is fetched
     once and cached so MCP tools don't need live API calls per-request.
     """
+    from app.github_client import get_github_client
     from app.ingest.github import (
         fetch_commit_activity, fetch_commit_count_simple, fetch_contributor_count,
     )
@@ -44,9 +45,10 @@ async def _rescore_candidate(
     if not owner or not repo:
         return None
 
+    gh = get_github_client()
     async with semaphore:
         try:
-            resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}")
+            resp = await gh.get(f"/repos/{owner}/{repo}", caller="ingest.candidates")
             await asyncio.sleep(0.1)
         except Exception as e:
             logger.error(f"Error fetching {owner}/{repo}: {e}")
@@ -84,16 +86,16 @@ async def _rescore_candidate(
     if needs_enrichment:
         async with semaphore:
             try:
-                commit_trend = await fetch_commit_activity(client, owner, repo)
+                commit_trend = await fetch_commit_activity(owner, repo)
                 # Stats API often returns 0 for young repos — fall back to
                 # simple commit listing which works for any repo age
                 if commit_trend == 0:
-                    commit_trend = await fetch_commit_count_simple(client, owner, repo)
+                    commit_trend = await fetch_commit_count_simple(owner, repo)
                 result["commit_trend"] = commit_trend
             except Exception:
                 pass
             try:
-                contrib = await fetch_contributor_count(client, owner, repo)
+                contrib = await fetch_contributor_count(owner, repo)
                 result["contributor_count"] = contrib
             except Exception:
                 pass
@@ -123,14 +125,9 @@ async def ingest_candidate_velocity() -> dict:
     if not candidates:
         return {"rescored": 0, "errors": 0}
 
-    headers = {"User-Agent": "pt-edge/1.0"}
-    if settings.GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
-
     semaphore = asyncio.Semaphore(5)
-    async with httpx.AsyncClient(headers=headers, timeout=30.0, follow_redirects=True) as client:
-        tasks = [_rescore_candidate(client, c, semaphore) for c in candidates]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+    tasks = [_rescore_candidate(c, semaphore) for c in candidates]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
     updates = []
     error_count = 0

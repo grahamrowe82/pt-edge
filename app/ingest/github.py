@@ -3,67 +3,51 @@ import logging
 import re
 from datetime import date, datetime, timedelta, timezone
 
-import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
+from app.github_client import GitHubRateLimitError, get_github_client
 from app.models import Project, SyncLog
-from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# Module-level flag: set to False when GitHub returns 403, checked by all fetchers
+# Module-level flag: set to False on genuine rate-limit 403, checked by all fetchers
 _github_available = True
 
 
-async def check_github_rate_limit(client: httpx.AsyncClient) -> bool:
-    """Pre-flight check: is GitHub API available? Returns False if rate-limited."""
-    global _github_available
-    try:
-        resp = await client.get("https://api.github.com/rate_limit")
-        if resp.status_code == 403:
-            logger.error("GitHub API rate-limited (403 on /rate_limit) — skipping all GitHub calls")
-            _github_available = False
-            return False
-        if resp.status_code == 200:
-            data = resp.json()
-            remaining = data.get("resources", {}).get("core", {}).get("remaining", 0)
-            if remaining < 100:
-                logger.warning(f"GitHub API near limit ({remaining} remaining) — skipping to avoid 403")
-                _github_available = False
-                return False
-            _github_available = True
-            return True
-    except Exception as e:
-        logger.warning(f"GitHub rate limit check failed: {e}")
-    return True  # optimistic if check itself fails
-
-
-async def fetch_repo(client: httpx.AsyncClient, owner: str, repo: str) -> dict | None:
+async def fetch_repo(owner: str, repo: str) -> dict | None:
     global _github_available
     if not _github_available:
         return None
-    resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}")
+    gh = get_github_client()
+    try:
+        resp = await gh.get(f"/repos/{owner}/{repo}", caller="ingest.github")
+    except GitHubRateLimitError:
+        _github_available = False
+        return None
     if resp.status_code == 200:
         return resp.json()
     if resp.status_code == 403:
-        _github_available = False
-        logger.error(f"GitHub API 403 for {owner}/{repo} — aborting remaining requests")
+        kind = gh.classify_403(resp)
+        if kind in ("rate_limit", "secondary_rate_limit"):
+            _github_available = False
+            logger.error(f"GitHub API rate limited for {owner}/{repo} — aborting remaining requests")
         return None
     logger.warning(f"GitHub API {resp.status_code} for {owner}/{repo}")
     return None
 
 
-async def fetch_commit_activity(client: httpx.AsyncClient, owner: str, repo: str) -> int:
-    url = f"https://api.github.com/repos/{owner}/{repo}/stats/commit_activity"
-    resp = await client.get(url)
+async def fetch_commit_activity(owner: str, repo: str) -> int:
+    gh = get_github_client()
+    path = f"/repos/{owner}/{repo}/stats/commit_activity"
+    resp = await gh.get(path, caller="ingest.github")
     # GitHub returns 202 when stats are being computed async — retry with exponential backoff
     backoff = [2.0, 5.0, 10.0]
     for delay in backoff:
         if resp.status_code != 202:
             break
         await asyncio.sleep(delay)
-        resp = await client.get(url)
+        resp = await gh.get(path, caller="ingest.github")
     if resp.status_code == 200:
         weeks = resp.json()
         if isinstance(weeks, list) and len(weeks) >= 4:
@@ -71,18 +55,18 @@ async def fetch_commit_activity(client: httpx.AsyncClient, owner: str, repo: str
     return 0
 
 
-async def fetch_commit_count_simple(
-    client: httpx.AsyncClient, owner: str, repo: str, days: int = 30,
-) -> int:
+async def fetch_commit_count_simple(owner: str, repo: str, days: int = 30) -> int:
     """Count commits in the last N days using the /commits endpoint + Link header.
 
     Lightweight fallback for repos where /stats/commit_activity returns 0
     (common for repos < 4 weeks old). Uses the same pagination trick as
     fetch_contributor_count — request per_page=1 and read the last page number.
     """
+    gh = get_github_client()
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
-    resp = await client.get(
-        f"https://api.github.com/repos/{owner}/{repo}/commits",
+    resp = await gh.get(
+        f"/repos/{owner}/{repo}/commits",
+        caller="ingest.github",
         params={"since": since, "per_page": 1},
     )
     if resp.status_code != 200:
@@ -99,9 +83,11 @@ async def fetch_commit_count_simple(
     return len(data) if isinstance(data, list) else 0
 
 
-async def fetch_contributor_count(client: httpx.AsyncClient, owner: str, repo: str) -> int:
-    resp = await client.get(
-        f"https://api.github.com/repos/{owner}/{repo}/contributors",
+async def fetch_contributor_count(owner: str, repo: str) -> int:
+    gh = get_github_client()
+    resp = await gh.get(
+        f"/repos/{owner}/{repo}/contributors",
+        caller="ingest.github",
         params={"per_page": 1, "anon": "true"},
     )
     count = 0
@@ -122,14 +108,19 @@ async def fetch_contributor_count(client: httpx.AsyncClient, owner: str, repo: s
     if count <= 1:
         try:
             await asyncio.sleep(0.1)
-            stats_url = f"https://api.github.com/repos/{owner}/{repo}/stats/contributors"
-            stats_resp = await client.get(stats_url)
+            stats_resp = await gh.get(
+                f"/repos/{owner}/{repo}/stats/contributors",
+                caller="ingest.github",
+            )
             # GitHub returns 202 when stats are being computed — retry with exponential backoff
             for delay in [2.0, 5.0, 10.0]:
                 if stats_resp.status_code != 202:
                     break
                 await asyncio.sleep(delay)
-                stats_resp = await client.get(stats_url)
+                stats_resp = await gh.get(
+                    f"/repos/{owner}/{repo}/stats/contributors",
+                    caller="ingest.github",
+                )
             if stats_resp.status_code == 200:
                 stats_data = stats_resp.json()
                 if isinstance(stats_data, list) and len(stats_data) > count:
@@ -145,23 +136,23 @@ async def fetch_contributor_count(client: httpx.AsyncClient, owner: str, repo: s
 
 
 async def collect_project_data(
-    client: httpx.AsyncClient, project: Project, semaphore: asyncio.Semaphore
+    project: Project, semaphore: asyncio.Semaphore,
 ) -> dict | None:
     """Fetch all GitHub data for one project. Returns a dict for batch insert, or None."""
     if not project.github_owner or not project.github_repo:
         return None
 
     async with semaphore:
-        repo_data = await fetch_repo(client, project.github_owner, project.github_repo)
+        repo_data = await fetch_repo(project.github_owner, project.github_repo)
         if not repo_data:
             return None
         await asyncio.sleep(0.1)
-        commits_30d = await fetch_commit_activity(client, project.github_owner, project.github_repo)
+        commits_30d = await fetch_commit_activity(project.github_owner, project.github_repo)
         if commits_30d == 0:
             await asyncio.sleep(0.1)
-            commits_30d = await fetch_commit_count_simple(client, project.github_owner, project.github_repo)
+            commits_30d = await fetch_commit_count_simple(project.github_owner, project.github_repo)
         await asyncio.sleep(0.1)
-        contributors = await fetch_contributor_count(client, project.github_owner, project.github_repo)
+        contributors = await fetch_contributor_count(project.github_owner, project.github_repo)
         contributors = max(contributors, 0)  # clamp -1 sentinel before it reaches the DB
 
     last_push = repo_data.get("pushed_at")
@@ -202,30 +193,30 @@ async def ingest_github() -> dict:
     logger.info(f"Ingesting GitHub stats for {len(projects)} projects")
     started_at = datetime.now(timezone.utc)
 
-    headers = {"User-Agent": "pt-edge/1.0"}
-    if settings.GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+    global _github_available
+    _github_available = True  # reset for this run
+
+    gh = get_github_client()
+    # Pre-flight: check if GitHub API is available before firing 784 requests
+    if gh.remaining() <= 100:
+        logger.warning(f"GitHub API near limit ({gh.remaining()} remaining) — skipping")
+        session = SessionLocal()
+        try:
+            session.add(SyncLog(
+                sync_type="github", status="partial", records_written=0,
+                error_message="skipped: GitHub rate-limited",
+                started_at=started_at, finished_at=datetime.now(timezone.utc),
+            ))
+            session.commit()
+        finally:
+            session.close()
+        return {"success": 0, "errors": 0, "skipped": "github_rate_limited"}
 
     semaphore = asyncio.Semaphore(5)
 
-    # Pre-flight: check if GitHub API is available before firing 784 requests
-    async with httpx.AsyncClient(headers=headers, timeout=30.0, follow_redirects=True) as client:
-        if not await check_github_rate_limit(client):
-            session = SessionLocal()
-            try:
-                session.add(SyncLog(
-                    sync_type="github", status="partial", records_written=0,
-                    error_message="skipped: GitHub rate-limited",
-                    started_at=started_at, finished_at=datetime.now(timezone.utc),
-                ))
-                session.commit()
-            finally:
-                session.close()
-            return {"success": 0, "errors": 0, "skipped": "github_rate_limited"}
-
-        # Phase 1: collect all data from API (async, concurrent)
-        tasks = [collect_project_data(client, p, semaphore) for p in projects]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Phase 1: collect all data from API (async, concurrent)
+    tasks = [collect_project_data(p, semaphore) for p in projects]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
     snapshots = []
     enrichments = []  # (project_id, topics, description, language) for project updates
