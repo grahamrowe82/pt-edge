@@ -11,13 +11,12 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
-import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
 from app.embeddings import is_enabled as embeddings_enabled, build_release_text, embed_batch
+from app.github_client import get_github_client
 from app.models import Project, SyncLog
-from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +53,10 @@ async def _summarise_release(body: str, project_name: str, version: str, title: 
     return await call_llm_text(prompt, max_tokens=512)
 
 
-async def fetch_releases(client: httpx.AsyncClient, owner: str, repo: str) -> list[dict]:
-    resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}/releases", params={"per_page": 10})
+async def fetch_releases(owner: str, repo: str) -> list[dict]:
+    gh = get_github_client()
+    resp = await gh.get(f"/repos/{owner}/{repo}/releases", caller="ingest.releases",
+                        params={"per_page": 10})
     if resp.status_code == 200:
         return resp.json()
     logger.warning(f"GitHub releases API {resp.status_code} for {owner}/{repo}")
@@ -63,14 +64,14 @@ async def fetch_releases(client: httpx.AsyncClient, owner: str, repo: str) -> li
 
 
 async def collect_releases_for_project(
-    client: httpx.AsyncClient, project: Project, semaphore: asyncio.Semaphore,
+    project: Project, semaphore: asyncio.Semaphore,
     existing_urls: set[str],
 ) -> list[dict]:
     if not project.github_owner or not project.github_repo:
         return []
 
     async with semaphore:
-        releases_data = await fetch_releases(client, project.github_owner, project.github_repo)
+        releases_data = await fetch_releases(project.github_owner, project.github_repo)
         await asyncio.sleep(0.1)
 
     rows = []
@@ -197,10 +198,6 @@ async def ingest_releases() -> dict:
             logger.info(f"  Embedded {embed_count}/{len(unembedded)} releases")
 
     # ── Normal ingest: fetch new releases ──
-    headers = {"User-Agent": "pt-edge/1.0"}
-    if settings.GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
-
     # Pre-fetch existing URLs to skip LLM calls for known releases
     with engine.connect() as conn:
         existing = conn.execute(text("SELECT url FROM releases")).fetchall()
@@ -208,9 +205,8 @@ async def ingest_releases() -> dict:
     logger.info(f"Pre-seeded {len(existing_urls)} existing release URLs for dedup")
 
     semaphore = asyncio.Semaphore(5)
-    async with httpx.AsyncClient(headers=headers, timeout=30.0, follow_redirects=True) as client:
-        tasks = [collect_releases_for_project(client, p, semaphore, existing_urls) for p in projects]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+    tasks = [collect_releases_for_project(p, semaphore, existing_urls) for p in projects]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
     releases = []
     error_count = 0

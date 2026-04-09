@@ -10,11 +10,10 @@ Dimensions (applied in order when a shard overflows):
 import asyncio
 import logging
 
-import httpx
+from app.github_client import GitHubRateLimitError, get_github_client
 
 logger = logging.getLogger(__name__)
 
-SEARCH_URL = "https://api.github.com/search/repositories"
 PER_PAGE = 100
 MAX_PAGES = 10  # 100 * 10 = 1,000 per query
 OVERFLOW_THRESHOLD = 1_000
@@ -80,37 +79,28 @@ class CallCounter:
             )
 
 
-# ── Rate-limit retry helper ──────────────────────────────────────────────
-
-async def _retry_on_403(resp: httpx.Response, label: str, max_retries: int = 2) -> int | None:
-    """If resp is 403, sleep for Retry-After and return seconds waited. None if not 403."""
-    if resp.status_code != 403:
-        return None
-    retry_after = int(resp.headers.get("Retry-After", "60"))
-    logger.warning(f"Rate-limited on {label}, sleeping {retry_after}s")
-    await asyncio.sleep(retry_after)
-    return retry_after
-
-
 # ── Probe ─────────────────────────────────────────────────────────────────
 
 async def _probe_count(
-    client: httpx.AsyncClient,
     query: str,
     semaphore: asyncio.Semaphore,
     counter: CallCounter | None = None,
 ) -> int:
     """Check total_count for a query (1 API call, per_page=1)."""
+    gh = get_github_client()
     for attempt in range(3):  # initial + 2 retries
         async with semaphore:
             if counter:
                 counter.increment()
             try:
-                resp = await client.get(
-                    SEARCH_URL,
+                resp = await gh.get(
+                    "/search/repositories",
+                    caller="ingest.github_search",
                     params={"q": query, "per_page": 1},
                 )
-            except httpx.HTTPError as exc:
+            except GitHubRateLimitError:
+                return 0
+            except Exception as exc:
                 logger.warning(f"Probe failed for {query!r}: {exc}")
                 return 0
 
@@ -135,21 +125,22 @@ async def _probe_count(
 # ── Paginate one leaf shard ───────────────────────────────────────────────
 
 async def _paginate(
-    client: httpx.AsyncClient,
     query: str,
     semaphore: asyncio.Semaphore,
     seen: set[str],
     counter: CallCounter | None = None,
 ) -> list[dict]:
     """Fetch up to 1,000 results for a query that fits within the limit."""
+    gh = get_github_client()
     repos: list[dict] = []
     for page in range(1, MAX_PAGES + 1):
         async with semaphore:
             if counter:
                 counter.increment()
             try:
-                resp = await client.get(
-                    SEARCH_URL,
+                resp = await gh.get(
+                    "/search/repositories",
+                    caller="ingest.github_search",
                     params={
                         "q": query,
                         "sort": "stars",
@@ -158,7 +149,7 @@ async def _paginate(
                         "page": page,
                     },
                 )
-            except httpx.HTTPError as exc:
+            except (GitHubRateLimitError, Exception) as exc:
                 logger.warning(f"Page error {query!r} p{page}: {exc}")
                 break
 
@@ -173,8 +164,9 @@ async def _paginate(
                     if counter:
                         counter.increment()
                     try:
-                        resp = await client.get(
-                            SEARCH_URL,
+                        resp = await gh.get(
+                            "/search/repositories",
+                            caller="ingest.github_search",
                             params={
                                 "q": query,
                                 "sort": "stars",
@@ -183,7 +175,7 @@ async def _paginate(
                                 "page": page,
                             },
                         )
-                    except httpx.HTTPError as exc:
+                    except Exception as exc:
                         logger.warning(f"Page retry error {query!r} p{page}: {exc}")
                         break
                 if resp.status_code != 403:
@@ -238,7 +230,6 @@ async def _paginate(
 # ── Recursive adaptive search ────────────────────────────────────────────
 
 async def adaptive_search(
-    client: httpx.AsyncClient,
     base_query: str,
     semaphore: asyncio.Semaphore,
     seen: set[str],
@@ -249,7 +240,6 @@ async def adaptive_search(
     """Search GitHub, recursively sub-sharding if results exceed 1,000.
 
     Args:
-        client: authenticated httpx client
         base_query: the GitHub Search query string (e.g. "topic:llm stars:>=5")
         semaphore: rate-limit semaphore
         seen: global dedup set (lowercase full_name)
@@ -263,7 +253,7 @@ async def adaptive_search(
     if depth == 0 and pushed_after:
         base_query = f"{base_query} pushed:>={pushed_after}"
 
-    count = await _probe_count(client, base_query, semaphore, counter)
+    count = await _probe_count(base_query, semaphore, counter)
     # Only sleep after probes that returned results (zero-result probes are cheap)
     if count > 0:
         await asyncio.sleep(0.3)
@@ -273,7 +263,7 @@ async def adaptive_search(
 
     if count <= OVERFLOW_THRESHOLD:
         # Fits — paginate directly
-        repos = await _paginate(client, base_query, semaphore, seen, counter)
+        repos = await _paginate(base_query, semaphore, seen, counter)
         logger.debug(f"Leaf shard [{depth}] {base_query!r}: {count} total, {len(repos)} new")
         return repos
 
@@ -283,7 +273,7 @@ async def adaptive_search(
             f"Shard overflow at max depth: {base_query!r} has {count} results, "
             f"capping at {OVERFLOW_THRESHOLD}"
         )
-        return await _paginate(client, base_query, semaphore, seen, counter)
+        return await _paginate(base_query, semaphore, seen, counter)
 
     # Split by next dimension
     dimension = DIMENSIONS[depth]
@@ -291,7 +281,7 @@ async def adaptive_search(
     for qualifier in dimension:
         sub_query = f"{base_query} {qualifier}"
         repos = await adaptive_search(
-            client, sub_query, semaphore, seen, depth + 1,
+            sub_query, semaphore, seen, depth + 1,
             counter=counter,
         )
         all_repos.extend(repos)

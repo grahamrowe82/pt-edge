@@ -16,6 +16,7 @@ import socket
 from sqlalchemy import text
 
 from app.db import engine
+from app.github_client import GitHubRateLimitError
 from app.ingest.budget import (
     ResourceExhaustedError,
     ResourceThrottledError,
@@ -200,6 +201,12 @@ async def _execute_task(task: dict, handlers: dict) -> None:
         result = await handler(task)
         mark_done(task_id, result)
         logger.info(f"Completed task {task_id}: {task_type} {subject} -> {result}")
+    except GitHubRateLimitError as e:
+        # GitHub rate limit exhausted — requeue and activate backoff.
+        if task.get("resource_type"):
+            await record_throttle(task["resource_type"])
+        requeue(task_id, str(e), increment_retry=False)
+        logger.info(f"Task {task_id} requeued (GitHubRateLimitError): {e}")
     except (ResourceExhaustedError, ResourceThrottledError) as e:
         # Infrastructure signals — requeue without counting as a retry.
         # Record throttle so the backoff system activates and the worker

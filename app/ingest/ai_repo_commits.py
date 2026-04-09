@@ -9,12 +9,11 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-import httpx
 from sqlalchemy import text
 
-from app.db import engine
+from app.db import engine, SessionLocal
+from app.github_client import get_github_client
 from app.models import SyncLog
-from app.db import SessionLocal
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -49,20 +48,16 @@ def _build_graphql_query(repos: list[dict]) -> str:
 
 
 async def _fetch_batch(
-    client: httpx.AsyncClient,
     repos: list[dict],
     semaphore: asyncio.Semaphore,
 ) -> list[dict]:
     """Fetch commits_30d for a batch of repos via GraphQL."""
     query = _build_graphql_query(repos)
+    gh = get_github_client()
 
     async with semaphore:
         try:
-            resp = await client.post(
-                "https://api.github.com/graphql",
-                json={"query": query},
-                timeout=60.0,
-            )
+            resp = await gh.post_graphql(query, caller="ingest.ai_repo_commits")
         except Exception as e:
             logger.error(f"GraphQL request failed: {e}")
             return []
@@ -119,41 +114,20 @@ async def ingest_ai_repo_commits() -> dict:
     if not repos:
         return {"updated": 0, "errors": 0}
 
-    headers = {
-        "User-Agent": "pt-edge/1.0",
-        "Authorization": f"Bearer {settings.GITHUB_TOKEN}",
-    }
-
-    # Pre-flight: check GitHub API before sending GraphQL queries
-    try:
-        async with httpx.AsyncClient(headers=headers, timeout=10) as test_client:
-            resp = await test_client.get("https://api.github.com/rate_limit")
-            if resp.status_code == 403:
-                logger.error("GitHub rate-limited (403) — skipping ai_repo_commits")
-                return {"updated": 0, "errors": 0, "skipped": "github_rate_limited"}
-            if resp.status_code == 200:
-                remaining = resp.json().get("resources", {}).get("graphql", {}).get("remaining", 0)
-                if remaining < 50:
-                    logger.warning(f"GitHub GraphQL near limit ({remaining} remaining) — skipping")
-                    return {"updated": 0, "errors": 0, "skipped": "github_rate_limited"}
-    except Exception as e:
-        logger.warning(f"GitHub rate limit check failed: {e}")
-
     # Batch into groups of BATCH_SIZE
     batches = [repos[i:i + BATCH_SIZE] for i in range(0, len(repos), BATCH_SIZE)]
     semaphore = asyncio.Semaphore(CONCURRENCY)
 
     all_results = []
     error_count = 0
-    async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
-        tasks = [_fetch_batch(client, batch, semaphore) for batch in batches]
-        batch_results = await asyncio.gather(*tasks, return_exceptions=True)
-        for br in batch_results:
-            if isinstance(br, Exception):
-                error_count += 1
-                logger.error(f"Batch error: {br}")
-            else:
-                all_results.extend(br)
+    tasks = [_fetch_batch(batch, semaphore) for batch in batches]
+    batch_results = await asyncio.gather(*tasks, return_exceptions=True)
+    for br in batch_results:
+        if isinstance(br, Exception):
+            error_count += 1
+            logger.error(f"Batch error: {br}")
+        else:
+            all_results.extend(br)
 
     # Bulk update via temp table + UPDATE FROM (fast for thousands of rows)
     now = datetime.now(timezone.utc)

@@ -82,15 +82,18 @@ async def _search_npm(client: httpx.AsyncClient) -> list[dict]:
 
 
 async def _fetch_github_metadata(
-    client: httpx.AsyncClient, slug: str, semaphore: asyncio.Semaphore,
+    slug: str, semaphore: asyncio.Semaphore,
 ) -> dict | None:
     """Fetch repo metadata from GitHub API."""
+    from app.github_client import get_github_client
+    gh = get_github_client()
     async with semaphore:
         try:
-            resp = await client.get(f"https://api.github.com/repos/{slug}")
+            resp = await gh.get(f"/repos/{slug}", caller="ingest.npm_mcp")
             if resp.status_code == 404:
                 return None
-            resp.raise_for_status()
+            if resp.status_code != 200:
+                return None
             data = resp.json()
         except Exception as e:
             logger.debug(f"GitHub fetch failed for {slug}: {e}")
@@ -187,10 +190,6 @@ async def ingest_npm_mcp() -> dict:
     """Discover MCP servers from npm and upsert into ai_repos."""
     started_at = datetime.now(timezone.utc)
 
-    gh_headers = {"User-Agent": "pt-edge/1.0", "Accept": "application/vnd.github+json"}
-    if settings.GITHUB_TOKEN:
-        gh_headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
-
     # Step 1: Search npm
     async with httpx.AsyncClient(
         headers={"User-Agent": "pt-edge/1.0"},
@@ -219,18 +218,13 @@ async def ingest_npm_mcp() -> dict:
         _log_sync(started_at, 0, None)
         return {"npm_packages": len(packages), "with_github": len(slug_to_npm), "new": 0, "upserted": 0}
 
-    # Step 3: Fetch GitHub metadata for new repos
+    # Step 3: Fetch GitHub metadata for new repos (via gateway)
     semaphore = asyncio.Semaphore(5)
-    async with httpx.AsyncClient(
-        headers=gh_headers,
-        timeout=30.0,
-        follow_redirects=True,
-    ) as gh_client:
-        tasks = [
-            _fetch_github_metadata(gh_client, slug, semaphore)
-            for slug in new_slugs
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+    tasks = [
+        _fetch_github_metadata(slug, semaphore)
+        for slug in new_slugs
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
 
     repos = [r for r in results if isinstance(r, dict)]
     logger.info(f"Fetched GitHub metadata for {len(repos)}/{len(new_slugs)} repos")

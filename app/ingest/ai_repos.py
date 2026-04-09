@@ -10,17 +10,16 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
-import httpx
 from sqlalchemy import text
 
 from app.db import engine, SessionLocal
 from app.embeddings import build_ai_repo_text, embed_batch, is_enabled
+from app.github_client import get_github_client
 from app.ingest.ai_repo_domains import DOMAINS, DOMAIN_ORDER, DOMAIN_OVERRIDES, FOUNDATIONAL_SEEDS
 from app.ingest.github_search import (
     adaptive_search, BudgetExhausted, CallCounter,
 )
 from app.models import SyncLog
-from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -78,10 +77,6 @@ async def ingest_ai_repos(
         else:
             logger.info("Full crawl mode (no prior successful sync)")
 
-    headers = {"User-Agent": "pt-edge/1.0", "Accept": "application/vnd.github+json"}
-    if settings.GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
-
     semaphore = asyncio.Semaphore(2)  # conservative for Search API
     counter = CallCounter(budget=3000)
 
@@ -104,54 +99,53 @@ async def ingest_ai_repos(
     if domains:
         ordered = [d for d in ordered if d in domains]
 
-    async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
-        for domain_key in ordered:
-            cfg = DOMAINS[domain_key]
-            domain_repos: list[dict] = []
+    for domain_key in ordered:
+        cfg = DOMAINS[domain_key]
+        domain_repos: list[dict] = []
 
-            try:
-                for topic in cfg["topics"]:
-                    base_query = f"topic:{topic}"
-                    if cfg["min_stars"] > 0:
-                        base_query += f" stars:>={cfg['min_stars']}"
+        try:
+            for topic in cfg["topics"]:
+                base_query = f"topic:{topic}"
+                if cfg["min_stars"] > 0:
+                    base_query += f" stars:>={cfg['min_stars']}"
 
-                    repos = await adaptive_search(
-                        client, base_query, semaphore, seen,
-                        pushed_after=pushed_after,
-                        counter=counter,
-                    )
-                    # Tag each repo with this domain
-                    for r in repos:
-                        r["domain"] = domain_key
-                    domain_repos.extend(repos)
-
-                    logger.info(
-                        f"[{domain_key}] topic:{topic}: {len(repos)} new "
-                        f"(seen total: {len(seen)}, API calls: {counter.count})"
-                    )
-                    await asyncio.sleep(0.3)
-            except BudgetExhausted:
-                logger.warning(
-                    f"Budget exhausted during domain '{domain_key}' "
-                    f"({counter.count} API calls). Moving to next domain."
+                repos = await adaptive_search(
+                    base_query, semaphore, seen,
+                    pushed_after=pushed_after,
+                    counter=counter,
                 )
-                budget_exhausted_domains.append(domain_key)
+                # Tag each repo with this domain
+                for r in repos:
+                    r["domain"] = domain_key
+                domain_repos.extend(repos)
 
-            domain_results[domain_key] = len(domain_repos)
-            total_found += len(domain_repos)
+                logger.info(
+                    f"[{domain_key}] topic:{topic}: {len(repos)} new "
+                    f"(seen total: {len(seen)}, API calls: {counter.count})"
+                )
+                await asyncio.sleep(0.3)
+        except BudgetExhausted:
+            logger.warning(
+                f"Budget exhausted during domain '{domain_key}' "
+                f"({counter.count} API calls). Moving to next domain."
+            )
+            budget_exhausted_domains.append(domain_key)
 
-            # Flush this domain to DB immediately
-            if domain_repos:
-                upserted = _batch_upsert(domain_repos)
-                total_upserted += upserted
-                logger.info(f"Domain '{domain_key}' complete: {len(domain_repos)} found, {upserted} upserted")
+        domain_results[domain_key] = len(domain_repos)
+        total_found += len(domain_repos)
 
-                # Embed new descriptions for this domain
-                if is_enabled():
-                    embedded = await _embed_new_repos()
-                    total_embedded += embedded
-            else:
-                logger.info(f"Domain '{domain_key}' complete: 0 new repos")
+        # Flush this domain to DB immediately
+        if domain_repos:
+            upserted = _batch_upsert(domain_repos)
+            total_upserted += upserted
+            logger.info(f"Domain '{domain_key}' complete: {len(domain_repos)} found, {upserted} upserted")
+
+            # Embed new descriptions for this domain
+            if is_enabled():
+                embedded = await _embed_new_repos()
+                total_embedded += embedded
+        else:
+            logger.info(f"Domain '{domain_key}' complete: 0 new repos")
 
     if total_found == 0:
         logger.warning("No AI repos found")
@@ -186,9 +180,7 @@ async def _ensure_seeds() -> int:
     if not FOUNDATIONAL_SEEDS:
         return 0
 
-    headers = {"User-Agent": "pt-edge/1.0", "Accept": "application/vnd.github+json"}
-    if settings.GITHUB_TOKEN:
-        headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+    gh = get_github_client()
 
     # Check which seeds are missing from the DB
     with engine.connect() as conn:
@@ -205,38 +197,37 @@ async def _ensure_seeds() -> int:
     # Fetch missing repos from GitHub API and upsert
     if missing:
         logger.info(f"Seeding {len(missing)} foundational repos from GitHub API...")
-        async with httpx.AsyncClient(headers=headers, timeout=30.0) as client:
-            repos_to_upsert = []
-            for owner, repo, domain, _, _ in missing:
-                try:
-                    resp = await client.get(f"https://api.github.com/repos/{owner}/{repo}")
-                    if resp.status_code != 200:
-                        logger.warning(f"Seed {owner}/{repo}: GitHub API returned {resp.status_code}")
-                        continue
-                    data = resp.json()
-                    repos_to_upsert.append({
-                        "github_owner": data["owner"]["login"],
-                        "github_repo": data["name"],
-                        "full_name": data["full_name"],
-                        "name": data["name"],
-                        "description": data.get("description") or "",
-                        "stars": data.get("stargazers_count", 0),
-                        "forks": data.get("forks_count", 0),
-                        "language": data.get("language"),
-                        "topics": data.get("topics"),
-                        "license": (data.get("license") or {}).get("spdx_id"),
-                        "last_pushed_at": data.get("pushed_at"),
-                        "created_at": data.get("created_at"),
-                        "archived": data.get("archived", False),
-                        "domain": domain,
-                    })
-                    await asyncio.sleep(0.3)
-                except Exception as e:
-                    logger.warning(f"Seed {owner}/{repo}: {e}")
+        repos_to_upsert = []
+        for owner, repo, domain, _, _ in missing:
+            try:
+                resp = await gh.get(f"/repos/{owner}/{repo}", caller="ingest.ai_repos")
+                if resp.status_code != 200:
+                    logger.warning(f"Seed {owner}/{repo}: GitHub API returned {resp.status_code}")
+                    continue
+                data = resp.json()
+                repos_to_upsert.append({
+                    "github_owner": data["owner"]["login"],
+                    "github_repo": data["name"],
+                    "full_name": data["full_name"],
+                    "name": data["name"],
+                    "description": data.get("description") or "",
+                    "stars": data.get("stargazers_count", 0),
+                    "forks": data.get("forks_count", 0),
+                    "language": data.get("language"),
+                    "topics": data.get("topics"),
+                    "license": (data.get("license") or {}).get("spdx_id"),
+                    "last_pushed_at": data.get("pushed_at"),
+                    "created_at": data.get("created_at"),
+                    "archived": data.get("archived", False),
+                    "domain": domain,
+                })
+                await asyncio.sleep(0.3)
+            except Exception as e:
+                logger.warning(f"Seed {owner}/{repo}: {e}")
 
-            if repos_to_upsert:
-                upserted = _batch_upsert(repos_to_upsert)
-                logger.info(f"Upserted {upserted} seed repos")
+        if repos_to_upsert:
+            upserted = _batch_upsert(repos_to_upsert)
+            logger.info(f"Upserted {upserted} seed repos")
 
     # Set package names for all seeds (including already-existing ones)
     updated = 0
