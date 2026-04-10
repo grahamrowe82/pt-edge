@@ -886,7 +886,7 @@ def schedule_all() -> dict:
     counts["fetch_huggingface"] = _schedule_coarse_task("fetch_huggingface", "huggingface", 7, "huggingface")
     counts["fetch_hn"] = _schedule_coarse_task("fetch_hn", "hn", 6, "hn_algolia")
     counts["fetch_v2ex"] = _schedule_coarse_task("fetch_v2ex", "v2ex", 6, "v2ex")
-    counts["fetch_trending"] = _schedule_coarse_task("fetch_trending", "trending", 7, "github_api")
+    counts["fetch_trending"] = _schedule_coarse_task("fetch_trending", "trending", 7, "github_search")
     counts["fetch_candidates"] = _schedule_coarse_task("fetch_candidates", "candidate_velocity", 4, "github_api")
     counts["fetch_candidate_watchlist"] = _schedule_coarse_task("fetch_candidate_watchlist", "candidate_watchlist", 4, "db_only")
     counts["fetch_hf_datasets"] = _schedule_coarse_task("fetch_hf_datasets", "hf_datasets", 5, "huggingface")
@@ -898,7 +898,7 @@ def schedule_all() -> dict:
     counts["fetch_builder_tools"] = _schedule_coarse_task("fetch_builder_tools", "builder_tools", 5, "db_only")
     counts["fetch_npm_mcp"] = _schedule_coarse_task("fetch_npm_mcp", "npm_mcp", 5, "npm")
     counts["fetch_ai_repo_downloads"] = _schedule_coarse_task("fetch_ai_repo_downloads", "ai_repo_downloads", 5, "pypi")
-    counts["fetch_ai_repo_commits"] = _schedule_coarse_task("fetch_ai_repo_commits", "ai_repo_commits", 5, "github_api")
+    counts["fetch_ai_repo_commits"] = _schedule_coarse_task("fetch_ai_repo_commits", "ai_repo_commits", 5, "github_graphql")
     counts["fetch_newsletters"] = _schedule_coarse_task("fetch_newsletters", "newsletters", 6, "gemini")
     counts["fetch_models"] = _schedule_coarse_task("fetch_models", "models", 5, "db_only")
 
@@ -921,7 +921,7 @@ def schedule_all() -> dict:
         "detect_bot_sessions", "bot_sessions", 5, "db_only", staleness_hours=20)
 
     # Discovery (daily) and structural (weekly)
-    counts["discover_ai_repos"] = _schedule_coarse_task("discover_ai_repos", "ai_repos", 4, "github_api", staleness_hours=24)
+    counts["discover_ai_repos"] = _schedule_coarse_task("discover_ai_repos", "ai_repos", 4, "github_search", staleness_hours=24)
     counts["compute_structural"] = _schedule_coarse_task("compute_structural", "weekly_structural", 3, "db_only", staleness_hours=168)
 
     # Backfill (lowest priority, creates tasks in batches)
