@@ -241,6 +241,8 @@ async def _execute_task(task: dict, handlers: dict) -> None:
 # Tasks sharing a resource type are serialised (only one active at a time).
 CONCURRENT_RESOURCES = [
     "github_api",
+    "github_search",
+    "github_graphql",
     "gemini",
     "openai",
     "pypi",
