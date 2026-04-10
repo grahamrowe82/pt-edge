@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     API_TOKEN: str = "dev-token"
     GITHUB_TOKEN: str = ""
     GITHUB_RATE_LIMIT: float = 10.0  # requests per second
+    GITHUB_APP_ID: str = ""  # GitHub App ID — when set, uses App auth instead of PAT
+    GITHUB_APP_INSTALLATION_ID: str = ""  # Installation ID for App auth
+    GITHUB_APP_PRIVATE_KEY_FILE: str = ""  # Path to PEM file for App auth
     DATABASE_URL_READONLY: str = ""  # separate read-only connection for query(); falls back to DATABASE_URL
     OPENAI_API_KEY: str = ""  # empty = embeddings disabled, everything still works
     V2EX_TOKEN: str = ""  # Personal Access Token from v2ex.com; empty = V2EX ingest skipped

@@ -4,6 +4,10 @@ Every GitHub API call in the codebase flows through this module.
 It reads rate-limit headers from every response (the source of truth),
 logs per-caller attribution, and classifies 403 responses correctly.
 
+Supports two auth modes (configured via settings):
+  - GitHub App (preferred): isolated rate limit, auto-refreshing tokens
+  - PAT fallback: when App settings are empty, uses GITHUB_TOKEN
+
 Usage:
     from app.github_client import get_github_client
 
@@ -13,6 +17,8 @@ Usage:
 """
 import logging
 import time
+from pathlib import Path
+from typing import Callable
 
 import httpx
 
@@ -24,6 +30,8 @@ logger = logging.getLogger(__name__)
 _LOG_INTERVAL = 300  # 5 minutes
 # Log immediately when remaining drops below this threshold
 _LOW_REMAINING_THRESHOLD = 500
+# Refresh installation token 5 minutes before expiry
+_TOKEN_REFRESH_MARGIN = 300
 
 
 class GitHubRateLimitError(Exception):
@@ -35,20 +43,77 @@ class GitHubRateLimitError(Exception):
         super().__init__(f"GitHub rate limit exhausted, resets in {wait:.0f}s")
 
 
+# ── Token providers ────────────────────────────────────────────
+
+
+def _pat_provider(token: str) -> Callable[[], tuple[str, float]]:
+    """Token provider for personal access tokens. Never expires."""
+    def provide() -> tuple[str, float]:
+        return token, float("inf")
+    return provide
+
+
+def _app_provider(
+    app_id: str, private_key: str, installation_id: str,
+) -> Callable[[], tuple[str, float]]:
+    """Token provider for GitHub App auth.
+
+    Generates a JWT, exchanges it for an installation access token.
+    Returns (token, expires_at_unix).
+    """
+    def provide() -> tuple[str, float]:
+        import jwt as pyjwt
+
+        now = int(time.time())
+        payload = {"iat": now - 60, "exp": now + 600, "iss": app_id}
+        jwt_token = pyjwt.encode(payload, private_key, algorithm="RS256")
+
+        resp = httpx.post(
+            f"https://api.github.com/app/installations/{installation_id}/access_tokens",
+            headers={
+                "Authorization": f"Bearer {jwt_token}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "pt-edge/1.0",
+            },
+            timeout=30,
+        )
+        if resp.status_code != 201:
+            raise RuntimeError(
+                f"GitHub App token exchange failed: {resp.status_code} {resp.text[:200]}"
+            )
+
+        data = resp.json()
+        token = data["token"]
+        # Installation tokens expire in 1 hour; parse expires_at
+        expires_at = now + 3600  # fallback
+        if "expires_at" in data:
+            from datetime import datetime
+            try:
+                dt = datetime.fromisoformat(data["expires_at"].replace("Z", "+00:00"))
+                expires_at = dt.timestamp()
+            except (ValueError, TypeError):
+                pass
+
+        logger.info(f"GitHub App token refreshed, expires in {expires_at - now:.0f}s")
+        return token, expires_at
+
+    return provide
+
+
 class GitHubClient:
     """Centralized GitHub API gateway. Single instance per process."""
 
-    def __init__(self, token: str):
-        headers = {
-            "User-Agent": "pt-edge/1.0",
-            "Accept": "application/vnd.github+json",
-        }
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
+    def __init__(self, token_provider: Callable[[], tuple[str, float]]):
+        self._token_provider = token_provider
+        self._current_token: str | None = None
+        self._token_expires_at: float = 0
 
         self._client = httpx.AsyncClient(
             base_url="https://api.github.com",
-            headers=headers,
+            headers={
+                "User-Agent": "pt-edge/1.0",
+                "Accept": "application/vnd.github+json",
+            },
             timeout=30.0,
             follow_redirects=True,
         )
@@ -92,7 +157,7 @@ class GitHubClient:
             if self._core_remaining <= 0 and self._core_reset > time.time():
                 raise GitHubRateLimitError(self._core_reset)
 
-        headers = {}
+        headers = self._auth_headers()
         if accept:
             headers["Accept"] = accept
 
@@ -114,7 +179,8 @@ class GitHubClient:
         if self._core_remaining <= 0 and self._core_reset > time.time():
             raise GitHubRateLimitError(self._core_reset)
 
-        resp = await self._client.post("/graphql", json={"query": query})
+        headers = self._auth_headers()
+        resp = await self._client.post("/graphql", json={"query": query}, headers=headers)
 
         self._update_rate_limits(resp, "core")
         self._record_call(caller)
@@ -162,6 +228,12 @@ class GitHubClient:
         await self._client.aclose()
 
     # ── Internal ────────────────────────────────────────────────
+
+    def _auth_headers(self) -> dict:
+        """Return Authorization header, refreshing token if needed."""
+        if self._current_token is None or time.time() >= (self._token_expires_at - _TOKEN_REFRESH_MARGIN):
+            self._current_token, self._token_expires_at = self._token_provider()
+        return {"Authorization": f"Bearer {self._current_token}"}
 
     def _update_rate_limits(self, resp: httpx.Response, api: str = "core") -> None:
         """Read X-RateLimit-* headers and update internal state."""
@@ -217,8 +289,34 @@ _client: GitHubClient | None = None
 
 
 def get_github_client() -> GitHubClient:
-    """Return the process-wide GitHubClient singleton."""
+    """Return the process-wide GitHubClient singleton.
+
+    Uses GitHub App auth when GITHUB_APP_ID is configured,
+    falls back to PAT (GITHUB_TOKEN) otherwise.
+    """
     global _client
-    if _client is None:
-        _client = GitHubClient(settings.GITHUB_TOKEN)
+    if _client is not None:
+        return _client
+
+    if settings.GITHUB_APP_ID and settings.GITHUB_APP_INSTALLATION_ID and settings.GITHUB_APP_PRIVATE_KEY_FILE:
+        # GitHub App auth
+        pem_path = Path(settings.GITHUB_APP_PRIVATE_KEY_FILE)
+        if not pem_path.is_absolute():
+            # Relative to project root
+            pem_path = Path(__file__).parent.parent / pem_path
+        private_key = pem_path.read_text()
+        provider = _app_provider(
+            settings.GITHUB_APP_ID,
+            private_key,
+            settings.GITHUB_APP_INSTALLATION_ID,
+        )
+        logger.info(f"GitHub client: App auth (app_id={settings.GITHUB_APP_ID})")
+    elif settings.GITHUB_TOKEN:
+        provider = _pat_provider(settings.GITHUB_TOKEN)
+        logger.info("GitHub client: PAT auth")
+    else:
+        provider = _pat_provider("")
+        logger.warning("GitHub client: no auth configured (60 calls/hour)")
+
+    _client = GitHubClient(provider)
     return _client
