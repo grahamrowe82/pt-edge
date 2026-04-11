@@ -42,6 +42,8 @@ QUERY_TIMEOUT_MS = 5000
 
 def _serialize(obj):
     """Convert non-JSON-serializable types."""
+    if isinstance(obj, (int, float, bool)):
+        return obj
     if isinstance(obj, datetime):
         return obj.isoformat()
     if isinstance(obj, date):
@@ -242,7 +244,7 @@ async def get_status() -> dict:
         "guidance": (
             "Use list_tables() to see all tables, describe_table(name) for columns. "
             "The ai_repos table is the main index — 220K+ repos with stars, quality scores, "
-            "embeddings, and domain classifications. Use run_query() for SQL, or "
+            "embeddings, and domain classifications. Use query() for SQL, or "
             "list_workflows() for pre-built query recipes."
         ),
     }

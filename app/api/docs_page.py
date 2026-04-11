@@ -68,7 +68,7 @@ async def api_docs():
     return HTMLResponse(content=html)
 
 
-@router.get("/mcp/docs", response_class=HTMLResponse)
+@router.get("/developers/mcp", response_class=HTMLResponse)
 async def mcp_docs():
     html = _env.get_template("mcp_docs.html").render(
         **_COMMON_CONTEXT,
@@ -79,7 +79,7 @@ async def mcp_docs():
     return HTMLResponse(content=html)
 
 
-@router.get("/cli/docs", response_class=HTMLResponse)
+@router.get("/developers/cli", response_class=HTMLResponse)
 async def cli_docs():
     html = _env.get_template("cli_docs.html").render(
         **_COMMON_CONTEXT,
