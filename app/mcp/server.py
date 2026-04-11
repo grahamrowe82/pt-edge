@@ -7861,10 +7861,11 @@ def mount_mcp(app):
         return token
 
     def _log_protocol_event(event_name: str, client_ip: str, user_agent: str):
-        """Log MCP protocol events (initialize, tools/list) to tool_usage."""
+        """Log MCP protocol events to tool_usage + api_usage."""
         try:
             from app.models import ToolUsage
             session = SessionLocal()
+            ua = user_agent[:500] if user_agent and len(user_agent) > 500 else (user_agent or None)
             usage = ToolUsage(
                 tool_name=event_name,
                 params={},
@@ -7873,9 +7874,21 @@ def mount_mcp(app):
                 error_message=None,
                 result_size=0,
                 client_ip=client_ip or None,
-                user_agent=user_agent[:500] if user_agent and len(user_agent) > 500 else (user_agent or None),
+                user_agent=ua,
             )
             session.add(usage)
+            # Dual-write to api_usage for unified observability
+            session.execute(text("""
+                INSERT INTO api_usage
+                    (endpoint, params, duration_ms, status_code, transport, client_ip, user_agent)
+                VALUES
+                    (:ep, CAST(:params AS jsonb), 0, 200, 'mcp', :ip, :ua)
+            """), {
+                "ep": f"mcp/{event_name}",
+                "params": "{}",
+                "ip": client_ip or None,
+                "ua": ua,
+            })
             session.commit()
             session.close()
         except Exception:

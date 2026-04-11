@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ptedge-cli"
-version = "0.1.0"
+version = "0.1.1"
 description = "CLI for PT-Edge AI ecosystem intelligence — query 220K+ repos from your terminal"
 readme = "README.md"
 requires-python = ">=3.10"

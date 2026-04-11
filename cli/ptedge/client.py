@@ -50,9 +50,10 @@ class PTEdgeClient:
     """Thin HTTP client wrapping the PT-Edge REST API."""
 
     def __init__(self, base_url: str | None = None, api_key: str | None = None):
+        from ptedge import __version__
         self.base_url = base_url or get_base_url()
         self.api_key = api_key or get_api_key()
-        self._headers = {}
+        self._headers = {"User-Agent": f"ptedge-cli/{__version__}"}
         if self.api_key:
             self._headers["Authorization"] = f"Bearer {self.api_key}"
 

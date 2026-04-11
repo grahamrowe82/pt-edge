@@ -1,8 +1,11 @@
 import contextvars
 import functools
+import json
 import time
 import logging
 from datetime import datetime, timezone
+
+from sqlalchemy import text
 
 from app.db import SessionLocal
 from app.models import ToolUsage
@@ -73,6 +76,22 @@ def _log_usage(tool_name, params, duration_ms, success, error_message, result_si
             user_agent=user_agent[:500] if user_agent and len(user_agent) > 500 else user_agent,
         )
         session.add(usage)
+
+        # Dual-write to api_usage for unified observability
+        session.execute(text("""
+            INSERT INTO api_usage
+                (endpoint, params, duration_ms, status_code, transport, client_ip, user_agent)
+            VALUES
+                (:ep, CAST(:params AS jsonb), :dur, :sc, 'mcp', :ip, :ua)
+        """), {
+            "ep": f"mcp/{tool_name}",
+            "params": json.dumps(params_json),
+            "dur": duration_ms,
+            "sc": 200 if success else 500,
+            "ip": client_ip,
+            "ua": user_agent[:500] if user_agent and len(user_agent) > 500 else user_agent,
+        })
+
         session.commit()
         session.close()
     except Exception:
