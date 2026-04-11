@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+
+{% block title %}CLI &mdash; Query 220,000+ AI Projects from Your Terminal | PT-Edge{% endblock %}
+
+{% block meta %}
+<meta name="description" content="Install ptedge-cli to query the AI ecosystem from your terminal. Search repos, run SQL, explore domains — same data as the API and MCP server.">
+<style>
+  code, pre { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  pre { white-space: pre-wrap; word-break: break-word; }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="https://mcp.phasetransitions.ai/cli/docs">{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+
+  <h1 class="text-3xl font-bold text-gray-900 mb-4">CLI</h1>
+  <p class="text-lg text-gray-600 mb-8">Query the AI ecosystem from your terminal. Same data as the API and MCP server.</p>
+
+  <!-- Install -->
+  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Install</h2>
+  <pre class="text-sm bg-gray-50 border border-gray-200 rounded p-3 mb-4">pip install ptedge-cli</pre>
+
+  <!-- Quick start -->
+  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Quick Start</h2>
+  <pre class="text-sm bg-gray-50 border border-gray-200 rounded p-3 mb-6"># What's available?
+ptedge status
+
+# Browse the schema
+ptedge tables
+ptedge describe ai_repos
+
+# Run a query
+ptedge query "SELECT full_name, stars FROM ai_repos ORDER BY stars DESC LIMIT 10"
+
+# Search by description
+ptedge search "autonomous coding agent"
+ptedge search "postgres MCP server" --domain mcp
+
+# Get recipe templates
+ptedge workflows</pre>
+
+  <!-- Commands -->
+  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Commands</h2>
+  <div class="space-y-3">
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">ptedge status</p>
+      <p class="text-sm text-gray-600">Table count, repo count, domains, last sync time.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">ptedge tables</p>
+      <p class="text-sm text-gray-600">List all database tables with row counts.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">ptedge describe &lt;table&gt;</p>
+      <p class="text-sm text-gray-600">Column names, types, and nullability.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">ptedge search-tables &lt;keyword&gt;</p>
+      <p class="text-sm text-gray-600">Find tables by keyword.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">ptedge query "&lt;SQL&gt;"</p>
+      <p class="text-sm text-gray-600">Run any SELECT query. Read-only, 5s timeout.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">ptedge workflows</p>
+      <p class="text-sm text-gray-600">Pre-built SQL recipe templates.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">ptedge search "&lt;query&gt;" [--domain mcp] [--limit 10]</p>
+      <p class="text-sm text-gray-600">Semantic search across 220K+ AI repos.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">ptedge feedback "&lt;topic&gt;" "&lt;text&gt;"</p>
+      <p class="text-sm text-gray-600">Submit feedback about the data.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">ptedge login</p>
+      <p class="text-sm text-gray-600">Store your API key in ~/.ptedge/config.json.</p>
+    </div>
+  </div>
+
+  <!-- Auth -->
+  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Authentication</h2>
+  <p class="text-sm text-gray-600 mb-3">Works without a key (100 requests/day). For more:</p>
+  <pre class="text-sm bg-gray-50 border border-gray-200 rounded p-3 mb-4"># Option 1: login command
+ptedge login
+
+# Option 2: environment variable
+export PTEDGE_API_KEY=pte_your_key_here
+
+# Option 3: per-command
+ptedge --key pte_xxx query "SELECT ..."</pre>
+  <p class="text-sm text-gray-500"><a href="/api/docs#get-a-key" class="text-blue-600 hover:underline">Get a free API key</a> for 1,000 requests/day.</p>
+
+  <!-- Output formats -->
+  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Output Formats</h2>
+  <pre class="text-sm bg-gray-50 border border-gray-200 rounded p-3 mb-4"># Default: aligned table
+ptedge tables
+
+# JSON output (pipe to jq, etc.)
+ptedge --format json tables</pre>
+
+  <!-- For AI agents -->
+  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">For AI Agents</h2>
+  <p class="text-sm text-gray-600 mb-3">If you're an AI agent running in Claude Code, Cursor, or another coding environment:</p>
+  <pre class="text-sm bg-gray-50 border border-gray-200 rounded p-3 mb-4"># Discover the full interface
+ptedge --help
+
+# Get structured JSON output
+ptedge --format json status
+ptedge --format json query "SELECT domain, COUNT(*) FROM ai_repos GROUP BY domain"</pre>
+
+  <!-- Also available -->
+  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Also Available</h2>
+  <div class="flex gap-4">
+    <a href="/api/docs" class="rounded border border-gray-200 p-4 hover:border-blue-300 flex-1">
+      <p class="font-medium text-gray-900">REST API</p>
+      <p class="text-sm text-gray-500">Same data via HTTP endpoints</p>
+    </a>
+    <a href="/mcp/docs" class="rounded border border-gray-200 p-4 hover:border-blue-300 flex-1">
+      <p class="font-medium text-gray-900">MCP Server</p>
+      <p class="text-sm text-gray-500">Connect Claude Desktop or any MCP client</p>
+    </a>
+  </div>
+
+</div>
+{% endblock %}

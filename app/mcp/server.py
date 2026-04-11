@@ -627,51 +627,16 @@ async def describe_schema() -> str:
 @mcp.tool()
 @track_usage
 async def query(sql: str) -> str:
-    """Run a read-only SQL query against PT-Edge's database. Use when no pre-built tool answers the question. Call describe_schema (via more_tools) first to see available tables. SELECT only, 5s timeout, JSON results.
+    """Run a read-only SQL query against PT-Edge's database. Call list_tables() and describe_table() first to see available tables and columns. SELECT only, 5s timeout, 1000 row limit, JSON results.
 
     Examples:
-      query("SELECT name, stars FROM projects ORDER BY stars DESC LIMIT 10")
-      query("SELECT COUNT(*) FROM projects WHERE category = 'framework'")
+      query("SELECT full_name, stars FROM ai_repos ORDER BY stars DESC LIMIT 10")
+      query("SELECT domain, COUNT(*) FROM ai_repos GROUP BY domain ORDER BY 2 DESC")
     """
-    sql_stripped = sql.strip()
-
-    # Block semicolons (no stacked queries)
-    if ";" in sql_stripped.rstrip(";"):  # allow trailing semicolon only
-        return json.dumps({"error": "Multiple statements not allowed."})
-    sql_stripped = sql_stripped.rstrip(";").strip()
-
-    # Strip SQL comments before validation to prevent obfuscation
-    sql_clean = re.sub(r"/\*.*?\*/", " ", sql_stripped, flags=re.DOTALL)  # block comments
-    sql_clean = re.sub(r"--[^\n]*", " ", sql_clean)  # line comments
-
-    # Must start with SELECT (or WITH for CTEs)
-    if not re.match(r"(?i)^\s*(SELECT|WITH)\b", sql_clean):
-        return json.dumps({"error": "Only SELECT queries are allowed."})
-
-    # Block dangerous keywords and Postgres admin functions
-    forbidden = re.compile(
-        r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE"
-        r"|COPY|DO|CALL|EXECUTE"
-        r"|pg_read_file|pg_write_file|pg_read_binary_file"
-        r"|lo_import|lo_export|lo_get|lo_put"
-        r"|set_config|pg_reload_conf|pg_terminate_backend)\b",
-        re.IGNORECASE,
-    )
-    if forbidden.search(sql_clean):
-        return json.dumps({"error": "Query contains forbidden keywords."})
-
-    try:
-        with readonly_engine.connect() as conn:
-            # 5-second statement timeout — Postgres kills the query server-side
-            conn.execute(text("SET LOCAL statement_timeout = '5000'"))
-            result = conn.execute(text(sql_stripped))
-            rows = [_row_to_dict(r) for r in result.fetchmany(1000)]
-            return json.dumps(rows, default=_serialize)
-    except Exception as e:
-        err = str(e)[:1000]
-        if "canceling statement" in err:
-            return json.dumps({"error": "Query timed out (5 second limit)."})
-        return json.dumps({"error": err})
+    result = await _core.run_query(sql)
+    if "error" in result:
+        return json.dumps({"error": result["error"]})
+    return json.dumps(result["rows"], default=_serialize)
 
 
 # ---------------------------------------------------------------------------
@@ -2206,44 +2171,22 @@ async def submit_feedback(
     Categories: bug (broken/wrong data), feature (buildable thing), observation (strategic context), insight (analytical finding).
     Default 'observation' when unsure. All submissions are PUBLIC — do not include sensitive data.
     """
-    # Input length limits
-    if len(topic) > 300:
-        return "Topic must be 300 characters or fewer."
-    if len(correction) > 5000:
-        return "Correction must be 5,000 characters or fewer."
-    if context and len(context) > 2000:
-        return "Context must be 2,000 characters or fewer."
-
-    VALID_CATEGORIES = {"bug", "feature", "observation", "insight"}
-    if category not in VALID_CATEGORIES:
-        return f"Invalid category '{category}'. Must be one of: {', '.join(sorted(VALID_CATEGORIES))}"
-
-    session = SessionLocal()
-    try:
-        c = Correction(
-            topic=topic.strip(),
-            correction=correction.strip(),
-            context=context.strip() if context else None,
-            category=category,
-            status="active",
-            upvotes=0,
-        )
-        session.add(c)
-        session.commit()
-        correction_id = c.id
-        session.close()
-        return (
-            f"Feedback submitted successfully.\n"
-            f"  ID:       {correction_id}\n"
-            f"  Topic:    {topic}\n"
-            f"  Category: {category}\n"
-            f"  Text:     {correction[:200]}\n\n"
-            f"Others can upvote this with upvote_feedback({correction_id})."
-        )
-    except Exception as e:
-        session.rollback()
-        session.close()
-        return f"Failed to submit feedback: {e}"
+    result = await _core.submit_feedback(
+        topic=topic.strip(),
+        text_body=correction.strip(),
+        context=context.strip() if context else None,
+        category=category,
+    )
+    if "error" in result:
+        return result["error"]
+    return (
+        f"Feedback submitted successfully.\n"
+        f"  ID:       {result['id']}\n"
+        f"  Topic:    {topic}\n"
+        f"  Category: {category}\n"
+        f"  Text:     {correction[:200]}\n\n"
+        f"Others can upvote this with upvote_feedback({result['id']})."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -6171,8 +6114,7 @@ async def _search_ai_repos(query: str, domain: str = "", limit: int = 5, offset:
 @track_usage
 async def find_ai_tool(query: str, domain: str = "", limit: int = 5, offset: int = 0) -> str:
     """Find AI/ML tools and libraries by describing what you need in plain English.
-    Searches ~100K indexed AI repos from GitHub. Use when someone asks
-    "is there a tool for X?" or "what libraries exist for Y?".
+    Searches 220K+ indexed AI repos via semantic + keyword search.
 
     Optional domain filter: mcp, agents, ai-coding, rag, llm-tools, generative-ai,
     diffusion, voice-ai, nlp, computer-vision, embeddings, vector-db,
@@ -6183,7 +6125,13 @@ async def find_ai_tool(query: str, domain: str = "", limit: int = 5, offset: int
       find_ai_tool("autonomous coding agent")
       find_ai_tool("PDF document chunking for RAG pipeline")
     """
-    return await _search_ai_repos(query=query, domain=domain, limit=limit, offset=offset)
+    data = await _core.search_similar(query=query, domain=domain, limit=limit, offset=offset)
+    if "error" in data:
+        return data["error"]
+    results = data.get("results", [])
+    if not results:
+        return data.get("message", f"No results for '{query}'.")
+    return _format_search_results(query, domain, results, offset)
 
 
 @mcp.tool()
@@ -6198,7 +6146,13 @@ async def find_mcp_server(query: str, limit: int = 5, offset: int = 0) -> str:
       find_mcp_server("Jira issue tracker")
       find_mcp_server("file system access")
     """
-    return await _search_ai_repos(query=query, domain="mcp", limit=limit, offset=offset)
+    data = await _core.search_similar(query=query, domain="mcp", limit=limit, offset=offset)
+    if "error" in data:
+        return data["error"]
+    results = data.get("results", [])
+    if not results:
+        return data.get("message", f"No MCP servers found for '{query}'.")
+    return _format_search_results(query, "mcp", results, offset)
 
 
 @mcp.tool()
@@ -7594,6 +7548,146 @@ async def find_model(
 
 
 # ---------------------------------------------------------------------------
+# Slim tools — thin wrappers delegating to app.api.core
+# ---------------------------------------------------------------------------
+
+from app.api import core as _core
+
+
+def _format_search_results(query: str, domain: str, results: list[dict], offset: int) -> str:
+    """Format core.search_similar results as text for MCP output."""
+    lines = []
+    if domain:
+        lines.append(f"AI REPO SEARCH: \"{query}\" (domain: {domain})")
+    else:
+        lines.append(f"AI REPO SEARCH: \"{query}\"")
+    lines.append("=" * 50)
+
+    for i, r in enumerate(results, offset + 1):
+        dl = r.get("downloads_monthly") or 0
+        dl_str = f" | {_fmt_downloads(dl)}/mo" if dl > 0 else ""
+        lang = f" · {r['language']}" if r.get("language") else ""
+        lic = f" · {r['license']}" if r.get("license") else ""
+        sub = r.get("subcategory")
+        if not domain:
+            dom = f" [{r.get('domain')}/{sub}]" if sub else f" [{r.get('domain')}]"
+        else:
+            dom = f" [{sub}]" if sub else ""
+        lines.append("")
+        lines.append(
+            f"{i}. {r['full_name']}{dom}  "
+            f"(⭐ {r['stars']:,}{dl_str}{lang}{lic})"
+        )
+        if r.get("description"):
+            lines.append(f"   {r['description'][:200]}")
+        if r.get("topics"):
+            lines.append(f"   Topics: {', '.join(r['topics'][:8])}")
+        freshness = _freshness_indicator(
+            datetime.fromisoformat(r["last_pushed_at"]) if r.get("last_pushed_at") else None
+        )
+        if freshness:
+            lines.append(f"   {freshness}")
+        lines.append(f"   https://github.com/{r['full_name']}")
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+@track_usage
+async def get_status() -> str:
+    """Start here. Returns orientation: how many tables, repos, domains, and last sync time. Shows what data is available and how to explore it."""
+    data = await _core.get_status()
+    lines = [
+        "PT-EDGE — AI Ecosystem Intelligence",
+        "=" * 50,
+        "",
+        f"Tables: {data['tables']}",
+        f"AI repos indexed: {data['ai_repos']:,}",
+        "",
+        "DOMAINS (repo count):",
+    ]
+    for d in data["domains"]:
+        lines.append(f"  {d['name']:<30} {d['count']:,}")
+    if data.get("last_sync"):
+        lines.append(f"\nLast sync: {data['last_sync']['type']} at {data['last_sync']['at']}")
+    lines.append("")
+    lines.append(data["guidance"])
+    return "\n".join(lines)
+
+
+@mcp.tool()
+@track_usage
+async def list_tables() -> str:
+    """List all database tables with row counts. Use before describe_table() or query()."""
+    tables = await _core.list_tables()
+    lines = ["TABLES", "=" * 50, ""]
+    for t in tables:
+        lines.append(f"  {t['table_name']:<40} ~{t['row_estimate']:,} rows ({t['column_count']} cols)")
+    lines.append(f"\n{len(tables)} tables. Use describe_table('name') for column details.")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+@track_usage
+async def describe_table(table_name: str) -> str:
+    """Show columns, types, and row count for a specific table. Call before writing a query."""
+    data = await _core.describe_table(table_name)
+    if data is None:
+        return f"Table '{table_name}' not found. Use list_tables() to see available tables."
+    lines = [
+        f"TABLE: {data['table_name']}  (~{data['row_estimate']:,} rows)",
+        "=" * 50,
+        "",
+    ]
+    for c in data["columns"]:
+        nullable = " (nullable)" if c["nullable"] else ""
+        lines.append(f"  {c['name']:<30} {c['type']}{nullable}")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+@track_usage
+async def search_tables(keyword: str) -> str:
+    """Find tables by keyword in table or column names. Use when you're not sure which table has the data you need."""
+    tables = await _core.search_tables(keyword)
+    if not tables:
+        return f"No tables matching '{keyword}'. Use list_tables() to see all tables."
+    lines = [f"Tables matching '{keyword}':", ""]
+    for t in tables:
+        lines.append(f"  {t['table_name']}")
+    lines.append(f"\nUse describe_table('name') for column details.")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+@track_usage
+async def list_workflows() -> str:
+    """Show available SQL recipe workflows — pre-built query templates for common questions. Adapt these to your needs or use query() for custom SQL."""
+    workflows = await _core.list_workflows()
+    if not workflows:
+        return "No workflows available yet."
+    lines = ["SQL RECIPE WORKFLOWS", "=" * 50, ""]
+    current_cat = None
+    for w in workflows:
+        cat = (w.get("category") or "general").upper()
+        if cat != current_cat:
+            current_cat = cat
+            lines.append(f"── {cat} ──")
+        lines.append(f"  {w['name']}")
+        lines.append(f"    {w['description']}")
+        if w.get("parameters"):
+            params = w["parameters"] if isinstance(w["parameters"], dict) else {}
+            param_names = ", ".join(params.keys()) if params else ""
+            if param_names:
+                lines.append(f"    Parameters: {param_names}")
+        lines.append(f"    SQL: {w['sql_template'][:120]}...")
+        lines.append("")
+    lines.append("Adapt these templates for query(). Example:")
+    lines.append("  query(\"SELECT full_name, stars FROM ai_repos WHERE domain = 'mcp' ORDER BY stars DESC LIMIT 10\")")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Auth middleware & mount
 # ---------------------------------------------------------------------------
 
@@ -7602,6 +7696,23 @@ async def find_model(
 _RATE_LIMIT = 60
 _RATE_WINDOW = 60
 _rate_buckets: dict[str, list[float]] = defaultdict(list)
+
+
+def _validate_mcp_token(token: str) -> bool:
+    """Check if a token is valid for MCP access.
+
+    Accepts both the legacy API_TOKEN and pte_* API keys.
+    """
+    if not token:
+        return False
+    # Legacy API_TOKEN (backwards compat)
+    if hmac.compare_digest(token, settings.API_TOKEN):
+        return True
+    # pte_* API keys (unified auth)
+    if token.startswith("pte_"):
+        from app.api.auth import validate_api_key
+        return validate_api_key(token) is not None
+    return False
 
 
 class TokenAuthMiddleware(BaseHTTPMiddleware):
@@ -7614,12 +7725,12 @@ class TokenAuthMiddleware(BaseHTTPMiddleware):
         if len(bucket) >= _RATE_LIMIT:
             return Response(status_code=429, content="Rate limit exceeded")
         bucket.append(now)
-        # Auth
+        # Auth — accept API_TOKEN or pte_* API keys
         token = request.query_params.get("token", "")
         if not token:
             auth = request.headers.get("Authorization", "")
             token = auth.removeprefix("Bearer ") if auth.startswith("Bearer ") else ""
-        if not hmac.compare_digest(token, settings.API_TOKEN):
+        if not _validate_mcp_token(token):
             return Response(status_code=401, content="Unauthorized")
         # Set request context for tool usage tracking
         import hashlib
@@ -7643,18 +7754,22 @@ import inspect
 _PY_TO_JSON = {str: "string", int: "integer", float: "number", bool: "boolean"}
 
 # Full tool list — used by SSE transport (Claude Desktop / SDK).
-# Includes editorial tools and legacy aliases for backward compatibility.
+# Includes slim core tools + legacy tools for backward compatibility.
 _TOOL_LIST = [
-    about, more_tools, describe_schema, query, whats_new, project_pulse, lab_pulse,
+    # ---- Slim core tools (delegating to app.api.core) ----
+    get_status, list_tables, describe_table, search_tables, list_workflows,
+    query, find_ai_tool, submit_feedback,
+    # ---- Legacy tools (still callable by name for backwards compat) ----
+    about, more_tools, describe_schema, whats_new, project_pulse, lab_pulse,
     trending, hype_check, briefing,
-    submit_feedback, upvote_feedback, list_feedback, amend_feedback,
+    upvote_feedback, list_feedback, amend_feedback,
     submit_correction, upvote_correction, list_corrections, amend_correction,
     propose_article, list_pitches, upvote_pitch, amend_pitch,
     submit_lab_event, list_lab_events, lab_models,
     lifecycle_map, hype_landscape, sniff_projects,
     accept_candidate, set_tier, movers, compare, related, market_map,
     radar, explain, topic, scout, hn_pulse, deep_dive,
-    find_ai_tool, find_mcp_server, mcp_coverage, mcp_health, find_public_api,
+    find_mcp_server, mcp_coverage, mcp_health, find_public_api,
     get_api_spec, get_api_endpoints,
     get_dependencies, find_dependents,
     find_dataset, find_model,
@@ -7668,21 +7783,19 @@ def _tool_fn(t):
     return getattr(t, "fn", t)
 
 
-# Core tools — the only tools visible in JSON-RPC tools/list (Claude.ai).
-# 12 tools that cover the main use cases. Everything else is accessible
-# via more_tools() which returns a catalog, or by calling tools directly.
+# Slim core tools — the only tools visible in JSON-RPC tools/list (Claude.ai).
+# 8 tools following the Oakbridge pattern: thin surface, rich data underneath.
+# All legacy tools still work if called by name — they just don't appear in
+# the initial listing, reducing token overhead from ~15K to ~2K.
 _CORE_TOOL_NAMES = {
-    "about",            # orientation — start here
-    "more_tools",       # gateway to 30+ advanced tools
-    "find_ai_tool",     # search ~100K AI repos
-    "find_mcp_server",  # search MCP servers
-    "find_public_api",  # search REST APIs
-    "trending",         # what's accelerating right now
-    "project_pulse",    # deep dive on a project
-    "whats_new",        # what shipped recently
-    "topic",            # semantic search across ecosystem
-    "query",            # raw SQL escape hatch
-    "briefing",         # curated ecosystem intelligence
+    "get_status",       # orientation — start here
+    "list_tables",      # schema discovery
+    "describe_table",   # column metadata before querying
+    "search_tables",    # find tables by keyword
+    "query",            # the workhorse — raw SQL
+    "list_workflows",   # pre-built SQL recipe templates
+    "find_ai_tool",     # semantic search ~220K AI repos
+    "submit_feedback",  # feedback loop
 }
 
 # Public tool list — used by JSON-RPC transport (Claude.ai web connector).
@@ -7743,7 +7856,7 @@ def mount_mcp(app):
         if not token:
             auth = request.headers.get("Authorization", "")
             token = auth.removeprefix("Bearer ") if auth.startswith("Bearer ") else ""
-        if not hmac.compare_digest(token, settings.API_TOKEN):
+        if not _validate_mcp_token(token):
             return None
         return token
 

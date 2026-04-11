@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}MCP Server &mdash; Connect Claude to 220,000+ AI Projects | PT-Edge{% endblock %}
+
+{% block meta %}
+<meta name="description" content="Connect Claude Desktop, Cursor, or any MCP client to PT-Edge. Query 220K+ AI repos, search by semantic similarity, and explore the ecosystem — all via MCP.">
+<style>
+  code, pre { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  pre { white-space: pre-wrap; word-break: break-word; }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+{% endblock %}
+
+{% block canonical %}<link rel="canonical" href="https://mcp.phasetransitions.ai/mcp/docs">{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
+
+  <h1 class="text-3xl font-bold text-gray-900 mb-4">MCP Server</h1>
+  <p class="text-lg text-gray-600 mb-8">Connect any MCP client to PT-Edge for live AI ecosystem intelligence. 8 tools, 220K+ repos, real-time data.</p>
+
+  <!-- Connection -->
+  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Connection</h2>
+
+  <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 mb-4">
+    <p class="text-sm font-medium text-gray-700 mb-2">Streamable HTTP (Claude Desktop, SDK clients)</p>
+    <pre class="text-sm bg-white border border-gray-200 rounded p-3">https://mcp.phasetransitions.ai/mcp/stream</pre>
+  </div>
+
+  <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 mb-4">
+    <p class="text-sm font-medium text-gray-700 mb-2">JSON-RPC POST (Claude.ai web connector)</p>
+    <pre class="text-sm bg-white border border-gray-200 rounded p-3">https://mcp.phasetransitions.ai/mcp</pre>
+  </div>
+
+  <!-- Auth -->
+  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Authentication</h2>
+  <p class="text-sm text-gray-600 mb-4">Pass your token as a query parameter or Authorization header:</p>
+  <pre class="text-sm bg-gray-50 border border-gray-200 rounded p-3 mb-4">?token=your_token
+Authorization: Bearer your_token</pre>
+  <p class="text-sm text-gray-600">Both the legacy API token and <code class="text-sm bg-gray-100 px-1.5 py-0.5 rounded">pte_*</code> API keys are accepted. <a href="/api/docs#get-a-key" class="text-blue-600 hover:underline">Get a free API key</a> for authenticated access.</p>
+
+  <!-- Tools -->
+  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Available Tools (8)</h2>
+  <p class="text-sm text-gray-600 mb-4">Slim tool surface following the <a href="https://phasetransitionsai.substack.com/" class="text-blue-600 hover:underline">Oakbridge pattern</a>: discover the schema, compose SQL, get answers.</p>
+
+  <div class="space-y-3">
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">get_status()</p>
+      <p class="text-sm text-gray-600">Start here. Returns table count, repo count, domains, freshness, and guidance.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">list_tables()</p>
+      <p class="text-sm text-gray-600">All database tables with row counts. Use before querying.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">describe_table(table_name)</p>
+      <p class="text-sm text-gray-600">Column names, types, and nullability for a specific table.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">search_tables(keyword)</p>
+      <p class="text-sm text-gray-600">Find tables by keyword in table or column names.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">query(sql)</p>
+      <p class="text-sm text-gray-600">Run any SELECT query. Read-only, 5s timeout, 1000 row limit. The workhorse.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">list_workflows()</p>
+      <p class="text-sm text-gray-600">Pre-built SQL recipe templates for common questions. Adapt and run via query().</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">find_ai_tool(query, domain?, limit?)</p>
+      <p class="text-sm text-gray-600">Semantic + keyword search across 220K+ AI repos. Describe what you need in plain English.</p>
+    </div>
+    <div class="rounded border border-gray-200 p-3">
+      <p class="font-mono text-sm font-medium text-gray-900">submit_feedback(topic, correction, category?)</p>
+      <p class="text-sm text-gray-600">Report bugs, request features, or share observations about the data.</p>
+    </div>
+  </div>
+
+  <!-- Workflow -->
+  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Recommended Workflow</h2>
+  <ol class="list-decimal list-inside text-sm text-gray-600 space-y-2">
+    <li><code class="bg-gray-100 px-1.5 py-0.5 rounded">get_status()</code> &mdash; see what's available</li>
+    <li><code class="bg-gray-100 px-1.5 py-0.5 rounded">list_tables()</code> &mdash; browse the schema</li>
+    <li><code class="bg-gray-100 px-1.5 py-0.5 rounded">describe_table('ai_repos')</code> &mdash; see columns</li>
+    <li><code class="bg-gray-100 px-1.5 py-0.5 rounded">list_workflows()</code> &mdash; get recipe templates</li>
+    <li><code class="bg-gray-100 px-1.5 py-0.5 rounded">query('SELECT ...')</code> &mdash; get your answer</li>
+  </ol>
+  <p class="text-sm text-gray-500 mt-4">For semantic similarity search, use <code class="bg-gray-100 px-1.5 py-0.5 rounded">find_ai_tool()</code> instead of SQL.</p>
+
+  <!-- Also available -->
+  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Also Available</h2>
+  <div class="flex gap-4">
+    <a href="/api/docs" class="rounded border border-gray-200 p-4 hover:border-blue-300 flex-1">
+      <p class="font-medium text-gray-900">REST API</p>
+      <p class="text-sm text-gray-500">Same data via HTTP endpoints</p>
+    </a>
+    <a href="/cli/docs" class="rounded border border-gray-200 p-4 hover:border-blue-300 flex-1">
+      <p class="font-medium text-gray-900">CLI</p>
+      <p class="text-sm text-gray-500">pip install ptedge-cli</p>
+    </a>
+  </div>
+
+</div>
+{% endblock %}
