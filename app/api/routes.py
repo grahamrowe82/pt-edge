@@ -57,19 +57,41 @@ class APIUsageMiddleware(BaseHTTPMiddleware):
             for k, v in _rate_limit_headers(rate_limit["limit"], rate_limit["remaining"]).items():
                 response.headers[k] = v
 
+        # Log ALL calls — keyed and anonymous
+        from app.api.auth import _get_client_ip
         key_data = getattr(request.state, "api_key_data", None)
-        if key_data and key_data.get("id"):
-            _log_api_usage(
-                api_key_id=key_data["id"],
-                endpoint=request.url.path,
-                params=dict(request.query_params),
-                duration_ms=duration_ms,
-                status_code=response.status_code,
-            )
+        ua = request.headers.get("User-Agent", "")
+        transport = "cli" if ua.startswith("ptedge-cli/") else "rest"
+
+        # Merge query params + any POST body params stashed by endpoint handlers
+        params = dict(request.query_params)
+        extra = getattr(request.state, "log_params", None)
+        if extra:
+            params.update(extra)
+
+        _log_api_usage(
+            api_key_id=key_data.get("id") if key_data else None,
+            endpoint=request.url.path,
+            params=params,
+            duration_ms=duration_ms,
+            status_code=response.status_code,
+            transport=transport,
+            client_ip=_get_client_ip(request),
+            user_agent=ua[:500] if ua else None,
+        )
         return response
 
 
-def _log_api_usage(api_key_id: int, endpoint: str, params: dict, duration_ms: int, status_code: int):
+def _log_api_usage(
+    api_key_id: int | None,
+    endpoint: str,
+    params: dict,
+    duration_ms: int,
+    status_code: int,
+    transport: str,
+    client_ip: str | None,
+    user_agent: str | None,
+):
     """Fire-and-forget usage logging — never breaks a request."""
     try:
         session = SessionLocal()
@@ -80,15 +102,26 @@ def _log_api_usage(api_key_id: int, endpoint: str, params: dict, duration_ms: in
 
         session.execute(
             text("""
-                INSERT INTO api_usage (api_key_id, endpoint, params, duration_ms, status_code)
-                VALUES (:kid, :ep, CAST(:params AS jsonb), :dur, :sc)
+                INSERT INTO api_usage
+                    (api_key_id, endpoint, params, duration_ms, status_code,
+                     transport, client_ip, user_agent)
+                VALUES
+                    (:kid, :ep, CAST(:params AS jsonb), :dur, :sc,
+                     :transport, :ip, :ua)
             """),
-            {"kid": api_key_id, "ep": endpoint, "params": json.dumps(params_clean), "dur": duration_ms, "sc": status_code},
+            {
+                "kid": api_key_id, "ep": endpoint,
+                "params": json.dumps(params_clean),
+                "dur": duration_ms, "sc": status_code,
+                "transport": transport, "ip": client_ip,
+                "ua": user_agent,
+            },
         )
-        session.execute(
-            text("UPDATE api_keys SET last_used_at = NOW() WHERE id = :kid"),
-            {"kid": api_key_id},
-        )
+        if api_key_id:
+            session.execute(
+                text("UPDATE api_keys SET last_used_at = NOW() WHERE id = :kid"),
+                {"kid": api_key_id},
+            )
         session.commit()
         session.close()
     except Exception:
@@ -567,6 +600,7 @@ async def api_query(
     sql = body.get("sql", "")
     if not sql:
         raise HTTPException(status_code=400, detail={"error": {"code": "missing_sql", "message": "Request body must include 'sql' field."}})
+    request.state.log_params = {"sql": sql[:500]}
     result = await core.run_query(sql)
     if "error" in result:
         raise HTTPException(status_code=400, detail={"error": {"code": "query_error", "message": result["error"]}})

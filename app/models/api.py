@@ -33,9 +33,12 @@ class APIUsage(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    api_key_id: Mapped[int] = mapped_column(Integer, ForeignKey("api_keys.id"), nullable=False)
+    api_key_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("api_keys.id"), nullable=True)
     endpoint: Mapped[str] = mapped_column(String(200), nullable=False)
     params: Mapped[dict | None] = mapped_column(JSONB)
     duration_ms: Mapped[int | None] = mapped_column(Integer)
     status_code: Mapped[int | None] = mapped_column(Integer)
+    transport: Mapped[str | None] = mapped_column(String(10))
+    client_ip: Mapped[str | None] = mapped_column(String(45))
+    user_agent: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

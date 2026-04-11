@@ -33,6 +33,8 @@ _VIEWS_AFTER_QUALITY = [
     "mv_access_bot_demand",      # standalone: bot crawl demand from http_access_log
     "mv_allocation_scores",      # depends on: all quality views + ai_repo_snapshots + gsc + umami
     "mv_owner_demand",           # depends on: mv_access_bot_demand + ai_repos
+    "mv_api_daily",              # standalone: api_usage daily rollup by transport/endpoint
+    "mv_api_callers",            # standalone: per-caller profiles for lead identification
 ]
 
 # Quality views are derived from the domain registry — no manual list needed.
