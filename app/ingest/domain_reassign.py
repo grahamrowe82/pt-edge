@@ -17,7 +17,7 @@ from app.db import engine, readonly_engine
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 2000
-BATCHES_PER_RUN = 5
+BATCHES_PER_RUN = 25
 MIN_IMPROVEMENT = 0.05
 
 
