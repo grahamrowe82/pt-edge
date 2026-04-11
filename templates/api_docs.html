@@ -3,10 +3,17 @@
 {% block title %}API &mdash; Quality Scores for 220,000+ AI Projects | PT-Edge{% endblock %}
 
 {% block meta %}
-<meta name="description" content="Open API for AI project intelligence. Quality scores, trends, and metadata for 220,000+ repos across 18 domains. No signup required.">
+<meta name="description" content="Open API for AI project intelligence. Quality scores, trends, and metadata for 220,000+ repos across 30 domains. No signup required.">
 <style>
   code, pre { font-family: 'JetBrains Mono', ui-monospace, monospace; }
   pre { white-space: pre-wrap; word-break: break-word; }
+  .code-dark { background: #111827; color: #f3f4f6; border-radius: 0.5rem; padding: 1rem; font-size: 0.8125rem; overflow-x: auto; }
+  .code-dark .cm { color: #6b7280; }
+  .code-dark .ck { color: #93c5fd; }
+  .code-dark .cv { color: #fbbf24; }
+  .code-dark .cs { color: #86efac; }
+  .code-dark .cn { color: #f9a8d4; }
+  .lang-label { font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #9ca3af; margin-bottom: 0.25rem; }
 </style>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 {% endblock %}
@@ -16,7 +23,7 @@
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
 
-  <!-- Hero: live demo -->
+  <!-- ─── 1. Hero: live demo ─── -->
   <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
     <div class="flex items-center justify-between mb-3">
       <p class="text-sm font-medium text-gray-700">Quality scores for 220,000+ AI repos</p>
@@ -27,7 +34,85 @@
     <p class="mt-2 text-xs text-gray-500">Open to everyone &mdash; 100 requests/day, no key needed. <a href="#get-a-key" class="text-blue-600 hover:underline font-medium">Get a free key</a> for 1,000/day.</p>
   </div>
 
-  <!-- Rate limits -->
+  <!-- Sample response -->
+  <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mt-4 mb-1">Sample response</p>
+  <pre class="code-dark">{
+  <span class="ck">"data"</span>: [{
+    <span class="ck">"full_name"</span>: <span class="cs">"openai/openai-agents-python"</span>,
+    <span class="ck">"name"</span>: <span class="cs">"openai-agents-python"</span>,
+    <span class="ck">"description"</span>: <span class="cs">"A lightweight, powerful framework for multi-agent workflows"</span>,
+    <span class="ck">"stars"</span>: <span class="cn">19951</span>, <span class="ck">"forks"</span>: <span class="cn">3261</span>,
+    <span class="ck">"language"</span>: <span class="cs">"Python"</span>, <span class="ck">"license"</span>: <span class="cs">"MIT"</span>,
+    <span class="ck">"subcategory"</span>: <span class="cs">"agent-framework-patterns"</span>,
+    <span class="ck">"pypi_package"</span>: <span class="cs">"openai-agents"</span>,
+    <span class="ck">"downloads_monthly"</span>: <span class="cn">21224096</span>,
+    <span class="ck">"quality_score"</span>: <span class="cn">98</span>, <span class="ck">"quality_tier"</span>: <span class="cs">"verified"</span>,
+    <span class="ck">"maintenance_score"</span>: <span class="cn">25</span>, <span class="ck">"adoption_score"</span>: <span class="cn">25</span>,
+    <span class="ck">"maturity_score"</span>: <span class="cn">25</span>, <span class="ck">"community_score"</span>: <span class="cn">23</span>
+  }],
+  <span class="ck">"meta"</span>: {
+    <span class="ck">"timestamp"</span>: <span class="cs">"2026-04-11T12:00:00+00:00"</span>,
+    <span class="ck">"count"</span>: <span class="cn">1</span>,
+    <span class="ck">"query"</span>: {<span class="ck">"domain"</span>: <span class="cs">"agents"</span>, <span class="ck">"limit"</span>: <span class="cn">1</span>}
+  }
+}</pre>
+
+  <!-- ─── 2. Quick Start ─── -->
+  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">Quick Start</h2>
+
+  <p class="text-sm text-gray-600 mb-4">Pick your language. No signup needed for the first 100 requests/day.</p>
+
+  <p class="lang-label">Python</p>
+  <pre class="code-dark mb-4"><span class="cv">import</span> requests
+
+API = <span class="cs">"https://pt-edge.onrender.com/api/v1"</span>
+
+<span class="cm"># Quality scores &mdash; no auth needed</span>
+resp = requests.get(<span class="cs">f"<span class="cv">{API}</span>/quality"</span>, params={<span class="cs">"domain"</span>: <span class="cs">"agents"</span>, <span class="cs">"quality_tier"</span>: <span class="cs">"verified"</span>, <span class="cs">"limit"</span>: <span class="cn">5</span>})
+<span class="cv">for</span> p <span class="cv">in</span> resp.json()[<span class="cs">"data"</span>]:
+    print(<span class="cs">f"<span class="cv">{p['name']:30s}</span>  score=<span class="cv">{p['quality_score']}</span>  stars=<span class="cv">{p['stars']:,.0f}</span>"</span>)</pre>
+
+  <p class="lang-label">JavaScript</p>
+  <pre class="code-dark mb-4"><span class="cv">const</span> API = <span class="cs">"https://pt-edge.onrender.com/api/v1"</span>;
+
+<span class="cv">const</span> resp = <span class="cv">await</span> fetch(<span class="cs">`${API}/quality?domain=agents&amp;quality_tier=verified&amp;limit=5`</span>);
+<span class="cv">const</span> { data } = <span class="cv">await</span> resp.json();
+data.forEach(p =&gt; console.log(<span class="cs">`${p.name} &mdash; score=${p.quality_score}, stars=${p.stars.toLocaleString()}`</span>));</pre>
+
+  <p class="lang-label">curl</p>
+  <pre class="code-dark mb-4">curl -s <span class="cs">"https://pt-edge.onrender.com/api/v1/quality?domain=agents&amp;quality_tier=verified&amp;limit=5"</span> | python3 -m json.tool</pre>
+
+  <p class="text-sm text-gray-600 mt-6 mb-2">With an API key (1,000 requests/day):</p>
+  <p class="lang-label">Python</p>
+  <pre class="code-dark"><span class="cm"># With API key (1,000 requests/day)</span>
+headers = {<span class="cs">"Authorization"</span>: <span class="cs">"Bearer pte_YOUR_KEY"</span>}
+resp = requests.get(<span class="cs">f"<span class="cv">{API}</span>/trending"</span>, headers=headers, params={<span class="cs">"window"</span>: <span class="cs">"7d"</span>, <span class="cs">"limit"</span>: <span class="cn">10</span>})</pre>
+
+  <!-- ─── 3. What's In The Data ─── -->
+  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">What's In The Data</h2>
+
+  <p class="text-sm text-gray-600 mb-4">PT-Edge tracks 220,000+ open-source AI repos across 30 domains. Each repo is scored 0&ndash;100 based on four components: maintenance (commit activity, issue response), adoption (downloads, dependents), maturity (age, stability, documentation), and community (stars, forks, contributors). Data flows in daily from GitHub, PyPI, npm, HuggingFace, and Hacker News.</p>
+
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+    <div class="border border-gray-200 rounded-lg p-3">
+      <p class="font-semibold text-gray-900">verified <span class="text-xs font-normal text-gray-400">(score 80+)</span></p>
+      <p class="text-gray-500 text-xs mt-1">Battle-tested, high adoption, actively maintained</p>
+    </div>
+    <div class="border border-gray-200 rounded-lg p-3">
+      <p class="font-semibold text-gray-900">established <span class="text-xs font-normal text-gray-400">(60&ndash;79)</span></p>
+      <p class="text-gray-500 text-xs mt-1">Solid projects with real usage</p>
+    </div>
+    <div class="border border-gray-200 rounded-lg p-3">
+      <p class="font-semibold text-gray-900">emerging <span class="text-xs font-normal text-gray-400">(40&ndash;59)</span></p>
+      <p class="text-gray-500 text-xs mt-1">Growing adoption, some production use</p>
+    </div>
+    <div class="border border-gray-200 rounded-lg p-3">
+      <p class="font-semibold text-gray-900">experimental <span class="text-xs font-normal text-gray-400">(0&ndash;39)</span></p>
+      <p class="text-gray-500 text-xs mt-1">Early stage, limited adoption</p>
+    </div>
+  </div>
+
+  <!-- ─── 4. Rate Limits ─── -->
   <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">Rate Limits</h2>
 
   <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
@@ -58,10 +143,11 @@
   </table>
   <p class="mt-2 text-xs text-gray-400">All tiers are free. All tiers get the same data. Resets at midnight UTC.</p>
 
-  <!-- Get a key -->
-  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">Get a Key</h2>
+  <!-- ─── 5. Get a Key ─── -->
+  <h2 id="get-a-key" class="text-xl font-bold text-gray-900 mt-12 mb-4">Get a Key</h2>
 
-  <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto"><span class="text-gray-400"># 1,000 requests/day &mdash; instant, no email</span>
+  <p class="lang-label">curl</p>
+  <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto mb-4"><span class="text-gray-400"># 1,000 requests/day &mdash; instant, no email</span>
 curl -X POST https://pt-edge.onrender.com/api/v1/keys
 
 <span class="text-gray-400"># 10,000 requests/day &mdash; just add your email</span>
@@ -69,25 +155,31 @@ curl -X POST https://pt-edge.onrender.com/api/v1/keys \
   -H "Content-Type: application/json" \
   -d '{"email": "you@company.com"}'</pre>
 
+  <p class="lang-label">Python</p>
+  <pre class="code-dark mb-4"><span class="cv">import</span> requests
+resp = requests.post(<span class="cs">"https://pt-edge.onrender.com/api/v1/keys"</span>)
+key = resp.json()[<span class="cs">"data"</span>][<span class="cs">"key"</span>]  <span class="cm"># pte_...</span>
+print(<span class="cs">f"Your key: <span class="cv">{key}</span>"</span>)</pre>
+
   <p class="mt-3 text-sm text-gray-600">Then pass your key as a Bearer token: <code class="bg-gray-100 px-1.5 py-0.5 rounded text-xs">Authorization: Bearer pte_...</code></p>
 
-  <!-- Endpoints -->
-  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-6">Endpoints</h2>
+  <!-- ─── 6. Core Endpoints ─── -->
+  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-6">Core Endpoints</h2>
 
-  <!-- 1. GET /quality -->
+  <!-- GET /quality -->
   <div class="mb-10">
     <div class="flex items-center gap-3 mb-2">
       <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
       <code class="text-sm font-medium">/api/v1/quality</code>
     </div>
-    <p class="text-gray-600 text-sm mb-3">Quality scores for AI projects across all 18 domains. The core endpoint.</p>
+    <p class="text-gray-600 text-sm mb-3">Quality scores for AI projects across all 30 domains. The core endpoint.</p>
     <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden mb-3">
       <thead class="bg-gray-50">
         <tr><th class="text-left px-4 py-2 font-medium">Param</th><th class="text-left px-4 py-2 font-medium">Type</th><th class="text-left px-4 py-2 font-medium">Description</th></tr>
       </thead>
       <tbody>
-        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>domain</code></td><td class="px-4 py-2">query, required</td><td class="px-4 py-2">mcp, agents, ml-frameworks, rag, embeddings, llm-tools, nlp, transformers, generative-ai, computer-vision, ai-coding, voice-ai, diffusion, vector-db, prompt-engineering, data-engineering, mlops, perception</td></tr>
-        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>subcategory</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Filter by category within the domain</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>domain</code></td><td class="px-4 py-2">query, required</td><td class="px-4 py-2">mcp, agents, rag, ai-coding, voice-ai, diffusion, vector-db, embeddings, prompt-engineering, ml-frameworks, llm-tools, nlp, transformers, generative-ai, computer-vision, data-engineering, mlops, perception, llm-inference, ai-evals, fine-tuning, document-ai, ai-safety, recommendation-systems, audio-ai, synthetic-data, time-series, multimodal, 3d-ai, scientific-ml</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>subcategory</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Filter by category within the domain. Use <code>GET /api/v1/quality?domain=agents</code> to discover available subcategories in the response data, or see the <a href="#domains-reference" class="text-blue-600 hover:underline">reference table</a> below.</td></tr>
         <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>quality_tier</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">verified, established, emerging, experimental</td></tr>
         <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>min_score</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Minimum quality score (0&ndash;100)</td></tr>
         <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>limit</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Results per page (1&ndash;500, default 50)</td></tr>
@@ -96,7 +188,7 @@ curl -X POST https://pt-edge.onrender.com/api/v1/keys \
     <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/quality?domain=ml-frameworks&amp;quality_tier=verified&amp;limit=5"</pre>
   </div>
 
-  <!-- 2. GET /trending -->
+  <!-- GET /trending -->
   <div class="mb-10">
     <div class="flex items-center gap-3 mb-2">
       <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
@@ -109,14 +201,16 @@ curl -X POST https://pt-edge.onrender.com/api/v1/keys \
       </thead>
       <tbody>
         <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>window</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2"><code>7d</code> or <code>30d</code> (default <code>7d</code>)</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>domain</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Filter by domain (same values as /quality)</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>stack_layer</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">model, inference, orchestration, data, eval, interface, infra</td></tr>
         <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>category</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Filter by category</td></tr>
         <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>limit</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">1&ndash;50 (default 20)</td></tr>
       </tbody>
     </table>
-    <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/trending?window=7d&amp;limit=5"</pre>
+    <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/trending?window=7d&amp;domain=agents&amp;limit=5"</pre>
   </div>
 
-  <!-- 3. GET /projects/{slug} -->
+  <!-- GET /projects/{slug} -->
   <div class="mb-10">
     <div class="flex items-center gap-3 mb-2">
       <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
@@ -126,7 +220,7 @@ curl -X POST https://pt-edge.onrender.com/api/v1/keys \
     <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/projects/langchain"</pre>
   </div>
 
-  <!-- 4. GET /whats-new -->
+  <!-- GET /whats-new -->
   <div class="mb-10">
     <div class="flex items-center gap-3 mb-2">
       <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
@@ -136,7 +230,7 @@ curl -X POST https://pt-edge.onrender.com/api/v1/keys \
     <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/whats-new?days=7"</pre>
   </div>
 
-  <!-- 5. GET /briefings -->
+  <!-- GET /briefings -->
   <div class="mb-10">
     <div class="flex items-center gap-3 mb-2">
       <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
@@ -146,16 +240,81 @@ curl -X POST https://pt-edge.onrender.com/api/v1/keys \
     <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/briefings?domain=agents"</pre>
   </div>
 
-  <!-- More endpoints -->
+  <!-- ─── 7. Promoted Endpoints ─── -->
+  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-6">Search &amp; Discovery</h2>
+
+  <!-- GET /projects (search) -->
+  <div class="mb-10">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
+      <code class="text-sm font-medium">/api/v1/projects</code>
+    </div>
+    <p class="text-gray-600 text-sm mb-3">Search projects by name, description, category, or stack layer.</p>
+    <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden mb-3">
+      <thead class="bg-gray-50">
+        <tr><th class="text-left px-4 py-2 font-medium">Param</th><th class="text-left px-4 py-2 font-medium">Type</th><th class="text-left px-4 py-2 font-medium">Description</th></tr>
+      </thead>
+      <tbody>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>q</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Search by name or description</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>category</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Filter by category</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>stack_layer</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">model, inference, orchestration, data, eval, interface, infra</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>domain</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Filter by domain</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>limit</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">1&ndash;50 (default 20)</td></tr>
+      </tbody>
+    </table>
+    <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/projects?q=autonomous+agent&amp;stack_layer=orchestration&amp;limit=5"</pre>
+  </div>
+
+  <!-- GET /velocity -->
+  <div class="mb-10">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
+      <code class="text-sm font-medium">/api/v1/velocity</code>
+    </div>
+    <p class="text-gray-600 text-sm mb-3">Commit activity leaderboard &mdash; find the most actively developed projects.</p>
+    <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden mb-3">
+      <thead class="bg-gray-50">
+        <tr><th class="text-left px-4 py-2 font-medium">Param</th><th class="text-left px-4 py-2 font-medium">Type</th><th class="text-left px-4 py-2 font-medium">Description</th></tr>
+      </thead>
+      <tbody>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>domain</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Filter by domain</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>band</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">dormant, slow, moderate, fast, hyperspeed</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>sort</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">commits_30d (default), commits_delta, cpc</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>stack_layer</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">model, inference, orchestration, data, eval, interface, infra</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>limit</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">1&ndash;50 (default 20)</td></tr>
+      </tbody>
+    </table>
+    <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/velocity?domain=agents&amp;band=hyperspeed&amp;limit=5"</pre>
+  </div>
+
+  <!-- GET /search -->
+  <div class="mb-10">
+    <div class="flex items-center gap-3 mb-2">
+      <span class="inline-block bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-1 rounded">GET</span>
+      <code class="text-sm font-medium">/api/v1/search</code>
+    </div>
+    <p class="text-gray-600 text-sm mb-3">Semantic search &mdash; find projects using plain-English descriptions.</p>
+    <table class="w-full text-sm border border-gray-200 rounded-lg overflow-hidden mb-3">
+      <thead class="bg-gray-50">
+        <tr><th class="text-left px-4 py-2 font-medium">Param</th><th class="text-left px-4 py-2 font-medium">Type</th><th class="text-left px-4 py-2 font-medium">Description</th></tr>
+      </thead>
+      <tbody>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>q</code></td><td class="px-4 py-2">query, required</td><td class="px-4 py-2">Search query in plain English</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>domain</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">Filter by domain</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>limit</code></td><td class="px-4 py-2">query, optional</td><td class="px-4 py-2">1&ndash;20 (default 5)</td></tr>
+      </tbody>
+    </table>
+    <pre class="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm overflow-x-auto">curl "https://pt-edge.onrender.com/api/v1/search?q=autonomous+coding+agent&amp;domain=ai-coding&amp;limit=5"</pre>
+  </div>
+
+  <!-- ─── 8. More Endpoints ─── -->
   <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">More Endpoints</h2>
 
   <div class="border border-gray-200 rounded-lg overflow-hidden text-sm">
     <table class="w-full">
       <tbody>
-        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400 w-12">GET</td><td class="px-4 py-2"><code>/api/v1/projects</code></td><td class="px-4 py-2 text-gray-500">Search by name, category, domain</td></tr>
-        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/projects/bulk</code></td><td class="px-4 py-2 text-gray-500">Batch lookup (up to 20)</td></tr>
+        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400 w-12">GET</td><td class="px-4 py-2"><code>/api/v1/projects/bulk</code></td><td class="px-4 py-2 text-gray-500">Batch lookup (up to 20)</td></tr>
         <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/quality/{domain}/{repo}</code></td><td class="px-4 py-2 text-gray-500">Single repo quality lookup</td></tr>
-        <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/velocity</code></td><td class="px-4 py-2 text-gray-500">Commit activity leaderboard</td></tr>
         <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/contributors/trending</code></td><td class="px-4 py-2 text-gray-500">Top contributors by stack layer</td></tr>
         <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/transitions</code></td><td class="px-4 py-2 text-gray-500">Lifecycle stage changes</td></tr>
         <tr class="border-b border-gray-100"><td class="px-4 py-2 text-gray-400">GET</td><td class="px-4 py-2"><code>/api/v1/labs/{slug}</code></td><td class="px-4 py-2 text-gray-500">Lab detail with projects and releases</td></tr>
@@ -169,7 +328,116 @@ curl -X POST https://pt-edge.onrender.com/api/v1/keys \
     </table>
   </div>
 
-  <!-- Response format -->
+  <!-- ─── 9. Dataset Endpoints ─── -->
+  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">Dataset Endpoints</h2>
+
+  <p class="text-sm text-gray-600 mb-4">Bulk access endpoints for data pipelines. High limits (2,000/page), publicly cacheable, no auth required.</p>
+
+  <div class="border border-gray-200 rounded-lg overflow-hidden text-sm">
+    <table class="w-full">
+      <thead class="bg-gray-50">
+        <tr>
+          <th class="text-left px-4 py-2 font-medium">Endpoint</th>
+          <th class="text-left px-4 py-2 font-medium">Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>GET /api/v1/datasets/projects</code></td><td class="px-4 py-2 text-gray-500">Bulk project data. Params: category, domain, stack_layer, tier, limit (max 2000)</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>GET /api/v1/datasets/mcp-repos</code></td><td class="px-4 py-2 text-gray-500">MCP repository data. Params: subcategory, limit</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>GET /api/v1/datasets/mcp-scores</code></td><td class="px-4 py-2 text-gray-500">MCP quality scores. Params: quality_tier, subcategory, limit</td></tr>
+        <tr class="border-t border-gray-200"><td class="px-4 py-2"><code>GET /api/v1/datasets/quality</code></td><td class="px-4 py-2 text-gray-500">Quality scores for any domain. Params: domain (required), subcategory, quality_tier, limit (max 2000)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ─── 10. Use-Case Recipes ─── -->
+  <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">Recipes</h2>
+
+  <p class="text-sm text-gray-600 mb-4">Copy-paste Python examples for common workflows.</p>
+
+  <!-- Recipe 1 -->
+  <p class="text-sm font-semibold text-gray-800 mb-1">Find the best tools in a domain</p>
+  <pre class="code-dark mb-6"><span class="cv">import</span> requests
+API = <span class="cs">"https://pt-edge.onrender.com/api/v1"</span>
+
+<span class="cm"># Top verified RAG frameworks</span>
+resp = requests.get(<span class="cs">f"<span class="cv">{API}</span>/quality"</span>, params={<span class="cs">"domain"</span>: <span class="cs">"rag"</span>, <span class="cs">"quality_tier"</span>: <span class="cs">"verified"</span>, <span class="cs">"limit"</span>: <span class="cn">10</span>})
+<span class="cv">for</span> p <span class="cv">in</span> resp.json()[<span class="cs">"data"</span>]:
+    print(<span class="cs">f"<span class="cv">{p['full_name']:40s}</span>  score=<span class="cv">{p['quality_score']}</span>  downloads=<span class="cv">{p['downloads_monthly']:,.0f}</span>"</span>)</pre>
+
+  <!-- Recipe 2 -->
+  <p class="text-sm font-semibold text-gray-800 mb-1">Track what's trending</p>
+  <pre class="code-dark mb-6"><span class="cm"># This week's fastest-growing projects</span>
+resp = requests.get(<span class="cs">f"<span class="cv">{API}</span>/trending"</span>, params={<span class="cs">"window"</span>: <span class="cs">"7d"</span>, <span class="cs">"limit"</span>: <span class="cn">10</span>})
+<span class="cv">for</span> p <span class="cv">in</span> resp.json()[<span class="cs">"data"</span>]:
+    print(<span class="cs">f"<span class="cv">{p['name']:25s}</span>  +<span class="cv">{p['stars_7d_delta']:,.0f}</span> stars  lifecycle=<span class="cv">{p['lifecycle_stage']}</span>"</span>)</pre>
+
+  <!-- Recipe 3 -->
+  <p class="text-sm font-semibold text-gray-800 mb-1">Semantic search</p>
+  <pre class="code-dark mb-6"><span class="cm"># Find tools by description</span>
+resp = requests.get(<span class="cs">f"<span class="cv">{API}</span>/search"</span>, params={<span class="cs">"q"</span>: <span class="cs">"vector database for production RAG"</span>, <span class="cs">"limit"</span>: <span class="cn">5</span>})
+<span class="cv">for</span> p <span class="cv">in</span> resp.json()[<span class="cs">"data"</span>]:
+    print(<span class="cs">f"<span class="cv">{p['full_name']:40s}</span>  score=<span class="cv">{p.get('quality_score', 'N/A')}</span>"</span>)</pre>
+
+  <!-- ─── 11. Domains & Enums Reference ─── -->
+  <details id="domains-reference" class="mt-12 border border-gray-200 rounded-lg">
+    <summary class="px-4 py-3 text-sm font-bold text-gray-900 cursor-pointer hover:bg-gray-50">Domains &amp; Enums Reference</summary>
+    <div class="px-4 pb-4">
+
+      <!-- Domains -->
+      <p class="text-sm font-semibold text-gray-800 mt-4 mb-2">Domains (30)</p>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-xs text-gray-600 mb-6">
+        <span>mcp</span><span>agents</span><span>rag</span>
+        <span>ai-coding</span><span>voice-ai</span><span>diffusion</span>
+        <span>vector-db</span><span>embeddings</span><span>prompt-engineering</span>
+        <span>ml-frameworks</span><span>llm-tools</span><span>nlp</span>
+        <span>transformers</span><span>generative-ai</span><span>computer-vision</span>
+        <span>data-engineering</span><span>mlops</span><span>perception</span>
+        <span>llm-inference</span><span>ai-evals</span><span>fine-tuning</span>
+        <span>document-ai</span><span>ai-safety</span><span>recommendation-systems</span>
+        <span>audio-ai</span><span>synthetic-data</span><span>time-series</span>
+        <span>multimodal</span><span>3d-ai</span><span>scientific-ml</span>
+      </div>
+
+      <!-- Subcategories -->
+      <p class="text-sm font-semibold text-gray-800 mb-2">Subcategories by Domain</p>
+      <table class="w-full text-xs border border-gray-200 rounded-lg overflow-hidden mb-4">
+        <thead class="bg-gray-50">
+          <tr><th class="text-left px-3 py-2 font-medium">Domain</th><th class="text-left px-3 py-2 font-medium">Subcategories</th></tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">mcp</td><td class="px-3 py-2 text-gray-500">testing, security, observability, transport, gateway, discovery, billing, ide, agent-memory, framework</td></tr>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">agents</td><td class="px-3 py-2 text-gray-500">browser-agent, coding-agent, research-agent, multi-agent, agent-framework</td></tr>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">perception</td><td class="px-3 py-2 text-gray-500">browser-automation, scraper, search, cli-access</td></tr>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">ai-coding</td><td class="px-3 py-2 text-gray-500">code-editor, code-review, code-generation, context-tools</td></tr>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">rag</td><td class="px-3 py-2 text-gray-500">chunking, retrieval, ingestion, evaluation, pipeline</td></tr>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">voice-ai</td><td class="px-3 py-2 text-gray-500">tts, stt, voice-agent, real-time-audio, audio-processing</td></tr>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">diffusion</td><td class="px-3 py-2 text-gray-500">image-generation, video-generation, ui-workflow, fine-tuning, controlnet</td></tr>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">vector-db</td><td class="px-3 py-2 text-gray-500">database, client-sdk, indexing, hybrid-search, integration</td></tr>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">embeddings</td><td class="px-3 py-2 text-gray-500">model, server, fine-tuning, evaluation, utility</td></tr>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">prompt-engineering</td><td class="px-3 py-2 text-gray-500">prompt-framework, prompt-library, guardrails, output-parsing, optimization</td></tr>
+        </tbody>
+      </table>
+      <p class="text-xs text-gray-400 mb-6">Other 20 domains: subcategories are auto-generated from project clustering. Use the API to discover available values.</p>
+
+      <!-- Enums -->
+      <p class="text-sm font-semibold text-gray-800 mb-2">Enum Values</p>
+      <table class="w-full text-xs border border-gray-200 rounded-lg overflow-hidden">
+        <thead class="bg-gray-50">
+          <tr><th class="text-left px-3 py-2 font-medium">Field</th><th class="text-left px-3 py-2 font-medium">Values</th></tr>
+        </thead>
+        <tbody>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">quality_tier</td><td class="px-3 py-2 text-gray-500">verified, established, emerging, experimental</td></tr>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">stack_layer</td><td class="px-3 py-2 text-gray-500">model, inference, orchestration, data, eval, interface, infra</td></tr>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">lifecycle_stage</td><td class="px-3 py-2 text-gray-500">emerging, launching, growing, established, fading, dormant</td></tr>
+          <tr class="border-t border-gray-100"><td class="px-3 py-2 font-medium">velocity band</td><td class="px-3 py-2 text-gray-500">dormant, slow, moderate, fast, hyperspeed</td></tr>
+        </tbody>
+      </table>
+
+    </div>
+  </details>
+
+  <!-- ─── 12. Response Format ─── -->
   <h2 class="text-xl font-bold text-gray-900 mt-12 mb-4">Response Format</h2>
 
   <p class="text-sm text-gray-600 mb-3">Every response returns a JSON envelope:</p>
@@ -194,7 +462,7 @@ X-RateLimit-Reset: 2026-04-04T00:00:00+00:00</pre>
 <span class="text-gray-400">// 422 Invalid parameter</span>
 { "detail": { "error": { "code": "invalid_domain", "message": "..." } } }</pre>
 
-  <!-- Machine-readable -->
+  <!-- ─── 13. Machine-readable links ─── -->
   <p class="mt-12 text-sm text-gray-400">
     <a href="/api/v1/openapi.json" class="hover:text-gray-600">OpenAPI spec</a> &middot;
     <a href="/.well-known/ai-plugin.json" class="hover:text-gray-600">AI plugin manifest</a> &middot;
