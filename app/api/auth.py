@@ -161,5 +161,22 @@ async def optional_api_key(request: Request) -> dict:
     return key_data
 
 
+def validate_api_key(raw_key: str) -> dict | None:
+    """Validate a pte_* API key without HTTP context. Returns key_data dict or None.
+
+    Used by MCP and CLI transports where FastAPI dependencies aren't available.
+    Does NOT enforce rate limits — caller is responsible for that.
+    """
+    if not raw_key or not raw_key.startswith("pte_") or len(raw_key) != 36:
+        return None
+    key_hash = _hash_key(raw_key)
+    key_data = _lookup_key(key_hash)
+    if not key_data:
+        return None
+    if not key_data.get("is_active") or key_data.get("revoked_at") is not None:
+        return None
+    return key_data
+
+
 # Keep the old name as alias for backward compatibility with manage script imports
 require_api_key = optional_api_key

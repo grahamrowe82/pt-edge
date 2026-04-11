@@ -99,10 +99,10 @@ def test_mcp_tools_list():
     )
     assert resp.status_code == 200
     tools = resp.json()["result"]["tools"]
-    assert len(tools) == 11  # core tools only
+    assert len(tools) == 8  # slim core tools only
     names = [t["name"] for t in tools]
-    assert "about" in names
-    assert "more_tools" in names
+    assert "get_status" in names
+    assert "query" in names
     assert "find_ai_tool" in names
 
 
@@ -142,21 +142,21 @@ def test_mcp_discovery_no_auth():
         json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
     )
     assert resp.status_code == 200
-    assert len(resp.json()["result"]["tools"]) == 11  # core tools only
+    assert len(resp.json()["result"]["tools"]) == 8  # slim core tools only
 
 
 def test_hidden_tools_still_callable():
-    """Tools not in core list are still callable via JSON-RPC."""
+    """Legacy tools not in slim core are still callable via JSON-RPC."""
     from app.mcp.server import _TOOLS, _CORE_TOOL_NAMES
 
-    # Verify hidden tools exist in _TOOLS lookup
+    # Verify legacy tools exist in _TOOLS lookup (callable by name)
     assert "describe_schema" not in _CORE_TOOL_NAMES
     assert "describe_schema" in _TOOLS
     assert "hype_check" not in _CORE_TOOL_NAMES
     assert "hype_check" in _TOOLS
-
-    # Verify more_tools is in core
-    assert "more_tools" in _CORE_TOOL_NAMES
+    assert "about" not in _CORE_TOOL_NAMES
+    assert "about" in _TOOLS
+    assert "more_tools" not in _CORE_TOOL_NAMES
     assert "more_tools" in _TOOLS
 
 
@@ -812,10 +812,11 @@ def test_briefing_tool_registered():
     assert "briefing" in _TOOLS
 
 
-def test_briefing_in_core_tools():
-    """Briefing tool is in core tools (visible to Claude.ai)."""
-    from app.mcp.server import _CORE_TOOL_NAMES
-    assert "briefing" in _CORE_TOOL_NAMES
+def test_briefing_still_callable():
+    """Briefing tool is still callable via JSON-RPC (legacy, not in slim core)."""
+    from app.mcp.server import _TOOLS, _CORE_TOOL_NAMES
+    assert "briefing" not in _CORE_TOOL_NAMES  # removed from slim core
+    assert "briefing" in _TOOLS  # still callable by name
 
 
 def test_briefing_model_import():
@@ -833,9 +834,9 @@ def test_briefing_model_fields():
 
 
 def test_core_tool_count():
-    """Core tool list has expected count (11 after removing recall/workspace)."""
+    """Core tool list has 8 slim tools (Oakbridge pattern)."""
     from app.mcp.server import _CORE_TOOL_NAMES
-    assert len(_CORE_TOOL_NAMES) == 11
+    assert len(_CORE_TOOL_NAMES) == 8
 
 
 def test_briefing_seed_entries():

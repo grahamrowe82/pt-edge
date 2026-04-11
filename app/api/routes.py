@@ -510,3 +510,109 @@ async def dataset_quality(
         "domain": domain, "subcategory": subcategory, "quality_tier": quality_tier,
         "limit": limit, "offset": offset,
     })
+
+
+# ---------------------------------------------------------------------------
+# Generic endpoints — shared core layer (REST + MCP + CLI parity)
+# ---------------------------------------------------------------------------
+
+from app.api import core
+
+
+@router.get("/status")
+async def api_status(request: Request):
+    """Orientation: table count, repo count, domains, freshness."""
+    data = await core.get_status()
+    return _ok(data)
+
+
+@router.get("/tables")
+async def api_list_tables(request: Request, key_data: dict = Depends(_auth)):
+    """List all database tables with column count and row estimate."""
+    tables = await core.list_tables()
+    return _ok(tables, count=len(tables))
+
+
+@router.get("/tables/search")
+async def api_search_tables(
+    request: Request,
+    q: str = Query(..., description="Keyword to search table/column names"),
+    key_data: dict = Depends(_auth),
+):
+    """Find tables by keyword in table or column names."""
+    tables = await core.search_tables(q)
+    return _ok(tables, count=len(tables), query_params={"q": q})
+
+
+@router.get("/tables/{table_name}")
+async def api_describe_table(
+    table_name: str,
+    request: Request,
+    key_data: dict = Depends(_auth),
+):
+    """Column metadata for a specific table."""
+    data = await core.describe_table(table_name)
+    if data is None:
+        _not_found(f"Table '{table_name}'")
+    return _ok(data)
+
+
+@router.post("/query")
+async def api_query(
+    request: Request,
+    key_data: dict = Depends(_auth),
+):
+    """Run a read-only SQL query. Body: {"sql": "SELECT ..."}"""
+    body = await request.json()
+    sql = body.get("sql", "")
+    if not sql:
+        raise HTTPException(status_code=400, detail={"error": {"code": "missing_sql", "message": "Request body must include 'sql' field."}})
+    result = await core.run_query(sql)
+    if "error" in result:
+        raise HTTPException(status_code=400, detail={"error": {"code": "query_error", "message": result["error"]}})
+    return _ok(result["rows"], count=result["count"], query_params={"sql": sql[:200]})
+
+
+@router.get("/workflows")
+async def api_list_workflows(request: Request, key_data: dict = Depends(_auth)):
+    """List SQL recipe workflows — pre-built query templates."""
+    workflows = await core.list_workflows()
+    return _ok(workflows, count=len(workflows))
+
+
+@router.get("/search")
+async def api_search(
+    request: Request,
+    q: str = Query(..., description="Search query in plain English"),
+    domain: str = Query("", description="Optional domain filter"),
+    limit: int = Query(5, ge=1, le=20),
+    offset: int = Query(0, ge=0, le=100),
+    key_data: dict = Depends(_auth),
+):
+    """Semantic + keyword search across AI repos."""
+    data = await core.search_similar(query=q, domain=domain, limit=limit, offset=offset)
+    if "error" in data:
+        raise HTTPException(status_code=400, detail={"error": {"code": "search_error", "message": data["error"]}})
+    return _ok(data.get("results", []), count=len(data.get("results", [])), query_params={"q": q, "domain": domain})
+
+
+@router.post("/feedback")
+async def api_submit_feedback(
+    request: Request,
+    key_data: dict = Depends(_auth),
+):
+    """Submit feedback. Body: {"topic": "...", "text": "...", "category": "observation"}"""
+    body = await request.json()
+    topic = body.get("topic", "")
+    text_body = body.get("text", "")
+    if not topic or not text_body:
+        raise HTTPException(status_code=400, detail={"error": {"code": "missing_fields", "message": "Request body must include 'topic' and 'text'."}})
+    result = await core.submit_feedback(
+        topic=topic,
+        text_body=text_body,
+        context=body.get("context"),
+        category=body.get("category", "observation"),
+    )
+    if "error" in result:
+        raise HTTPException(status_code=400, detail={"error": {"code": "validation_error", "message": result["error"]}})
+    return _ok(result)

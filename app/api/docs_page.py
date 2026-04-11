@@ -47,17 +47,44 @@ _DIRECTORIES = [
 ]
 
 
+_COMMON_CONTEXT = dict(
+    base_path="",
+    base_url="https://mcp.phasetransitions.ai",
+    noun="endpoint",
+    noun_plural="endpoints",
+    global_total="220,000+",
+    directories=_DIRECTORIES,
+)
+
+
 @router.get("/api/docs", response_class=HTMLResponse)
 async def api_docs():
     html = _env.get_template("api_docs.html").render(
-        base_path="",
-        base_url="https://mcp.phasetransitions.ai",
+        **_COMMON_CONTEXT,
         domain="api",
         domain_label="API",
         domain_label_plural="API Endpoints",
-        noun="endpoint",
-        noun_plural="endpoints",
-        global_total="220,000+",
-        directories=_DIRECTORIES,
+    )
+    return HTMLResponse(content=html)
+
+
+@router.get("/mcp/docs", response_class=HTMLResponse)
+async def mcp_docs():
+    html = _env.get_template("mcp_docs.html").render(
+        **_COMMON_CONTEXT,
+        domain="mcp",
+        domain_label="MCP",
+        domain_label_plural="MCP Tools",
+    )
+    return HTMLResponse(content=html)
+
+
+@router.get("/cli/docs", response_class=HTMLResponse)
+async def cli_docs():
+    html = _env.get_template("cli_docs.html").render(
+        **_COMMON_CONTEXT,
+        domain="cli",
+        domain_label="CLI",
+        domain_label_plural="CLI Commands",
     )
     return HTMLResponse(content=html)

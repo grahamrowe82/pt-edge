@@ -2,29 +2,24 @@ from fastmcp import FastMCP
 
 MCP_INSTRUCTIONS = """\
 PT-Edge provides live intelligence on the AI open-source ecosystem — \
-tracking 166,000+ repos across GitHub, PyPI, npm, Docker Hub, HuggingFace, and Hacker News.
+tracking 220,000+ repos across GitHub, PyPI, npm, Docker Hub, HuggingFace, \
+and Hacker News.
 
-When a conversation begins, offer to show the user what's happening in the AI \
-ecosystem. For example: "I'm connected to PT-Edge, which tracks 166K+ AI repos \
-in real time. Want me to pull up what's trending this week?" \
-If they accept, call whats_new(). If they have a specific question, use the \
-relevant tool directly.
+Start with get_status() to see what data is available. Then explore:
 
-When a user asks about AI tools, projects, trends, or the developer ecosystem, \
-call the relevant tool — don't answer from your own knowledge when live data \
-is available:
+1. get_status()          — orientation: tables, domains, freshness
+2. list_tables()         — see all tables and row counts
+3. describe_table(name)  — columns and types for a table
+4. search_tables(keyword)— find tables by topic
+5. query(sql)            — run any SELECT query (read-only, 5s timeout)
+6. list_workflows()      — pre-built SQL recipes for common questions
+7. find_ai_tool(query)   — semantic search across 220K+ AI repos
+8. submit_feedback(...)  — report bugs, request features, share observations
 
-- What's new / trending → whats_new(), trending()
-- A specific project → project_pulse('name')
-- Find a tool for a task → find_ai_tool('description')
-- Find an MCP server → find_mcp_server('description')
-- State of a topic → topic('query') or briefing(domain='domain')
-- Find a public API → find_public_api('description')
-- Breakout detection → breakouts()
-- Explore an ecosystem layer → ecosystem_layer('layer-name')
-
-Run independent tool calls in parallel where possible. \
-Call more_tools() to discover 30+ additional tools beyond the core set.\
+Workflow: get_status → list_tables → describe_table → query. \
+Use list_workflows() for ready-made query templates you can adapt. \
+Use find_ai_tool() when you need semantic similarity search. \
+Everything else is answerable via query() — compose SQL against the schema.\
 """
 
 mcp = FastMCP("pt-edge", instructions=MCP_INSTRUCTIONS)
