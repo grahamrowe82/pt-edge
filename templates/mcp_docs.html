@@ -7,6 +7,9 @@
 <style>
   code, pre { font-family: 'JetBrains Mono', ui-monospace, monospace; }
   pre { white-space: pre-wrap; word-break: break-word; }
+  .conv-user { background-color: #f3f4f6; border-radius: 0.75rem; padding: 1rem 1.25rem; }
+  .conv-assistant { background-color: #ffffff; border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 1rem 1.25rem; }
+  .tool-call { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.8125rem; color: #6366f1; }
 </style>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 {% endblock %}
@@ -16,70 +19,287 @@
 {% block content %}
 <div class="max-w-4xl mx-auto px-4 sm:px-6 py-8">
 
+  <!-- 1. Hero -->
   <h1 class="text-3xl font-bold text-gray-900 mb-4">MCP Server</h1>
-  <p class="text-lg text-gray-600 mb-8">Connect any MCP client to PT-Edge for live AI ecosystem intelligence. 8 tools, 220K+ repos, real-time data.</p>
+  <p class="text-lg text-gray-600 mb-2">Connect any MCP client to PT-Edge for live AI ecosystem intelligence.</p>
+  <p class="text-sm text-gray-500 mb-8">220K+ GitHub repos across 30 AI domains &mdash; quality scores, star velocity, downloads, lifecycle stages, and semantic search. Updated daily.</p>
 
-  <!-- Connection -->
-  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Connection</h2>
+  <!-- 2. Quick Start — Claude Desktop -->
+  <h2 class="text-xl font-bold text-gray-900 mt-10 mb-4">Quick Start &mdash; Claude Desktop</h2>
+  <p class="text-sm text-gray-600 mb-3">Add this to your <code class="text-sm bg-gray-100 px-1.5 py-0.5 rounded">claude_desktop_config.json</code>:</p>
 
-  <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 mb-4">
-    <p class="text-sm font-medium text-gray-700 mb-2">Streamable HTTP (Claude Desktop, SDK clients)</p>
-    <pre class="text-sm bg-white border border-gray-200 rounded p-3">https://mcp.phasetransitions.ai/mcp/stream</pre>
+  <pre class="text-sm bg-gray-900 text-gray-100 rounded-lg p-4 mb-4 overflow-x-auto">{
+  "mcpServers": {
+    "pt-edge": {
+      "type": "streamableHttp",
+      "url": "https://mcp.phasetransitions.ai/mcp/stream"
+    }
+  }
+}</pre>
+
+  <p class="text-sm text-gray-600 mb-3">With authentication (higher rate limits):</p>
+  <pre class="text-sm bg-gray-900 text-gray-100 rounded-lg p-4 mb-4 overflow-x-auto">{
+  "mcpServers": {
+    "pt-edge": {
+      "type": "streamableHttp",
+      "url": "https://mcp.phasetransitions.ai/mcp/stream?token=pte_YOUR_KEY"
+    }
+  }
+}</pre>
+
+  <p class="text-sm text-gray-600 mb-2">Restart Claude Desktop after saving. PT-Edge will appear in the server list.</p>
+  <p class="text-sm text-gray-600"><a href="/api/docs#get-a-key" class="text-blue-600 hover:underline font-medium">Get a free API key &rarr;</a></p>
+
+  <!-- 3. Other Clients -->
+  <h2 class="text-xl font-bold text-gray-900 mt-10 mb-4">Other Clients</h2>
+
+  <div class="space-y-4 mb-2">
+    <div class="rounded-lg border border-gray-200 p-4">
+      <p class="text-sm font-medium text-gray-900 mb-1">Claude.ai (web)</p>
+      <p class="text-sm text-gray-600">Go to Settings &rarr; MCP Servers &rarr; Add. Endpoint:</p>
+      <pre class="text-sm bg-gray-900 text-gray-100 rounded p-3 mt-2">https://mcp.phasetransitions.ai/mcp</pre>
+    </div>
+
+    <div class="rounded-lg border border-gray-200 p-4">
+      <p class="text-sm font-medium text-gray-900 mb-1">Cursor / Windsurf</p>
+      <p class="text-sm text-gray-600">Use the streamable HTTP endpoint:</p>
+      <pre class="text-sm bg-gray-900 text-gray-100 rounded p-3 mt-2">https://mcp.phasetransitions.ai/mcp/stream</pre>
+    </div>
+
+    <div class="rounded-lg border border-gray-200 p-4">
+      <p class="text-sm font-medium text-gray-900 mb-1">Python SDK</p>
+      <pre class="text-sm bg-gray-900 text-gray-100 rounded p-3 mt-2">from mcp import ClientSession
+from mcp.client.streamable_http import streamablehttp_client
+
+async with streamablehttp_client("https://mcp.phasetransitions.ai/mcp/stream") as (r, w, _):
+    async with ClientSession(r, w) as session:
+        await session.initialize()
+        result = await session.call_tool("get_status", {})</pre>
+    </div>
   </div>
 
-  <div class="rounded-lg border border-gray-200 bg-gray-50 p-4 mb-4">
-    <p class="text-sm font-medium text-gray-700 mb-2">JSON-RPC POST (Claude.ai web connector)</p>
-    <pre class="text-sm bg-white border border-gray-200 rounded p-3">https://mcp.phasetransitions.ai/mcp</pre>
+  <!-- 4. What You Get -->
+  <h2 class="text-xl font-bold text-gray-900 mt-10 mb-4">What You Get</h2>
+  <p class="text-sm text-gray-600 leading-relaxed mb-2">
+    PT-Edge tracks 220,000+ open-source AI repos across 30 domains &mdash; from MCP servers and agents to RAG, embeddings, voice AI, and ML frameworks. Each repo is scored 0&ndash;100 on maintenance, adoption, maturity, and community signals. Data flows in daily from GitHub, PyPI, npm, HuggingFace, and Hacker News.
+  </p>
+
+  <!-- 5. Sample Conversation -->
+  <h2 class="text-xl font-bold text-gray-900 mt-10 mb-4">Sample Conversation</h2>
+  <div class="space-y-3">
+
+    <!-- Turn 1: User -->
+    <div class="conv-user">
+      <p class="text-sm text-gray-800 font-medium">What are the best autonomous coding agents?</p>
+    </div>
+    <!-- Turn 1: Assistant -->
+    <div class="conv-assistant">
+      <p class="tool-call mb-2">find_ai_tool("autonomous coding agent", domain="agents")</p>
+      <details class="mb-2">
+        <summary class="text-xs text-gray-500 cursor-pointer hover:text-gray-700">Tool response</summary>
+        <pre class="text-xs bg-gray-900 text-gray-100 rounded p-3 mt-1">Name                  Stars    Score  Description
+openai/codex          15,842   91     Lightweight coding agent that runs in the terminal
+Pythagora-io/gpt-pilot 32,410  87     AI developer that builds apps from spec
+OpenDevin/OpenDevin    28,193  85     Open-source autonomous software engineer</pre>
+      </details>
+      <p class="text-sm text-gray-700">The top autonomous coding agents right now are <strong>Codex</strong> (91 quality score, 15.8K stars), <strong>GPT Pilot</strong> (87, 32.4K stars), and <strong>OpenDevin</strong> (85, 28.2K stars). Codex is the newest but has the highest quality score due to strong maintenance and adoption signals.</p>
+    </div>
+
+    <!-- Turn 2: User -->
+    <div class="conv-user">
+      <p class="text-sm text-gray-800 font-medium">Compare the top two</p>
+    </div>
+    <!-- Turn 2: Assistant -->
+    <div class="conv-assistant">
+      <p class="tool-call mb-2">query("SELECT full_name, stars, quality_score, downloads_monthly FROM mv_mcp_quality WHERE full_name IN ('openai/codex', 'Pythagora-io/gpt-pilot')")</p>
+      <details class="mb-2">
+        <summary class="text-xs text-gray-500 cursor-pointer hover:text-gray-700">Tool response</summary>
+        <pre class="text-xs bg-gray-900 text-gray-100 rounded p-3 mt-1">full_name              stars   quality_score  downloads_monthly
+openai/codex           15,842  91             284,000
+Pythagora-io/gpt-pilot 32,410  87             51,200</pre>
+      </details>
+      <p class="text-sm text-gray-700"><strong>Codex</strong> leads on quality score (91 vs 87) and monthly downloads (284K vs 51K). <strong>GPT Pilot</strong> has more stars (32K vs 16K) and a longer track record. Codex is the stronger pick if you want active maintenance; GPT Pilot if you want battle-tested community support.</p>
+    </div>
+
+    <!-- Turn 3: User -->
+    <div class="conv-user">
+      <p class="text-sm text-gray-800 font-medium">What's trending in that space this week?</p>
+    </div>
+    <!-- Turn 3: Assistant -->
+    <div class="conv-assistant">
+      <p class="tool-call mb-2">query("SELECT full_name, stars, stars_7d_delta, quality_score FROM mv_project_summary WHERE domain = 'ai-coding' ORDER BY stars_7d_delta DESC LIMIT 5")</p>
+      <details class="mb-2">
+        <summary class="text-xs text-gray-500 cursor-pointer hover:text-gray-700">Tool response</summary>
+        <pre class="text-xs bg-gray-900 text-gray-100 rounded p-3 mt-1">full_name                stars   stars_7d_delta  quality_score
+openai/codex             15,842  +2,340          91
+block/goose              12,847  +890            82
+cline/cline              28,441  +670            88
+Codium-ai/pr-agent       7,921   +410            79
+aider-ai/aider           31,205  +380            90</pre>
+      </details>
+      <p class="text-sm text-gray-700">Codex is dominating this week with +2,340 stars. Goose and Cline are also surging. The AI coding space is one of the most active domains right now.</p>
+    </div>
   </div>
 
-  <!-- Auth -->
-  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Authentication</h2>
-  <p class="text-sm text-gray-600 mb-4">Pass your token as a query parameter or Authorization header:</p>
-  <pre class="text-sm bg-gray-50 border border-gray-200 rounded p-3 mb-4">?token=your_token
-Authorization: Bearer your_token</pre>
-  <p class="text-sm text-gray-600">Both the legacy API token and <code class="text-sm bg-gray-100 px-1.5 py-0.5 rounded">pte_*</code> API keys are accepted. <a href="/api/docs#get-a-key" class="text-blue-600 hover:underline">Get a free API key</a> for authenticated access.</p>
-
-  <!-- Tools -->
-  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Available Tools (8)</h2>
-  <p class="text-sm text-gray-600 mb-4">Slim tool surface following the <a href="https://phasetransitionsai.substack.com/" class="text-blue-600 hover:underline">Oakbridge pattern</a>: discover the schema, compose SQL, get answers.</p>
+  <!-- 6. Core Tools (8) -->
+  <h2 class="text-xl font-bold text-gray-900 mt-10 mb-2">Core Tools (8)</h2>
+  <p class="text-sm text-gray-500 mb-4">A slim tool surface &mdash; discover the schema, compose SQL, get answers.</p>
 
   <div class="space-y-3">
     <div class="rounded border border-gray-200 p-3">
       <p class="font-mono text-sm font-medium text-gray-900">get_status()</p>
       <p class="text-sm text-gray-600">Start here. Returns table count, repo count, domains, freshness, and guidance.</p>
+      <pre class="text-xs bg-gray-900 text-gray-100 rounded p-2 mt-2">Tables: 142 | AI repos: 220,457 | Domains: 30</pre>
     </div>
     <div class="rounded border border-gray-200 p-3">
       <p class="font-mono text-sm font-medium text-gray-900">list_tables()</p>
-      <p class="text-sm text-gray-600">All database tables with row counts. Use before querying.</p>
+      <p class="text-sm text-gray-600">All database tables with row counts.</p>
     </div>
     <div class="rounded border border-gray-200 p-3">
       <p class="font-mono text-sm font-medium text-gray-900">describe_table(table_name)</p>
-      <p class="text-sm text-gray-600">Column names, types, and nullability for a specific table.</p>
+      <p class="text-sm text-gray-600">Column names, types, and nullability.</p>
+      <p class="text-xs text-gray-400 mt-1 font-mono">describe_table("ai_repos")</p>
     </div>
     <div class="rounded border border-gray-200 p-3">
       <p class="font-mono text-sm font-medium text-gray-900">search_tables(keyword)</p>
       <p class="text-sm text-gray-600">Find tables by keyword in table or column names.</p>
+      <p class="text-xs text-gray-400 mt-1 font-mono">search_tables("embedding")</p>
     </div>
     <div class="rounded border border-gray-200 p-3">
       <p class="font-mono text-sm font-medium text-gray-900">query(sql)</p>
-      <p class="text-sm text-gray-600">Run any SELECT query. Read-only, 5s timeout, 1000 row limit. The workhorse.</p>
+      <p class="text-sm text-gray-600">Run any SELECT. Read-only, 5s timeout, 1000 row limit.</p>
+      <p class="text-xs text-gray-400 mt-1 font-mono">query("SELECT full_name, stars FROM ai_repos WHERE domain = 'mcp' ORDER BY stars DESC LIMIT 5")</p>
     </div>
     <div class="rounded border border-gray-200 p-3">
       <p class="font-mono text-sm font-medium text-gray-900">list_workflows()</p>
-      <p class="text-sm text-gray-600">Pre-built SQL recipe templates for common questions. Adapt and run via query().</p>
+      <p class="text-sm text-gray-600">Pre-built SQL templates for common questions. Adapt and run via query().</p>
     </div>
     <div class="rounded border border-gray-200 p-3">
       <p class="font-mono text-sm font-medium text-gray-900">find_ai_tool(query, domain?, limit?)</p>
-      <p class="text-sm text-gray-600">Semantic + keyword search across 220K+ AI repos. Describe what you need in plain English.</p>
+      <p class="text-sm text-gray-600">Semantic search across 220K+ repos. Describe what you need in plain English.</p>
+      <p class="text-xs text-gray-400 mt-1 font-mono">find_ai_tool("vector database for production", domain="vector-db")</p>
     </div>
     <div class="rounded border border-gray-200 p-3">
-      <p class="font-mono text-sm font-medium text-gray-900">submit_feedback(topic, correction, category?)</p>
+      <p class="font-mono text-sm font-medium text-gray-900">submit_feedback(topic, text, category?)</p>
       <p class="text-sm text-gray-600">Report bugs, request features, or share observations about the data.</p>
     </div>
   </div>
 
-  <!-- Workflow -->
-  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Recommended Workflow</h2>
+  <!-- 7. Advanced Tools (40+) -->
+  <details class="mt-10">
+    <summary class="text-xl font-bold text-gray-900 cursor-pointer hover:text-blue-600">Advanced Tools (40+) &darr;</summary>
+    <p class="text-sm text-gray-500 mt-2 mb-4">Beyond the 8 core tools, PT-Edge exposes 40+ specialized tools grouped by category.</p>
+
+    <!-- Knowledge & Query -->
+    <h3 class="text-sm font-bold text-gray-700 mt-6 mb-2 uppercase tracking-wide">Knowledge &amp; Query</h3>
+    <table class="w-full text-sm mb-6">
+      <tbody>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">briefing</td><td class="py-1.5 text-gray-600">Full briefing on a domain with key projects, trends, and signals</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">explain</td><td class="py-1.5 text-gray-600">Explain a concept, term, or pattern in the AI ecosystem</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">describe_schema</td><td class="py-1.5 text-gray-600">Overview of the full database schema and key relationships</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">query</td><td class="py-1.5 text-gray-600">Run any read-only SQL query</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Intelligence — Projects -->
+    <h3 class="text-sm font-bold text-gray-700 mt-6 mb-2 uppercase tracking-wide">Intelligence &mdash; Projects</h3>
+    <table class="w-full text-sm mb-6">
+      <tbody>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">compare</td><td class="py-1.5 text-gray-600">Side-by-side comparison of two or more projects</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">related</td><td class="py-1.5 text-gray-600">Find projects similar to a given repo</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">deep_dive</td><td class="py-1.5 text-gray-600">Comprehensive analysis of a single project</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">lifecycle_map</td><td class="py-1.5 text-gray-600">Project maturity and lifecycle stage analysis</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">movers</td><td class="py-1.5 text-gray-600">Biggest risers and fallers over a time window</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">market_map</td><td class="py-1.5 text-gray-600">Landscape map of a domain or category</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">radar</td><td class="py-1.5 text-gray-600">Projects to watch based on early signals</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Intelligence — Labs -->
+    <h3 class="text-sm font-bold text-gray-700 mt-6 mb-2 uppercase tracking-wide">Intelligence &mdash; Labs</h3>
+    <table class="w-full text-sm mb-6">
+      <tbody>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">lab_pulse</td><td class="py-1.5 text-gray-600">Activity summary for an AI research lab</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">lab_models</td><td class="py-1.5 text-gray-600">Models published by a lab</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">list_lab_events</td><td class="py-1.5 text-gray-600">Recent events and releases from labs</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">submit_lab_event</td><td class="py-1.5 text-gray-600">Report a lab event or release</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Hype & Signals -->
+    <h3 class="text-sm font-bold text-gray-700 mt-6 mb-2 uppercase tracking-wide">Hype &amp; Signals</h3>
+    <table class="w-full text-sm mb-6">
+      <tbody>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">hype_check</td><td class="py-1.5 text-gray-600">Is a project overhyped or undervalued?</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">hype_landscape</td><td class="py-1.5 text-gray-600">Hype vs substance map for a domain</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">scout</td><td class="py-1.5 text-gray-600">Early-stage project discovery</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">hn_pulse</td><td class="py-1.5 text-gray-600">Hacker News discussion trends for AI topics</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Traction & Velocity -->
+    <h3 class="text-sm font-bold text-gray-700 mt-6 mb-2 uppercase tracking-wide">Traction &amp; Velocity</h3>
+    <table class="w-full text-sm mb-6">
+      <tbody>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">breakouts</td><td class="py-1.5 text-gray-600">Projects with sudden acceleration in stars or downloads</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">ecosystem_layer</td><td class="py-1.5 text-gray-600">Explore a specific layer of the AI stack</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Discovery — HuggingFace -->
+    <h3 class="text-sm font-bold text-gray-700 mt-6 mb-2 uppercase tracking-wide">Discovery &mdash; HuggingFace</h3>
+    <table class="w-full text-sm mb-6">
+      <tbody>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">find_dataset</td><td class="py-1.5 text-gray-600">Search HuggingFace datasets by description</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">find_model</td><td class="py-1.5 text-gray-600">Search HuggingFace models by description</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Discovery — APIs & Dependencies -->
+    <h3 class="text-sm font-bold text-gray-700 mt-6 mb-2 uppercase tracking-wide">Discovery &mdash; APIs &amp; Dependencies</h3>
+    <table class="w-full text-sm mb-6">
+      <tbody>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">get_api_spec</td><td class="py-1.5 text-gray-600">Fetch an OpenAPI spec for a public API</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">get_api_endpoints</td><td class="py-1.5 text-gray-600">List endpoints for a public API</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">get_dependencies</td><td class="py-1.5 text-gray-600">Get dependency tree for a project</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">find_dependents</td><td class="py-1.5 text-gray-600">Find projects that depend on a given package</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Discovery — MCP Ecosystem -->
+    <h3 class="text-sm font-bold text-gray-700 mt-6 mb-2 uppercase tracking-wide">Discovery &mdash; MCP Ecosystem</h3>
+    <table class="w-full text-sm mb-6">
+      <tbody>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">mcp_coverage</td><td class="py-1.5 text-gray-600">MCP server coverage across API categories</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">mcp_health</td><td class="py-1.5 text-gray-600">Health metrics for the MCP ecosystem</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Community Feedback -->
+    <h3 class="text-sm font-bold text-gray-700 mt-6 mb-2 uppercase tracking-wide">Community Feedback</h3>
+    <table class="w-full text-sm mb-6">
+      <tbody>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">submit_feedback</td><td class="py-1.5 text-gray-600">Report bugs, request features, share observations</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">upvote_feedback</td><td class="py-1.5 text-gray-600">Upvote existing feedback</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">list_feedback</td><td class="py-1.5 text-gray-600">Browse submitted feedback</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">amend_feedback</td><td class="py-1.5 text-gray-600">Edit your previous feedback</td></tr>
+      </tbody>
+    </table>
+
+    <!-- Content Pitches -->
+    <h3 class="text-sm font-bold text-gray-700 mt-6 mb-2 uppercase tracking-wide">Content Pitches</h3>
+    <table class="w-full text-sm">
+      <tbody>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">propose_article</td><td class="py-1.5 text-gray-600">Suggest a topic for PT-Edge to cover</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">list_pitches</td><td class="py-1.5 text-gray-600">Browse proposed article topics</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">upvote_pitch</td><td class="py-1.5 text-gray-600">Upvote a proposed topic</td></tr>
+        <tr class="border-b border-gray-100"><td class="py-1.5 font-mono text-gray-900 pr-4 whitespace-nowrap">amend_pitch</td><td class="py-1.5 text-gray-600">Edit your previous pitch</td></tr>
+      </tbody>
+    </table>
+  </details>
+
+  <!-- 8. Recommended Workflow -->
+  <h2 class="text-xl font-bold text-gray-900 mt-10 mb-4">Recommended Workflow</h2>
   <ol class="list-decimal list-inside text-sm text-gray-600 space-y-2">
     <li><code class="bg-gray-100 px-1.5 py-0.5 rounded">get_status()</code> &mdash; see what's available</li>
     <li><code class="bg-gray-100 px-1.5 py-0.5 rounded">list_tables()</code> &mdash; browse the schema</li>
@@ -89,8 +309,14 @@ Authorization: Bearer your_token</pre>
   </ol>
   <p class="text-sm text-gray-500 mt-4">For semantic similarity search, use <code class="bg-gray-100 px-1.5 py-0.5 rounded">find_ai_tool()</code> instead of SQL.</p>
 
-  <!-- Also available -->
-  <h2 class="text-xl font-bold text-gray-900 mt-8 mb-4">Also Available</h2>
+  <!-- 9. Authentication -->
+  <h2 class="text-xl font-bold text-gray-900 mt-10 mb-4">Authentication</h2>
+  <p class="text-sm text-gray-600 mb-3">No auth required for basic access (rate limited). Get a free key at <a href="/api/docs#get-a-key" class="text-blue-600 hover:underline">/api/docs#get-a-key</a> for higher limits. Pass as query param or header:</p>
+  <pre class="text-sm bg-gray-900 text-gray-100 rounded-lg p-4 mb-2">?token=pte_YOUR_KEY
+Authorization: Bearer pte_YOUR_KEY</pre>
+
+  <!-- 10. Also Available -->
+  <h2 class="text-xl font-bold text-gray-900 mt-10 mb-4">Also Available</h2>
   <div class="flex gap-4">
     <a href="/api/docs" class="rounded border border-gray-200 p-4 hover:border-blue-300 flex-1">
       <p class="font-medium text-gray-900">REST API</p>
