@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}About — CyberEdge{% endblock %}
+{% block description %}CyberEdge methodology: data sources, scoring system, and quality tiers.{% endblock %}
+{% block canonical_path %}/about/{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-2">About CyberEdge</h1>
+<p class="text-gray-600 mb-8">Precomputed reasoning cache for cybersecurity decisions. Tracks 250,000+ CVEs, 50,000+ software products, 15,000+ vendors, 900+ weakness types, and 700+ attack techniques.</p>
+
+<!-- Data sources -->
+<div class="mb-10">
+    <h2 class="text-xl font-semibold mb-4">Data Sources</h2>
+    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 border-b border-gray-200">
+                <tr>
+                    <th class="px-4 py-2 text-left font-medium text-gray-500">Source</th>
+                    <th class="px-4 py-2 text-left font-medium text-gray-500">What</th>
+                    <th class="px-4 py-2 text-left font-medium text-gray-500">License</th>
+                    <th class="px-4 py-2 text-left font-medium text-gray-500">Refresh</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for source in [
+                    ("NVD", "CVE details, CVSS scores, CPE matches", "Public domain", "Daily"),
+                    ("CISA KEV", "Known exploited vulnerabilities", "Public domain", "Daily"),
+                    ("EPSS", "Exploit prediction probability scores", "Public domain", "Daily"),
+                    ("MITRE ATT&CK", "Attack techniques and tactics", "Apache 2.0", "Quarterly"),
+                    ("MITRE CWE", "Weakness classifications", "Public domain", "Quarterly"),
+                    ("MITRE CAPEC", "Attack patterns", "Public domain", "Quarterly"),
+                    ("CPE Dictionary", "Software/vendor identifiers", "Public domain", "Weekly"),
+                ] %}
+                <tr class="border-b border-gray-100">
+                    <td class="px-4 py-2 font-medium">{{ source[0] }}</td>
+                    <td class="px-4 py-2 text-gray-600">{{ source[1] }}</td>
+                    <td class="px-4 py-2 text-gray-500">{{ source[2] }}</td>
+                    <td class="px-4 py-2 text-gray-500">{{ source[3] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Scoring -->
+<div class="mb-10">
+    <h2 class="text-xl font-semibold mb-4">Scoring Methodology</h2>
+    <p class="text-gray-600 mb-4">Four dimensions, 25 points each, 0-100 composite. Higher score = higher risk.</p>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% for dim_name, dim_desc in [
+            ("Severity (0-25)", "CVSS base score, attack complexity, privileges required. Aggregated entities use max/top-5 of associated CVE severity scores."),
+            ("Exploitability (0-25)", "EPSS probability (log-scaled), CISA KEV listing, public exploit existence. The dimension security practitioners care most about."),
+            ("Exposure (0-25)", "Affected product count, vendor spread, internet-facing likelihood. All log-scaled to prevent ceiling effects."),
+            ("Patch Availability (0-25)", "Inverse scored: higher = worse. Fix exists, time-to-patch, vendor responsiveness."),
+        ] %}
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <h3 class="font-semibold text-sm mb-1">{{ dim_name }}</h3>
+            <p class="text-xs text-gray-600">{{ dim_desc }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Quality tiers -->
+<div class="mb-10">
+    <h2 class="text-xl font-semibold mb-4">Quality Tiers</h2>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {% for tier, desc in [
+            ("critical-risk", "70-100. Severe vulnerability with active exploitation and wide exposure. Immediate action required."),
+            ("high-risk", "50-69. Significant risk across multiple dimensions. Active monitoring needed."),
+            ("moderate-risk", "30-49. Meaningful risk but limited exploitation or exposure. Standard patch cycle."),
+            ("low-risk", "0-29. Minimal demonstrated risk. Low severity or well-patched."),
+        ] %}
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <span class="inline-block px-2 py-0.5 rounded text-xs font-medium border {{ tier_classes(tier) }}">{{ tier }}</span>
+            <p class="text-xs text-gray-600 mt-2">{{ desc }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Kill chain -->
+<div class="mb-10">
+    <h2 class="text-xl font-semibold mb-4">The Kill Chain</h2>
+    <p class="text-gray-600 mb-4">CyberEdge traces every CVE through the full attack chain. From a specific vulnerability to the attack technique an adversary uses.</p>
+    <div class="bg-white rounded-lg border border-gray-200 p-6">
+        <div class="flex items-center justify-center space-x-4 text-sm font-mono">
+            <div class="text-center">
+                <div class="font-bold text-indigo-600">CVE</div>
+                <div class="text-xs text-gray-500">Vulnerability</div>
+            </div>
+            <span class="text-gray-400 text-xl">&rarr;</span>
+            <div class="text-center">
+                <div class="font-bold text-indigo-600">CWE</div>
+                <div class="text-xs text-gray-500">Weakness</div>
+            </div>
+            <span class="text-gray-400 text-xl">&rarr;</span>
+            <div class="text-center">
+                <div class="font-bold text-indigo-600">CAPEC</div>
+                <div class="text-xs text-gray-500">Attack Pattern</div>
+            </div>
+            <span class="text-gray-400 text-xl">&rarr;</span>
+            <div class="text-center">
+                <div class="font-bold text-indigo-600">ATT&amp;CK</div>
+                <div class="text-xs text-gray-500">Technique</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- API -->
+<div>
+    <h2 class="text-xl font-semibold mb-4">API Access</h2>
+    <div class="bg-gray-800 rounded-lg p-4 text-sm text-gray-300">
+        <code class="text-green-400">curl -H "Authorization: Bearer YOUR_KEY" \<br>&nbsp;&nbsp;{{ base_url }}/api/v1/cves/CVE-2021-44228</code>
+        <div class="text-gray-500 mt-2 text-xs">Free tier: 100 requests/day, no credit card required.</div>
+    </div>
+</div>
+{% endblock %}

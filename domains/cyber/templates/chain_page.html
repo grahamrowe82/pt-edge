@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}{{ chain.cwe_id }} → {{ chain.capec_id }} → {{ chain.technique_id }} — Kill Chain — CyberEdge{% endblock %}
+{% block description %}Kill chain: {{ chain.weakness_name }} enables {{ chain.pattern_name }} leading to {{ chain.technique_name }}. {{ chain.cve_count }} CVEs traverse this chain.{% endblock %}
+{% block canonical_path %}/chain/{{ chain.cwe_id }}/{{ chain.capec_id }}/{{ chain.technique_id }}/{% endblock %}
+
+{% block content %}
+<nav class="text-sm text-gray-500 mb-4">
+    <a href="/" class="hover:text-indigo-600">CyberEdge</a> &rsaquo;
+    <span class="text-gray-700">Kill Chain</span>
+</nav>
+
+<h1 class="text-2xl font-bold mb-6">Kill Chain</h1>
+
+<!-- Chain visualization -->
+<div class="bg-white rounded-lg border border-gray-200 p-6 mb-8">
+    <div class="flex flex-col md:flex-row items-center justify-center gap-4">
+        <div class="text-center p-4 bg-blue-50 rounded-lg border border-blue-200 min-w-[200px]">
+            <div class="text-xs text-blue-600 font-medium mb-1">Weakness (CWE)</div>
+            <a href="/weakness/{{ chain.cwe_id }}/" class="text-lg font-bold text-indigo-600 hover:underline">{{ chain.cwe_id }}</a>
+            <div class="text-sm text-gray-600 mt-1">{{ chain.weakness_name }}</div>
+        </div>
+
+        <div class="text-2xl text-gray-400 hidden md:block">&rarr;</div>
+        <div class="text-2xl text-gray-400 md:hidden">&darr;</div>
+
+        <div class="text-center p-4 bg-orange-50 rounded-lg border border-orange-200 min-w-[200px]">
+            <div class="text-xs text-orange-600 font-medium mb-1">Attack Pattern (CAPEC)</div>
+            <a href="/attack-pattern/{{ chain.capec_id }}/" class="text-lg font-bold text-indigo-600 hover:underline">{{ chain.capec_id }}</a>
+            <div class="text-sm text-gray-600 mt-1">{{ chain.pattern_name }}</div>
+        </div>
+
+        <div class="text-2xl text-gray-400 hidden md:block">&rarr;</div>
+        <div class="text-2xl text-gray-400 md:hidden">&darr;</div>
+
+        <div class="text-center p-4 bg-red-50 rounded-lg border border-red-200 min-w-[200px]">
+            <div class="text-xs text-red-600 font-medium mb-1">Technique (ATT&amp;CK)</div>
+            <a href="/technique/{{ chain.technique_id }}/" class="text-lg font-bold text-indigo-600 hover:underline">{{ chain.technique_id }}</a>
+            <div class="text-sm text-gray-600 mt-1">{{ chain.technique_name }}</div>
+        </div>
+    </div>
+
+    <div class="text-center mt-6">
+        <div class="text-3xl font-bold">{{ chain.cve_count }}</div>
+        <div class="text-sm text-gray-500">CVEs traverse this kill chain</div>
+    </div>
+</div>
+
+<div class="text-sm text-gray-600">
+    <p>This kill chain traces from a specific weakness type through an attack pattern to an adversary technique. The {{ chain.cve_count }} CVEs that have {{ chain.cwe_id }} as their weakness classification can be exploited via {{ chain.capec_id }}, enabling the {{ chain.technique_id }} technique.</p>
+</div>
+{% endblock %}

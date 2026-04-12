@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}Chain Gap: {{ item.technique_id }} × {{ item.software_name }} — CyberEdge Insights{% endblock %}
+{% block description %}{{ item.software_name }} has {{ item.weakness_cve_count }} CVEs with {{ item.cwe_id }} but no verified exploit proves {{ item.technique_id }} exploitation.{% endblock %}
+{% block canonical_path %}/insights/chain-gap/{{ item.technique_id }}/{{ slugify(item.software_name) }}/{% endblock %}
+
+{% block content %}
+<nav class="text-sm text-gray-500 mb-4">
+    <a href="/" class="hover:text-indigo-600">CyberEdge</a> &rsaquo;
+    <a href="/insights/" class="hover:text-indigo-600">Insights</a> &rsaquo;
+    <span class="text-gray-700">Attack Chain Gap</span>
+</nav>
+
+<div class="flex items-center gap-3 mb-4">
+    <h1 class="text-2xl font-bold">Attack Chain Gap</h1>
+    <span class="px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-800 border border-orange-200">Insight Score: {{ item.hypothesis_score }}</span>
+</div>
+
+<div class="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+    <p class="text-orange-800"><strong>{{ item.software_name }}</strong> has {{ item.weakness_cve_count }} CVEs with weakness <strong>{{ item.cwe_id }}</strong> ({{ item.weakness_name }}), but no verified exploit proves <strong>{{ item.technique_id }}</strong> ({{ item.technique_name }}) exploitation against this software.</p>
+</div>
+
+<div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+    <h2 class="text-lg font-semibold mb-3">The Gap</h2>
+    <div class="flex items-center space-x-2 text-sm bg-gray-50 rounded p-3">
+        <span class="font-medium">{{ item.software_name }}</span>
+        <span class="text-gray-400">&rarr;</span>
+        <a href="/weakness/{{ item.cwe_id }}/" class="text-indigo-600 hover:underline">{{ item.cwe_id }}</a>
+        <span class="text-gray-400">&rarr;</span>
+        <span class="text-gray-500">???</span>
+        <span class="text-gray-400">&rarr;</span>
+        <a href="/technique/{{ item.technique_id }}/" class="text-indigo-600 hover:underline">{{ item.technique_id }}</a>
+    </div>
+    <p class="text-sm text-gray-600 mt-3">The weakness exists. The technique mapping exists. But no CVE with a verified exploit completes the chain for this specific software.</p>
+</div>
+{% endblock %}

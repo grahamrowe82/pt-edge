@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+
+{% block title %}{{ entity.technique_id }}: {{ entity.name }} — CyberEdge{% endblock %}
+{% block description %}{{ entity.technique_id }} {{ entity.name }}: ATT&CK technique risk profile with {{ entity.composite_score }}/100 risk score.{% endblock %}
+{% block canonical_path %}/technique/{{ entity.technique_id }}/{% endblock %}
+
+{% block content %}
+<nav class="text-sm text-gray-500 mb-4">
+    <a href="/" class="hover:text-indigo-600">CyberEdge</a> &rsaquo;
+    <a href="/technique/" class="hover:text-indigo-600">Techniques</a> &rsaquo;
+    <span class="text-gray-700">{{ entity.technique_id }}</span>
+</nav>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2">
+        <h1 class="text-2xl font-bold mb-2">{{ entity.technique_id }}: {{ entity.name }}</h1>
+        {% if entity.description %}
+        <p class="text-gray-600 mb-4">{{ entity.description[:500] }}</p>
+        {% endif %}
+
+        {% if entity.platforms %}
+        <div class="text-sm mb-4">
+            <span class="font-medium text-gray-700">Platforms:</span>
+            {% for p in entity.platforms %}
+            <span class="inline-block px-2 py-0.5 rounded bg-gray-100 text-gray-600 text-xs mr-1">{{ p }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if entity.detection %}
+        <div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <h2 class="text-lg font-semibold mb-2">Detection</h2>
+            <p class="text-sm text-gray-600">{{ entity.detection[:500] }}</p>
+        </div>
+        {% endif %}
+
+        <div class="bg-gray-800 rounded-lg p-4 text-sm text-gray-300 mt-6">
+            <div class="text-gray-400 mb-2">Get this data via API</div>
+            <code class="text-green-400">curl -H "Authorization: Bearer YOUR_KEY" \<br>&nbsp;&nbsp;{{ base_url }}/api/v1/techniques/{{ entity.technique_id }}</code>
+        </div>
+    </div>
+
+    <div>
+        <div class="bg-white rounded-lg border border-gray-200 p-4 sticky top-20">
+            <div class="text-center mb-4">
+                <div class="text-4xl font-bold">{{ entity.composite_score }}</div>
+                <div class="text-gray-500 text-sm">/ 100</div>
+                <span class="inline-block mt-2 px-3 py-1 rounded text-sm font-medium border {{ tier_classes(entity.quality_tier) }}">{{ entity.quality_tier }}</span>
+            </div>
+            {% for dim in dimensions %}
+            <div class="mb-3">
+                <div class="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>{{ dim.label }}</span>
+                    <span>{{ dim.value }}/25 &middot; {{ dim.context }}</span>
+                </div>
+                <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full {{ score_bar_color(dim.value) }}" style="width: {{ (dim.value / 25 * 100)|int }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

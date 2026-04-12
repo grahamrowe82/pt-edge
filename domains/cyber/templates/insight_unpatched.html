@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Unpatched Exposure: {{ item.cve_id }} — CyberEdge Insights{% endblock %}
+{% block description %}{{ item.cve_id }} has severity {{ item.severity }}/25 and affects {{ item.affected_products }} products with no available fix.{% endblock %}
+{% block canonical_path %}/insights/unpatched/{{ item.cve_id }}/{% endblock %}
+
+{% block content %}
+<nav class="text-sm text-gray-500 mb-4">
+    <a href="/" class="hover:text-indigo-600">CyberEdge</a> &rsaquo;
+    <a href="/insights/" class="hover:text-indigo-600">Insights</a> &rsaquo;
+    <span class="text-gray-700">Unpatched Exposure</span>
+</nav>
+
+<div class="flex items-center gap-3 mb-4">
+    <h1 class="text-2xl font-bold">Unpatched Exposure: {{ item.cve_id }}</h1>
+    <span class="px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800 border border-red-200">Insight Score: {{ item.hypothesis_score }}</span>
+</div>
+
+<div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+    <p class="text-red-800 font-medium">This CVE has high severity ({{ item.severity }}/25), significant exposure ({{ item.affected_products }} products), and no available fix.</p>
+</div>
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+    <div class="bg-white rounded border border-gray-200 p-3 text-center">
+        <div class="text-xs text-gray-500">Severity</div>
+        <div class="text-xl font-bold">{{ item.severity }}/25</div>
+    </div>
+    <div class="bg-white rounded border border-gray-200 p-3 text-center">
+        <div class="text-xs text-gray-500">Exploitability</div>
+        <div class="text-xl font-bold">{{ item.exploitability }}/25</div>
+    </div>
+    <div class="bg-white rounded border border-gray-200 p-3 text-center">
+        <div class="text-xs text-gray-500">Products Affected</div>
+        <div class="text-xl font-bold">{{ item.affected_products }}</div>
+    </div>
+    <div class="bg-white rounded border border-gray-200 p-3 text-center">
+        <div class="text-xs text-gray-500">EPSS</div>
+        <div class="text-xl font-bold">{{ "%.1f"|format((item.epss_score or 0) * 100) }}%</div>
+    </div>
+</div>
+
+<a href="/cve/{{ item.cve_id }}/" class="text-indigo-600 hover:underline text-sm">View full CVE detail &rarr;</a>
+{% endblock %}

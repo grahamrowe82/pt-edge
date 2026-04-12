@@ -4,6 +4,11 @@ databases:
     databaseName: pt_edge
     user: pt_edge_user
 
+  - name: cyber-edge-db
+    plan: basic-256mb
+    databaseName: cyber_edge
+    user: cyber_edge_user
+
   - name: umami-db
     plan: basic-256mb
     databaseName: umami
@@ -17,6 +22,7 @@ services:
     runtime: docker
     region: oregon
     healthCheckPath: /healthz
+    autoDeploy: false
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -81,6 +87,51 @@ services:
       - key: UMAMI_DATABASE_URL
         sync: false
       - key: UMAMI_WEBSITE_ID
+        sync: false
+
+  # --- Cyber-Edge domain services ---
+
+  - type: web
+    name: cyber-edge
+    plan: starter
+    runtime: docker
+    region: oregon
+    healthCheckPath: /healthz
+    autoDeploy: false
+    dockerCommand: domains/cyber/scripts/start.sh
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cyber-edge-db
+          property: connectionString
+      - key: DOMAIN
+        value: cyber
+      - key: API_TOKEN
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false
+
+  - type: worker
+    name: cyber-edge-ingest-worker
+    runtime: docker
+    region: oregon
+    plan: starter
+    autoDeploy: false
+    dockerCommand: python domains/cyber/scripts/ingest_worker.py
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cyber-edge-db
+          property: connectionString
+      - key: DOMAIN
+        value: cyber
+      - key: NVD_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: RENDER_API_KEY
+        sync: false
+      - key: RENDER_SERVICE_ID
         sync: false
 
   # Saturday and Sunday cron jobs removed — all work now handled by
