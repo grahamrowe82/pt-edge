@@ -1,6 +1,6 @@
 databases:
   - name: pt-edge-db
-    plan: basic-1gb
+    plan: pro-4gb
     databaseName: pt_edge
     user: pt_edge_user
 
