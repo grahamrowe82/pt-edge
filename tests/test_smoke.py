@@ -1077,7 +1077,7 @@ def test_rate_limiter_in_releases():
 def test_rate_limiter_in_embeddings():
     """Embeddings module uses acquire_budget for rate limiting."""
     import inspect
-    from app import embeddings
+    from app.core import embeddings
     source = inspect.getsource(embeddings)
     assert "acquire_budget" in source
 
