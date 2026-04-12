@@ -227,7 +227,7 @@ def _upsert_cves(rows: list[dict]) -> int:
                 cve_id, description, published_date, modified_date,
                 cvss_base_score, cvss_vector, cvss_version,
                 attack_vector, attack_complexity, privileges_required,
-                user_interaction, scope, references
+                user_interaction, scope, "references"
             ) VALUES %s
             ON CONFLICT (cve_id) DO UPDATE SET
                 description = EXCLUDED.description,
@@ -240,7 +240,7 @@ def _upsert_cves(rows: list[dict]) -> int:
                 privileges_required = EXCLUDED.privileges_required,
                 user_interaction = EXCLUDED.user_interaction,
                 scope = EXCLUDED.scope,
-                references = EXCLUDED.references,
+                "references" = EXCLUDED."references",
                 updated_at = now()
         """
         execute_values(cur, sql, values, page_size=BATCH_SIZE)
