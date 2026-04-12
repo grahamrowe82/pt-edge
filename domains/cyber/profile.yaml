@@ -1,0 +1,21 @@
+name: CyberEdge
+slug: cyber
+site: cyber.phasetransitions.ai
+description: Cybersecurity intelligence — CVEs, exploits, attack patterns, and software risk
+entities:
+  - cve
+  - software
+  - vendor
+  - weakness
+  - technique
+  - attack_pattern
+data_sources:
+  - nvd
+  - kev
+  - epss
+  - mitre_cwe
+  - mitre_capec
+  - mitre_attack
+  - osv
+  - ghsa
+  - exploit_db

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}{{ entity.cwe_id }}: {{ entity.name }} — CyberEdge{% endblock %}
+{% block description %}{{ entity.cwe_id }} {{ entity.name }}: weakness risk profile with {{ entity.composite_score }}/100 risk score.{% endblock %}
+{% block canonical_path %}/weakness/{{ entity.cwe_id }}/{% endblock %}
+
+{% block content %}
+<nav class="text-sm text-gray-500 mb-4">
+    <a href="/" class="hover:text-indigo-600">CyberEdge</a> &rsaquo;
+    <a href="/weakness/" class="hover:text-indigo-600">Weaknesses</a> &rsaquo;
+    <span class="text-gray-700">{{ entity.cwe_id }}</span>
+</nav>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2">
+        <h1 class="text-2xl font-bold mb-2">{{ entity.cwe_id }}: {{ entity.name }}</h1>
+        {% if entity.description %}
+        <p class="text-gray-600 mb-4">{{ entity.description[:500] }}</p>
+        {% endif %}
+
+        {% if entity.abstraction %}
+        <div class="text-sm text-gray-500 mb-4">
+            <span class="font-medium">Abstraction:</span> {{ entity.abstraction }}
+        </div>
+        {% endif %}
+
+        <div class="bg-gray-800 rounded-lg p-4 text-sm text-gray-300 mt-6">
+            <div class="text-gray-400 mb-2">Get this data via API</div>
+            <code class="text-green-400">curl -H "Authorization: Bearer YOUR_KEY" \<br>&nbsp;&nbsp;{{ base_url }}/api/v1/weaknesses/{{ entity.cwe_id }}</code>
+        </div>
+    </div>
+
+    <div>
+        <div class="bg-white rounded-lg border border-gray-200 p-4 sticky top-20">
+            <div class="text-center mb-4">
+                <div class="text-4xl font-bold">{{ entity.composite_score }}</div>
+                <div class="text-gray-500 text-sm">/ 100</div>
+                <span class="inline-block mt-2 px-3 py-1 rounded text-sm font-medium border {{ tier_classes(entity.quality_tier) }}">{{ entity.quality_tier }}</span>
+            </div>
+            {% for dim in dimensions %}
+            <div class="mb-3">
+                <div class="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>{{ dim.label }}</span>
+                    <span>{{ dim.value }}/25 &middot; {{ dim.context }}</span>
+                </div>
+                <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full {{ score_bar_color(dim.value) }}" style="width: {{ (dim.value / 25 * 100)|int }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Vendor Risk: {{ item.vendor_name }} — CyberEdge Insights{% endblock %}
+{% block description %}{{ item.vendor_name }} has a patch availability score of {{ item.patch_availability }}, {{ item.gap|round(1) }} points above their peer bracket average.{% endblock %}
+{% block canonical_path %}/insights/vendor-risk/{{ item.vendor_slug }}/{% endblock %}
+
+{% block content %}
+<nav class="text-sm text-gray-500 mb-4">
+    <a href="/" class="hover:text-indigo-600">CyberEdge</a> &rsaquo;
+    <a href="/insights/" class="hover:text-indigo-600">Insights</a> &rsaquo;
+    <span class="text-gray-700">Vendor Risk Anomaly</span>
+</nav>
+
+<div class="flex items-center gap-3 mb-4">
+    <h1 class="text-2xl font-bold">Vendor Risk: {{ item.vendor_name }}</h1>
+    <span class="px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">Insight Score: {{ item.hypothesis_score }}</span>
+</div>
+
+<div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
+    <p class="text-yellow-800"><strong>{{ item.vendor_name }}</strong> has a patch availability score of {{ item.patch_availability }} (higher = worse), which is {{ item.gap|round(1) }} points above their score bracket average of {{ item.bracket_avg|round(1) }}.</p>
+</div>
+
+<div class="grid grid-cols-2 gap-4 mb-6">
+    <div class="bg-white rounded border border-gray-200 p-4 text-center">
+        <div class="text-xs text-gray-500 mb-1">{{ item.vendor_name }}</div>
+        <div class="text-2xl font-bold text-red-600">{{ item.patch_availability }}</div>
+        <div class="text-xs text-gray-400">patch score (higher = worse)</div>
+    </div>
+    <div class="bg-white rounded border border-gray-200 p-4 text-center">
+        <div class="text-xs text-gray-500 mb-1">Bracket Average</div>
+        <div class="text-2xl font-bold text-green-600">{{ item.bracket_avg|round(1) }}</div>
+        <div class="text-xs text-gray-400">peers at similar risk level</div>
+    </div>
+</div>
+
+<a href="/vendor/{{ item.vendor_slug }}/" class="text-indigo-600 hover:underline text-sm">View full vendor profile &rarr;</a>
+{% endblock %}

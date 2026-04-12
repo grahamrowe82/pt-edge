@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Exploit Momentum: {{ item.cve_id }} — CyberEdge Insights{% endblock %}
+{% block description %}{{ item.cve_id }} has EPSS {{ "%.1f"|format((item.epss_score or 0) * 100) }}% but no public exploit exists yet.{% endblock %}
+{% block canonical_path %}/insights/momentum/{{ item.cve_id }}/{% endblock %}
+
+{% block content %}
+<nav class="text-sm text-gray-500 mb-4">
+    <a href="/" class="hover:text-indigo-600">CyberEdge</a> &rsaquo;
+    <a href="/insights/" class="hover:text-indigo-600">Insights</a> &rsaquo;
+    <span class="text-gray-700">Exploit Momentum</span>
+</nav>
+
+<div class="flex items-center gap-3 mb-4">
+    <h1 class="text-2xl font-bold">Exploit Momentum: {{ item.cve_id }}</h1>
+    <span class="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-800 border border-purple-200">Insight Score: {{ item.hypothesis_score }}</span>
+</div>
+
+<div class="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-6">
+    <p class="text-purple-800">The exploit prediction community assigns <strong>{{ item.cve_id }}</strong> an EPSS probability of <strong>{{ "%.1f"|format((item.epss_score or 0) * 100) }}%</strong>, but no public exploit exists yet. This divergence between predicted and observed exploitation may signal emerging risk.</p>
+</div>
+
+<div class="grid grid-cols-3 gap-3 mb-6">
+    <div class="bg-white rounded border border-gray-200 p-3 text-center">
+        <div class="text-xs text-gray-500">EPSS</div>
+        <div class="text-xl font-bold">{{ "%.1f"|format((item.epss_score or 0) * 100) }}%</div>
+    </div>
+    <div class="bg-white rounded border border-gray-200 p-3 text-center">
+        <div class="text-xs text-gray-500">Severity</div>
+        <div class="text-xl font-bold">{{ item.severity }}/25</div>
+    </div>
+    <div class="bg-white rounded border border-gray-200 p-3 text-center">
+        <div class="text-xs text-gray-500">Public Exploits</div>
+        <div class="text-xl font-bold text-green-600">None</div>
+    </div>
+</div>
+
+{% if item.is_kev %}
+<div class="bg-red-50 border border-red-200 rounded-lg p-3 mb-6 text-sm text-red-700">
+    This CVE is in the CISA Known Exploited Vulnerabilities catalog despite no public exploit — exploitation may be occurring via non-public means.
+</div>
+{% endif %}
+
+<a href="/cve/{{ item.cve_id }}/" class="text-indigo-600 hover:underline text-sm">View full CVE detail &rarr;</a>
+{% endblock %}

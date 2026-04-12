@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Trending — CyberEdge{% endblock %}
+{% block description %}Entities with the biggest score changes from daily snapshots.{% endblock %}
+{% block canonical_path %}/trending/{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-2">Trending</h1>
+<p class="text-gray-600 mb-6">Entities with the biggest score improvements from daily snapshots.</p>
+
+{% set has_data = false %}
+{% for et, config in entity_config.items() %}
+{% set items = trending.get(et, []) %}
+{% if items %}
+{% set has_data = true %}
+<div class="mb-8">
+    <h2 class="text-lg font-semibold mb-3">{{ config.label_plural }}</h2>
+    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 border-b border-gray-200">
+                <tr>
+                    <th class="px-4 py-2 text-left font-medium text-gray-500">#</th>
+                    <th class="px-4 py-2 text-left font-medium text-gray-500">{{ config.label }}</th>
+                    <th class="px-4 py-2 text-right font-medium text-gray-500">Change</th>
+                    <th class="px-4 py-2 text-right font-medium text-gray-500">Score</th>
+                    <th class="px-4 py-2 text-right font-medium text-gray-500">Tier</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                    <td class="px-4 py-2 text-gray-400">{{ loop.index }}</td>
+                    <td class="px-4 py-2">{{ item.name }}</td>
+                    <td class="px-4 py-2 text-right text-green-600 font-medium">+{{ item.score_delta }}</td>
+                    <td class="px-4 py-2 text-right font-mono">{{ item.current_score }}/100</td>
+                    <td class="px-4 py-2 text-right">
+                        <span class="inline-block px-2 py-0.5 rounded text-xs font-medium border {{ tier_classes(item.quality_tier) }}">{{ item.quality_tier }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+{% if not has_data %}
+<div class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
+    <p class="text-lg mb-2">No trending data yet</p>
+    <p class="text-sm">Score snapshots are captured daily. Trending data will appear after the first few days of operation.</p>
+</div>
+{% endif %}
+{% endblock %}

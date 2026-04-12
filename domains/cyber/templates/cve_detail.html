@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}{{ entity.cve_id }} — CyberEdge{% endblock %}
+{% block description %}{{ entity.cve_id }}: {{ (entity.description or 'No description available')[:160] }}{% endblock %}
+{% block canonical_path %}/cve/{{ entity.cve_id }}/{% endblock %}
+
+{% block content %}
+<nav class="text-sm text-gray-500 mb-4">
+    <a href="/" class="hover:text-indigo-600">CyberEdge</a> &rsaquo;
+    <a href="/cve/" class="hover:text-indigo-600">CVEs</a> &rsaquo;
+    <span class="text-gray-700">{{ entity.cve_id }}</span>
+</nav>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <!-- Main content -->
+    <div class="lg:col-span-2">
+        <h1 class="text-2xl font-bold mb-2">{{ entity.cve_id }}</h1>
+        {% if entity.description %}
+        <p class="text-gray-600 mb-4">{{ entity.description[:500] }}</p>
+        {% endif %}
+
+        <!-- Metadata -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+            {% if entity.cvss_base_score %}
+            <div class="bg-white rounded border border-gray-200 p-3">
+                <div class="text-xs text-gray-500">CVSS</div>
+                <div class="text-lg font-bold">{{ entity.cvss_base_score }}/10</div>
+            </div>
+            {% endif %}
+            {% if entity.epss_score is not none %}
+            <div class="bg-white rounded border border-gray-200 p-3">
+                <div class="text-xs text-gray-500">EPSS</div>
+                <div class="text-lg font-bold">{{ "%.1f"|format(entity.epss_score * 100) }}%</div>
+            </div>
+            {% endif %}
+            {% if entity.is_kev %}
+            <div class="bg-red-50 rounded border border-red-200 p-3">
+                <div class="text-xs text-red-600">CISA KEV</div>
+                <div class="text-sm font-bold text-red-700">Known Exploited</div>
+            </div>
+            {% endif %}
+            {% if entity.attack_vector %}
+            <div class="bg-white rounded border border-gray-200 p-3">
+                <div class="text-xs text-gray-500">Attack Vector</div>
+                <div class="text-sm font-bold">{{ entity.attack_vector }}</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Kill chain -->
+        {% if kill_chain %}
+        <div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <h2 class="text-lg font-semibold mb-3">Kill Chain</h2>
+            {% for chain in kill_chain[:5] %}
+            <div class="flex items-center space-x-2 text-sm mb-2 bg-gray-50 rounded p-2">
+                {% if chain.cwe_id in lookups.get('weakness', set()) %}
+                <a href="/weakness/{{ chain.cwe_id }}/" class="text-indigo-600 hover:underline">{{ chain.cwe_id }}</a>
+                {% else %}
+                <span>{{ chain.cwe_id }}</span>
+                {% endif %}
+                <span class="text-gray-400">&rarr;</span>
+                {% if chain.capec_id in lookups.get('pattern', set()) %}
+                <a href="/attack-pattern/{{ chain.capec_id }}/" class="text-indigo-600 hover:underline">{{ chain.capec_id }}</a>
+                {% else %}
+                <span>{{ chain.capec_id }}</span>
+                {% endif %}
+                <span class="text-gray-400">&rarr;</span>
+                {% if chain.technique_id in lookups.get('technique', set()) %}
+                <a href="/technique/{{ chain.technique_id }}/" class="text-indigo-600 hover:underline">{{ chain.technique_id }}</a>
+                {% else %}
+                <span>{{ chain.technique_id }}</span>
+                {% endif %}
+                <span class="text-gray-500 text-xs ml-2">{{ chain.technique_name }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Affected software -->
+        {% if software %}
+        <div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <h2 class="text-lg font-semibold mb-3">Affected Software ({{ software|length }})</h2>
+            <div class="space-y-1 text-sm">
+                {% for sw in software %}
+                <div>
+                    {% if slugify(sw.name) in lookups.get('software', set()) %}
+                    <a href="/software/{{ slugify(sw.name) }}/" class="text-indigo-600 hover:underline">{{ sw.name }}</a>
+                    {% else %}
+                    {{ sw.name }}
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Affected vendors -->
+        {% if vendors %}
+        <div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <h2 class="text-lg font-semibold mb-3">Affected Vendors</h2>
+            <div class="flex flex-wrap gap-2 text-sm">
+                {% for v in vendors %}
+                {% if v.slug in lookups.get('vendor', set()) %}
+                <a href="/vendor/{{ v.slug }}/" class="px-2 py-1 rounded bg-gray-100 text-indigo-600 hover:bg-indigo-50">{{ v.name }}</a>
+                {% else %}
+                <span class="px-2 py-1 rounded bg-gray-100">{{ v.name }}</span>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- API block -->
+        <div class="bg-gray-800 rounded-lg p-4 text-sm text-gray-300">
+            <div class="text-gray-400 mb-2">Get this data via API</div>
+            <code class="text-green-400">curl -H "Authorization: Bearer YOUR_KEY" \<br>&nbsp;&nbsp;{{ base_url }}/api/v1/cves/{{ entity.cve_id }}</code>
+            <div class="text-gray-500 mt-2 text-xs">Free tier: 100 requests/day, no credit card.</div>
+        </div>
+    </div>
+
+    <!-- Score card (right sidebar) -->
+    <div>
+        <div class="bg-white rounded-lg border border-gray-200 p-4 sticky top-20">
+            <div class="text-center mb-4">
+                <div class="text-4xl font-bold">{{ entity.composite_score }}</div>
+                <div class="text-gray-500 text-sm">/ 100</div>
+                <span class="inline-block mt-2 px-3 py-1 rounded text-sm font-medium border {{ tier_classes(entity.quality_tier) }}">{{ entity.quality_tier }}</span>
+            </div>
+
+            {% for dim in dimensions %}
+            <div class="mb-3">
+                <div class="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>{{ dim.label }}</span>
+                    <span>{{ dim.value }}/25 &middot; {{ dim.context }}</span>
+                </div>
+                <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div class="h-full rounded-full {{ score_bar_color(dim.value) }}" style="width: {{ (dim.value / 25 * 100)|int }}%"></div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

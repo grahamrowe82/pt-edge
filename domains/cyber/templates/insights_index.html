@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}Insights — CyberEdge{% endblock %}
+{% block description %}Deterministic insights from the CyberEdge knowledge graph: unpatched exposures, attack chain gaps, vendor anomalies, and exploit momentum signals.{% endblock %}
+{% block canonical_path %}/insights/{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-bold mb-2">Insights</h1>
+<p class="text-gray-600 mb-6">Structural anomalies surfaced from the knowledge graph. Not AI speculation — deterministic queries backed by specific data.</p>
+
+{% for section in sections %}
+{% if section.items %}
+<div class="mb-10">
+    <h2 class="text-xl font-semibold mb-4">{{ section.title }}</h2>
+    <p class="text-sm text-gray-500 mb-3">{{ section.description }}</p>
+    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 border-b border-gray-200">
+                <tr>
+                    <th class="px-4 py-2 text-left font-medium text-gray-500">{{ section.entity_label }}</th>
+                    <th class="px-4 py-2 text-right font-medium text-gray-500">Score</th>
+                    <th class="px-4 py-2 text-right font-medium text-gray-500">Insight Score</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in section.items[:20] %}
+                <tr class="border-b border-gray-100 hover:bg-gray-50">
+                    <td class="px-4 py-2">
+                        <a href="{{ item.url }}" class="text-indigo-600 hover:underline">{{ item.label }}</a>
+                    </td>
+                    <td class="px-4 py-2 text-right font-mono">{{ item.entity_score }}/100</td>
+                    <td class="px-4 py-2 text-right">
+                        <span class="font-mono font-medium {{ 'text-red-600' if item.hypothesis_score >= 70 else 'text-orange-600' if item.hypothesis_score >= 50 else 'text-yellow-600' }}">{{ item.hypothesis_score }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+{% if not sections or not any_data %}
+<div class="bg-white rounded-lg border border-gray-200 p-8 text-center text-gray-500">
+    <p class="text-lg mb-2">No insights yet</p>
+    <p class="text-sm">Hypothesis computation runs weekly. Insights will appear after the first run.</p>
+</div>
+{% endif %}
+{% endblock %}
