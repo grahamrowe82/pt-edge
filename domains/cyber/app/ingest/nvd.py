@@ -12,6 +12,7 @@ Bootstrap mode: Paginate all ~250K CVEs from the NVD API 2.0.
 Incremental mode: Fetch CVEs modified since last successful sync.
 """
 
+import json
 import logging
 import re
 from datetime import datetime, timezone
@@ -218,7 +219,7 @@ def _upsert_cves(rows: list[dict]) -> int:
                 r["cvss_base_score"], r["cvss_vector"], r["cvss_version"],
                 r["attack_vector"], r["attack_complexity"], r["privileges_required"],
                 r["user_interaction"], r["scope"],
-                str(r["references"]) if r["references"] else None,
+                json.dumps(r["references"]) if r["references"] else None,
             )
             for r in rows
         ]
@@ -361,7 +362,7 @@ def _upsert_cve_weaknesses(cve_id_str: str, weaknesses: list[dict]) -> int:
                 SELECT c.id, %s, %s
                 FROM cves c WHERE c.cve_id = %s
                 ON CONFLICT (cve_id, weakness_id, source) DO NOTHING
-            """, (weakness_id, w["source"], cve_id_str))
+            """, (weakness_id, w["source"][:30], cve_id_str))
             count += 1
 
         raw.commit()
