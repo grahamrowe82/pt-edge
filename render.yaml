@@ -1,11 +1,11 @@
 databases:
   - name: pt-edge-db
-    plan: basic-1gb
+    plan: pro-4gb
     databaseName: pt_edge
     user: pt_edge_user
 
   - name: cyber-edge-db
-    plan: basic-256mb
+    plan: basic-1gb
     databaseName: cyber_edge
     user: cyber_edge_user
 
@@ -80,10 +80,6 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: RENDER_DEPLOY_HOOK_URL
-        sync: false
-      - key: RENDER_API_KEY
-        sync: false
       - key: UMAMI_DATABASE_URL
         sync: false
       - key: UMAMI_WEBSITE_ID
@@ -93,7 +89,7 @@ services:
 
   - type: web
     name: cyber-edge
-    plan: starter
+    plan: standard
     runtime: docker
     region: oregon
     healthCheckPath: /healthz
@@ -115,7 +111,7 @@ services:
     name: cyber-edge-ingest-worker
     runtime: docker
     region: oregon
-    plan: starter
+    plan: standard
     autoDeploy: false
     dockerCommand: python domains/cyber/scripts/ingest_worker.py
     envVars:
@@ -129,11 +125,6 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
-      - key: RENDER_API_KEY
-        sync: false
-      - key: RENDER_SERVICE_ID
-        sync: false
-
   # Saturday and Sunday cron jobs removed — all work now handled by
   # the task queue worker (discover_ai_repos and compute_structural
   # are scheduled based on staleness, not day of week).
