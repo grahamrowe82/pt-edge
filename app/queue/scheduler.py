@@ -668,55 +668,6 @@ def schedule_compute_content_budget() -> int:
         return count
 
 
-def schedule_export_static_site() -> int:
-    """Create an export_static_site task if MVs were refreshed today
-    but the site hasn't been deployed since.
-    """
-    with engine.connect() as conn:
-        # Check if MVs were refreshed today
-        mv_refresh = conn.execute(text("""
-            SELECT started_at FROM sync_log
-            WHERE sync_type = 'views'
-              AND status IN ('success', 'partial')
-              AND started_at::date = CURRENT_DATE
-            ORDER BY started_at DESC
-            LIMIT 1
-        """)).fetchone()
-
-        if not mv_refresh:
-            return 0
-
-        # Check if site was already deployed after this refresh
-        last_deploy = conn.execute(text("""
-            SELECT 1 FROM sync_log
-            WHERE sync_type = 'static_site'
-              AND status = 'success'
-              AND started_at > :mv_time
-            LIMIT 1
-        """), {"mv_time": mv_refresh[0]}).fetchone()
-
-        if last_deploy:
-            return 0
-
-        result = conn.execute(text("""
-            INSERT INTO tasks (task_type, subject_id, priority, resource_type)
-            SELECT 'export_static_site', 'all', 4, NULL
-            WHERE NOT EXISTS (
-                SELECT 1 FROM tasks
-                WHERE task_type = 'export_static_site'
-                  AND state IN ('pending', 'claimed')
-            )
-            ON CONFLICT (task_type, subject_id)
-                WHERE state IN ('pending', 'claimed')
-            DO NOTHING
-        """))
-        conn.commit()
-        count = result.rowcount
-        if count > 0:
-            logger.info("Scheduled export_static_site task")
-        return count
-
-
 def check_task_health() -> None:
     """Log ERROR if any task type has 100% failure rate in the last hour."""
     with engine.connect() as conn:
@@ -853,7 +804,6 @@ def schedule_all() -> dict:
     counts["compute_embeddings"] = schedule_compute_embeddings()
     counts["compute_mv_refresh"] = schedule_compute_mv_refresh()
     counts["compute_content_budget"] = schedule_compute_content_budget()
-    counts["export_static_site"] = schedule_export_static_site()
 
     # Budget-gated enrichment (needs content_budget computed today)
     if _budget_is_fresh():
@@ -912,7 +862,6 @@ def schedule_all() -> dict:
     counts["compute_domain_reassign"] = _schedule_coarse_task("compute_domain_reassign", "domain_reassign", 5, "db_only")
     counts["compute_project_linking"] = _schedule_coarse_task("compute_project_linking", "project_linking", 5, "db_only")
     counts["compute_briefing_refresh"] = _schedule_coarse_task("compute_briefing_refresh", "briefing_refresh", 5, "db_only")
-    counts["export_dataset"] = _schedule_coarse_task("export_dataset", "dataset_export", 4, "github_api")
 
     # Demand Radar (daily, after MV refresh)
     counts["snapshot_bot_activity"] = _schedule_coarse_task(
