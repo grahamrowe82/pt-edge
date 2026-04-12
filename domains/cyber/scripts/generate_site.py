@@ -506,6 +506,7 @@ def main():
         entity_summary=entity_summary,
         entity_config=ENTITY_CONFIG,
         total_entities=sum(len(v) for v in all_entities.values()),
+        slugify=slugify,
     )
     write_page(out_dir, "/", html)
     generated_urls.append({"path": "/", "changefreq": "daily", "priority": "1.0"})
