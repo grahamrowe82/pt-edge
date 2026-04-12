@@ -12,13 +12,12 @@ Bootstrap mode: Paginate all ~250K CVEs from the NVD API 2.0.
 Incremental mode: Fetch CVEs modified since last successful sync.
 """
 
-import json
 import logging
 import re
 from datetime import datetime, timezone
 
 import httpx
-from psycopg2.extras import execute_values
+from psycopg2.extras import execute_values, Json
 from sqlalchemy import text
 
 from domains.cyber.app.db import engine, SessionLocal
@@ -206,24 +205,37 @@ def _parse_weaknesses(weaknesses: list[dict]) -> list[dict]:
 # Upsert
 # ---------------------------------------------------------------------------
 
-def _upsert_cves(rows: list[dict]) -> int:
-    """Batch upsert CVEs. Returns count of rows affected."""
-    if not rows:
-        return 0
+def _upsert_page(
+    cve_rows: list[dict],
+    all_vendors: dict[str, tuple[str, str]],
+    all_software: dict[str, dict],
+    all_cwe_ids: set[str],
+    cve_cpe_map: dict[str, list[dict]],
+    cve_weakness_map: dict[str, list[dict]],
+) -> dict:
+    """Batch upsert an entire page of CVEs + all associations.
+
+    One connection, one transaction, ~10 SQL round trips, one commit.
+    """
+    if not cve_rows:
+        return {"cves": 0, "software": 0, "vendors": 0, "weaknesses": 0}
+
     raw = engine.raw_connection()
     try:
         cur = raw.cursor()
-        values = [
+
+        # Step 1: Batch upsert CVEs
+        cve_values = [
             (
                 r["cve_id"], r["description"], r["published_date"], r["modified_date"],
                 r["cvss_base_score"], r["cvss_vector"], r["cvss_version"],
                 r["attack_vector"], r["attack_complexity"], r["privileges_required"],
                 r["user_interaction"], r["scope"],
-                json.dumps(r["references"]) if r["references"] else None,
+                Json(r["references"]) if r["references"] else None,
             )
-            for r in rows
+            for r in cve_rows
         ]
-        sql = """
+        execute_values(cur, """
             INSERT INTO cves (
                 cve_id, description, published_date, modified_date,
                 cvss_base_score, cvss_vector, cvss_version,
@@ -243,130 +255,136 @@ def _upsert_cves(rows: list[dict]) -> int:
                 scope = EXCLUDED.scope,
                 "references" = EXCLUDED."references",
                 updated_at = now()
-        """
-        execute_values(cur, sql, values, page_size=BATCH_SIZE)
-        count = cur.rowcount
-        raw.commit()
-        return count
-    except Exception:
-        raw.rollback()
-        raise
-    finally:
-        raw.close()
+        """, cve_values, page_size=BATCH_SIZE)
+        cve_count = cur.rowcount
 
+        # Step 2: Batch upsert vendors, resolve cpe_vendor → id
+        vendor_id_map = {}
+        if all_vendors:
+            vendor_values = [
+                (name, slug, cpe_vendor)
+                for cpe_vendor, (name, slug) in all_vendors.items()
+            ]
+            execute_values(cur, """
+                INSERT INTO vendors (name, slug, cpe_vendor)
+                VALUES %s
+                ON CONFLICT (cpe_vendor) DO UPDATE SET updated_at = now()
+            """, vendor_values, page_size=BATCH_SIZE)
 
-def _upsert_software_and_vendors(cve_id_str: str, cpe_matches: list[dict]) -> tuple[int, int]:
-    """Upsert software products + vendors from CPE matches, create links."""
-    if not cpe_matches:
-        return 0, 0
+            cur.execute(
+                "SELECT cpe_vendor, id FROM vendors WHERE cpe_vendor = ANY(%s)",
+                (list(all_vendors.keys()),),
+            )
+            vendor_id_map = dict(cur.fetchall())
 
-    raw = engine.raw_connection()
-    try:
-        cur = raw.cursor()
-        sw_count = 0
-        vendor_count = 0
+        # Step 3: Batch upsert software (needs vendor_id_map), resolve cpe_id → id
+        software_id_map = {}
+        if all_software:
+            sw_values = [
+                (cpe_id, info["name"], info["version"],
+                 vendor_id_map[info["vendor_key"]], info["part"])
+                for cpe_id, info in all_software.items()
+            ]
+            execute_values(cur, """
+                INSERT INTO software (cpe_id, name, version, vendor_id, part)
+                VALUES %s
+                ON CONFLICT (cpe_id) DO UPDATE SET
+                    vendor_id = EXCLUDED.vendor_id,
+                    updated_at = now()
+            """, sw_values, page_size=BATCH_SIZE)
 
-        # Deduplicate vendors and software within this batch
-        vendors_seen = {}
-        software_seen = {}
+            cur.execute(
+                "SELECT cpe_id, id FROM software WHERE cpe_id = ANY(%s)",
+                (list(all_software.keys()),),
+            )
+            software_id_map = dict(cur.fetchall())
 
-        for m in cpe_matches:
-            vendor_key = m["vendor"]
-            if vendor_key not in vendors_seen:
-                slug = re.sub(r"[^a-z0-9-]", "-", vendor_key.lower()).strip("-")
-                name = vendor_key.replace("_", " ").title()
-                execute_values(cur, """
-                    INSERT INTO vendors (name, slug, cpe_vendor)
-                    VALUES %s
-                    ON CONFLICT (cpe_vendor) DO UPDATE SET
-                        updated_at = now()
-                    RETURNING id
-                """, [(name, slug, vendor_key)], page_size=1)
-                row = cur.fetchone()
-                vendors_seen[vendor_key] = row[0]
-                vendor_count += 1
-
-            vendor_id = vendors_seen[vendor_key]
-
-            cpe_id = m["cpe_id"]
-            if cpe_id not in software_seen:
-                name = m["product"].replace("_", " ").title()
-                execute_values(cur, """
-                    INSERT INTO software (cpe_id, name, version, vendor_id, part)
-                    VALUES %s
-                    ON CONFLICT (cpe_id) DO UPDATE SET
-                        vendor_id = EXCLUDED.vendor_id,
-                        updated_at = now()
-                    RETURNING id
-                """, [(cpe_id, name, m["version"], vendor_id, m["part"])], page_size=1)
-                row = cur.fetchone()
-                software_seen[cpe_id] = row[0]
-                sw_count += 1
-
-            software_id = software_seen[cpe_id]
-
-            # Link CVE → software
-            cur.execute("""
-                INSERT INTO cve_software (cve_id, software_id, version_start, version_end,
-                                          version_start_type, version_end_type)
-                SELECT c.id, %s, %s, %s, %s, %s
-                FROM cves c WHERE c.cve_id = %s
-                ON CONFLICT (cve_id, software_id) DO NOTHING
-            """, (software_id, m["version_start"], m["version_end"],
-                  m["version_start_type"], m["version_end_type"], cve_id_str))
-
-            # Link CVE → vendor
-            cur.execute("""
-                INSERT INTO cve_vendors (cve_id, vendor_id)
-                SELECT c.id, %s
-                FROM cves c WHERE c.cve_id = %s
-                ON CONFLICT (cve_id, vendor_id) DO NOTHING
-            """, (vendor_id, cve_id_str))
-
-        raw.commit()
-        return sw_count, vendor_count
-    except Exception:
-        raw.rollback()
-        raise
-    finally:
-        raw.close()
-
-
-def _upsert_cve_weaknesses(cve_id_str: str, weaknesses: list[dict]) -> int:
-    """Upsert CWE weakness records and link to CVE."""
-    if not weaknesses:
-        return 0
-
-    raw = engine.raw_connection()
-    try:
-        cur = raw.cursor()
-        count = 0
-        for w in weaknesses:
-            # Upsert weakness
+        # Step 4: Batch upsert weaknesses, resolve cwe_id → id
+        weakness_id_map = {}
+        if all_cwe_ids:
+            weakness_values = [(cwe_id, cwe_id) for cwe_id in all_cwe_ids]
             execute_values(cur, """
                 INSERT INTO weaknesses (cwe_id, name)
                 VALUES %s
                 ON CONFLICT (cwe_id) DO NOTHING
-                RETURNING id
-            """, [(w["cwe_id"], w["cwe_id"])], page_size=1)
-            row = cur.fetchone()
-            if row:
-                weakness_id = row[0]
-            else:
-                cur.execute("SELECT id FROM weaknesses WHERE cwe_id = %s", (w["cwe_id"],))
-                weakness_id = cur.fetchone()[0]
+            """, weakness_values, page_size=BATCH_SIZE)
 
-            # Link CVE → weakness
-            cur.execute("""
+            cur.execute(
+                "SELECT cwe_id, id FROM weaknesses WHERE cwe_id = ANY(%s)",
+                (list(all_cwe_ids),),
+            )
+            weakness_id_map = dict(cur.fetchall())
+
+        # Step 5: Resolve CVE string IDs → integer IDs
+        cve_id_strs = [r["cve_id"] for r in cve_rows]
+        cur.execute(
+            "SELECT cve_id, id FROM cves WHERE cve_id = ANY(%s)",
+            (cve_id_strs,),
+        )
+        cve_id_map = dict(cur.fetchall())
+
+        # Step 6: Batch insert all association rows
+        # 6a: cve_software + collect cve_vendors pairs
+        cs_rows = []
+        cv_pairs = set()
+        for cve_id_str, matches in cve_cpe_map.items():
+            cve_int = cve_id_map.get(cve_id_str)
+            if not cve_int:
+                continue
+            for m in matches:
+                sw_int = software_id_map.get(m["cpe_id"])
+                if sw_int:
+                    cs_rows.append((
+                        cve_int, sw_int,
+                        m["version_start"], m["version_end"],
+                        m["version_start_type"], m["version_end_type"],
+                    ))
+                v_int = vendor_id_map.get(m["vendor"])
+                if v_int:
+                    cv_pairs.add((cve_int, v_int))
+
+        if cs_rows:
+            execute_values(cur, """
+                INSERT INTO cve_software
+                    (cve_id, software_id, version_start, version_end,
+                     version_start_type, version_end_type)
+                VALUES %s
+                ON CONFLICT (cve_id, software_id) DO NOTHING
+            """, cs_rows, page_size=BATCH_SIZE)
+
+        # 6b: cve_vendors
+        if cv_pairs:
+            execute_values(cur, """
+                INSERT INTO cve_vendors (cve_id, vendor_id)
+                VALUES %s
+                ON CONFLICT (cve_id, vendor_id) DO NOTHING
+            """, list(cv_pairs), page_size=BATCH_SIZE)
+
+        # 6c: cve_weaknesses
+        cw_rows = []
+        for cve_id_str, weaknesses in cve_weakness_map.items():
+            cve_int = cve_id_map.get(cve_id_str)
+            if not cve_int:
+                continue
+            for w in weaknesses:
+                w_int = weakness_id_map.get(w["cwe_id"])
+                if w_int:
+                    cw_rows.append((cve_int, w_int, w["source"][:30]))
+
+        if cw_rows:
+            execute_values(cur, """
                 INSERT INTO cve_weaknesses (cve_id, weakness_id, source)
-                SELECT c.id, %s, %s
-                FROM cves c WHERE c.cve_id = %s
+                VALUES %s
                 ON CONFLICT (cve_id, weakness_id, source) DO NOTHING
-            """, (weakness_id, w["source"][:30], cve_id_str))
-            count += 1
+            """, cw_rows, page_size=BATCH_SIZE)
 
         raw.commit()
-        return count
+        return {
+            "cves": cve_count,
+            "software": len(all_software),
+            "vendors": len(all_vendors),
+            "weaknesses": len(all_cwe_ids),
+        }
     except Exception:
         raw.rollback()
         raise
@@ -379,50 +397,64 @@ def _upsert_cve_weaknesses(cve_id_str: str, weaknesses: list[dict]) -> int:
 # ---------------------------------------------------------------------------
 
 async def _process_page(data: dict) -> dict:
-    """Process one page of NVD results: parse, upsert CVEs + associations."""
+    """Process one page of NVD results: parse, upsert CVEs + associations.
+
+    Two phases:
+    1. Collect — parse all vulns, deduplicate entities (pure Python)
+    2. Persist — one connection, ~10 batch SQL ops, one commit
+    """
     vulns = data.get("vulnerabilities", [])
     if not vulns:
         return {"cves": 0, "software": 0, "vendors": 0, "weaknesses": 0}
 
+    # --- Phase 1: Collect and deduplicate ---
     cve_rows = []
-    total_sw = 0
-    total_vendors = 0
-    total_weaknesses = 0
+    cve_cpe_map: dict[str, list[dict]] = {}
+    cve_weakness_map: dict[str, list[dict]] = {}
+    all_vendors: dict[str, tuple[str, str]] = {}   # cpe_vendor → (name, slug)
+    all_software: dict[str, dict] = {}              # cpe_id → {name, version, vendor_key, part}
+    all_cwe_ids: set[str] = set()
 
     for vuln in vulns:
         parsed = _parse_cve(vuln)
         if not parsed["cve_id"]:
             continue
         cve_rows.append(parsed)
-
-    # Batch upsert CVEs first
-    cve_count = _upsert_cves(cve_rows)
-
-    # Then process CPE matches and CWE refs per CVE
-    for vuln in vulns:
+        cve_id_str = parsed["cve_id"]
         cve_obj = vuln.get("cve", {})
-        cve_id_str = cve_obj.get("id")
-        if not cve_id_str:
-            continue
 
-        # CPE matches → software + vendors + links
+        # CPE matches → vendors + software
         configurations = cve_obj.get("configurations", [])
         cpe_matches = _parse_cpe_matches(configurations)
-        sw, ven = _upsert_software_and_vendors(cve_id_str, cpe_matches)
-        total_sw += sw
-        total_vendors += ven
+        if cpe_matches:
+            cve_cpe_map[cve_id_str] = cpe_matches
+            for m in cpe_matches:
+                vk = m["vendor"]
+                if vk not in all_vendors:
+                    slug = re.sub(r"[^a-z0-9-]", "-", vk.lower()).strip("-")
+                    name = vk.replace("_", " ").title()
+                    all_vendors[vk] = (name, slug)
+                if m["cpe_id"] not in all_software:
+                    all_software[m["cpe_id"]] = {
+                        "name": m["product"].replace("_", " ").title(),
+                        "version": m["version"],
+                        "vendor_key": vk,
+                        "part": m["part"],
+                    }
 
-        # CWE refs → weaknesses + links
+        # CWE refs → weaknesses
         weakness_data = cve_obj.get("weaknesses", [])
         weaknesses = _parse_weaknesses(weakness_data)
-        total_weaknesses += _upsert_cve_weaknesses(cve_id_str, weaknesses)
+        if weaknesses:
+            cve_weakness_map[cve_id_str] = weaknesses
+            for w in weaknesses:
+                all_cwe_ids.add(w["cwe_id"])
 
-    return {
-        "cves": cve_count,
-        "software": total_sw,
-        "vendors": total_vendors,
-        "weaknesses": total_weaknesses,
-    }
+    # --- Phase 2: Persist (one connection, one commit) ---
+    return _upsert_page(
+        cve_rows, all_vendors, all_software, all_cwe_ids,
+        cve_cpe_map, cve_weakness_map,
+    )
 
 
 async def _bootstrap(client: httpx.AsyncClient) -> dict:
