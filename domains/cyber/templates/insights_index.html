@@ -9,7 +9,7 @@
 <p class="text-gray-600 mb-6">Structural anomalies surfaced from the knowledge graph. Not AI speculation — deterministic queries backed by specific data.</p>
 
 {% for section in sections %}
-{% if section.items %}
+{% if section["items"] %}
 <div class="mb-10">
     <h2 class="text-xl font-semibold mb-4">{{ section.title }}</h2>
     <p class="text-sm text-gray-500 mb-3">{{ section.description }}</p>
@@ -23,7 +23,7 @@
                 </tr>
             </thead>
             <tbody>
-                {% for item in section.items[:20] %}
+                {% for item in section["items"][:20] %}
                 <tr class="border-b border-gray-100 hover:bg-gray-50">
                     <td class="px-4 py-2">
                         <a href="{{ item.url }}" class="text-indigo-600 hover:underline">{{ item.label }}</a>
