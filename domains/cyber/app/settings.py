@@ -10,7 +10,7 @@ class Settings(EdgeBaseSettings):
     RENDER_API_KEY: str = ""  # worker self-deploy after successful ingest
     RENDER_SERVICE_ID: str = ""  # Render service ID for the ingest worker
 
-    model_config = {"env_file": ".env", "case_sensitive": True, "extra": "ignore"}
+    model_config = {"env_file": "domains/cyber/.env", "case_sensitive": True, "extra": "ignore"}
 
 
 settings = Settings()

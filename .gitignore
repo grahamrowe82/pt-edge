@@ -6,6 +6,7 @@ build/
 .eggs/
 *.egg
 .env
+domains/*/.env
 *.log
 .venv/
 venv/
