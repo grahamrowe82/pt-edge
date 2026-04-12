@@ -1,6 +1,6 @@
 # PT-Edge Master Plan
 
-*7 April 2026*
+*7 April 2026 — For the multi-domain vision beyond OS AI, see [../vision.md](../vision.md).*
 
 **Implementation:** Coverage expansion is the first operational priority. See [discovery-expansion.md](discovery-expansion.md) for the phased plan to grow from 248K to 500K+ repos.
 
