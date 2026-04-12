@@ -1,3 +1,3 @@
-class PermanentTaskError(Exception):
-    """Error that will never resolve on retry. Fails immediately, no retries."""
-    pass
+from app.core.queue.errors import PermanentTaskError
+
+__all__ = ["PermanentTaskError"]
