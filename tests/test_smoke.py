@@ -13,36 +13,24 @@ def test_app_imports():
 
 def test_mcp_server_imports():
     """MCP server module imports without crashing."""
-    from app.mcp.server import mount_mcp, _TOOLS, _tool_definitions
+    from app.mcp.server import mount_mcp, _TOOLS
     assert len(_TOOLS) > 0
 
 
-def test_hn_pulse_registered():
-    """hn_pulse tool is registered in the tool list."""
+def test_exactly_8_tools_registered():
+    """MCP server registers exactly 8 tools (5 core + 3 domain)."""
     from app.mcp.server import _TOOLS
-    assert "hn_pulse" in _TOOLS
-
-
-def test_pitch_tools_registered():
-    """Article pitch tools are registered."""
-    from app.mcp.server import _TOOLS
-    assert "propose_article" in _TOOLS
-    assert "list_pitches" in _TOOLS
-    assert "upvote_pitch" in _TOOLS
-
-
-def test_amend_tools_registered():
-    """Amendment tools are registered."""
-    from app.mcp.server import _TOOLS
-    assert "amend_correction" in _TOOLS
-    assert "amend_pitch" in _TOOLS
+    assert len(_TOOLS) == 8
+    expected = {"get_status", "list_tables", "describe_table", "search_tables",
+                "query", "list_workflows", "find_ai_tool", "submit_feedback"}
+    assert set(_TOOLS.keys()) == expected
 
 
 def test_tool_definitions_build():
     """Tool definitions build correctly for JSON-RPC endpoint."""
-    from app.mcp.server import _tool_definitions
-    defs = _tool_definitions()
-    assert len(defs) >= 20  # we have ~25 tools
+    from app.mcp.server import _tool_definitions, _TOOL_LIST_PUBLIC
+    defs = _tool_definitions(_TOOL_LIST_PUBLIC)
+    assert len(defs) == 8
 
     for d in defs:
         assert "name" in d
@@ -55,7 +43,8 @@ def test_tool_definitions_build():
 
 def test_tool_handlers_callable():
     """Every registered tool has a callable handler."""
-    from app.mcp.server import _TOOLS, _tool_fn
+    from app.mcp.server import _TOOLS
+    from app.core.mcp.server import _tool_fn
     for name, tool in _TOOLS.items():
         fn = _tool_fn(tool)
         assert callable(fn), f"Tool {name} handler is not callable"
@@ -117,7 +106,7 @@ def test_mcp_unauthorized():
     resp = client.post(
         "/mcp?token=wrong",
         json={"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-              "params": {"name": "about", "arguments": {}}},
+              "params": {"name": "get_status", "arguments": {}}},
     )
     assert resp.status_code == 401
 
@@ -145,19 +134,13 @@ def test_mcp_discovery_no_auth():
     assert len(resp.json()["result"]["tools"]) == 8  # slim core tools only
 
 
-def test_hidden_tools_still_callable():
-    """Legacy tools not in slim core are still callable via JSON-RPC."""
-    from app.mcp.server import _TOOLS, _CORE_TOOL_NAMES
-
-    # Verify legacy tools exist in _TOOLS lookup (callable by name)
-    assert "describe_schema" not in _CORE_TOOL_NAMES
-    assert "describe_schema" in _TOOLS
-    assert "hype_check" not in _CORE_TOOL_NAMES
-    assert "hype_check" in _TOOLS
-    assert "about" not in _CORE_TOOL_NAMES
-    assert "about" in _TOOLS
-    assert "more_tools" not in _CORE_TOOL_NAMES
-    assert "more_tools" in _TOOLS
+def test_legacy_tools_removed():
+    """Legacy tools have been removed — only 8 core tools remain."""
+    from app.mcp.server import _TOOLS
+    assert "describe_schema" not in _TOOLS
+    assert "hype_check" not in _TOOLS
+    assert "about" not in _TOOLS
+    assert "more_tools" not in _TOOLS
 
 
 # ---------------------------------------------------------------------------
@@ -167,8 +150,9 @@ def test_hidden_tools_still_callable():
 def _call_query(sql: str) -> dict:
     """Helper: call query() synchronously and parse the JSON result."""
     import asyncio
-    from app.mcp.server import query, _tool_fn
-    fn = _tool_fn(query)
+    from app.mcp.server import _TOOLS
+    from app.core.mcp.server import _tool_fn
+    fn = _tool_fn(_TOOLS["query"])
     result = asyncio.run(fn(sql=sql))
     return json.loads(result)
 
@@ -237,56 +221,31 @@ class TestQuerySafety:
 class TestInputLimits:
     """Write tools enforce input length limits."""
 
-    def test_correction_topic_limit(self):
+    def test_feedback_topic_limit(self):
         import asyncio
-        from app.mcp.server import submit_correction, _tool_fn
-        fn = _tool_fn(submit_correction)
+        from app.mcp.server import _TOOLS
+        from app.core.mcp.server import _tool_fn
+        fn = _tool_fn(_TOOLS["submit_feedback"])
         result = asyncio.run(fn(topic="x" * 301, correction="test"))
         assert "300" in result
 
-    def test_correction_body_limit(self):
+    def test_feedback_body_limit(self):
         import asyncio
-        from app.mcp.server import submit_correction, _tool_fn
-        fn = _tool_fn(submit_correction)
+        from app.mcp.server import _TOOLS
+        from app.core.mcp.server import _tool_fn
+        fn = _tool_fn(_TOOLS["submit_feedback"])
         result = asyncio.run(fn(topic="test", correction="x" * 5001))
         assert "5,000" in result
-
-    def test_invalid_category_blocked(self):
-        import asyncio
-        from app.mcp.server import accept_candidate, _tool_fn
-        fn = _tool_fn(accept_candidate)
-        result = asyncio.run(fn(candidate_id=99999, category="evil_category"))
-        assert "Invalid category" in result
 
 
 # ---------------------------------------------------------------------------
 # PR #25: Feedback rename + lab intelligence
 # ---------------------------------------------------------------------------
 
-def test_feedback_tools_registered():
-    """New feedback tool names are registered."""
+def test_submit_feedback_registered():
+    """submit_feedback tool is registered."""
     from app.mcp.server import _TOOLS
     assert "submit_feedback" in _TOOLS
-    assert "upvote_feedback" in _TOOLS
-    assert "list_feedback" in _TOOLS
-    assert "amend_feedback" in _TOOLS
-
-
-def test_feedback_aliases_registered():
-    """Old correction tool names still work as aliases."""
-    from app.mcp.server import _TOOLS
-    assert "submit_correction" in _TOOLS
-    assert "upvote_correction" in _TOOLS
-    assert "list_corrections" in _TOOLS
-    assert "amend_correction" in _TOOLS
-
-
-def test_lab_intelligence_tools_registered():
-    """Lab intelligence tools are registered."""
-    from app.mcp.server import _TOOLS
-    assert "lab_models" in _TOOLS
-    assert "submit_lab_event" in _TOOLS
-    assert "list_lab_events" in _TOOLS
 
 
 def test_new_models_import():
@@ -349,125 +308,10 @@ def test_chinese_labs_in_provider_map():
     assert PROVIDER_TO_LAB["qwen"] == "qwen"
 
 
-# ---------------------------------------------------------------------------
-# MCP Resources, Resource Templates, and Prompts
-# ---------------------------------------------------------------------------
-
-def test_prompts_list():
-    """MCP prompts/list returns 4 prompts."""
-    from fastapi.testclient import TestClient
-    from app.main import app
-    from app.settings import settings
-
-    client = TestClient(app)
-    resp = client.post(
-        f"/mcp?token={settings.API_TOKEN}",
-        json={"jsonrpc": "2.0", "id": 10, "method": "prompts/list"},
-    )
-    assert resp.status_code == 200
-    prompts = resp.json()["result"]["prompts"]
-    names = [p["name"] for p in prompts]
-    assert "evaluate-technology" in names
-    assert "build-something" in names
-    assert "due-diligence" in names
-    assert "weekly-briefing" in names
-
-
-def test_resources_list():
-    """MCP resources/list returns 3 static resources."""
-    from fastapi.testclient import TestClient
-    from app.main import app
-    from app.settings import settings
-
-    client = TestClient(app)
-    resp = client.post(
-        f"/mcp?token={settings.API_TOKEN}",
-        json={"jsonrpc": "2.0", "id": 11, "method": "resources/list"},
-    )
-    assert resp.status_code == 200
-    resources = resp.json()["result"]["resources"]
-    uris = [r["uri"] for r in resources]
-    assert "resource://pt-edge/methodology" in uris
-    assert "resource://pt-edge/categories" in uris
-    assert "resource://pt-edge/coverage" in uris
-
-
-def test_resource_templates_list():
-    """MCP resources/templates/list returns 3 templates."""
-    from fastapi.testclient import TestClient
-    from app.main import app
-    from app.settings import settings
-
-    client = TestClient(app)
-    resp = client.post(
-        f"/mcp?token={settings.API_TOKEN}",
-        json={"jsonrpc": "2.0", "id": 12, "method": "resources/templates/list"},
-    )
-    assert resp.status_code == 200
-    templates = resp.json()["result"]["resourceTemplates"]
-    assert len(templates) == 3
-    names = [t["name"] for t in templates]
-    assert "project" in names
-    assert "lab" in names
-    assert "category" in names
-
-
-def test_prompt_content_format():
-    """prompts/get returns content as {type, text} object, not a plain string."""
-    from fastapi.testclient import TestClient
-    from app.main import app
-    from app.settings import settings
-
-    client = TestClient(app)
-    resp = client.post(
-        f"/mcp?token={settings.API_TOKEN}",
-        json={
-            "jsonrpc": "2.0", "id": 14, "method": "prompts/get",
-            "params": {"name": "weekly-briefing", "arguments": {}},
-        },
-    )
-    assert resp.status_code == 200
-    messages = resp.json()["result"]["messages"]
-    assert len(messages) >= 1
-    for msg in messages:
-        assert "role" in msg
-        content = msg["content"]
-        # MCP spec: content must be an object with type+text, not a plain string
-        assert isinstance(content, dict), f"content must be object, got {type(content)}"
-        assert content["type"] == "text"
-        assert isinstance(content["text"], str)
-        assert len(content["text"]) > 0
-
-
-def test_resource_read_response_shape():
-    """resources/read returns contents with uri + text fields (MCP spec)."""
-    from fastapi.testclient import TestClient
-    from app.main import app
-    from app.settings import settings
-
-    client = TestClient(app)
-    resp = client.post(
-        f"/mcp?token={settings.API_TOKEN}",
-        json={
-            "jsonrpc": "2.0", "id": 15, "method": "resources/read",
-            "params": {"uri": "resource://pt-edge/categories"},
-        },
-    )
-    assert resp.status_code == 200
-    contents = resp.json()["result"]["contents"]
-    assert len(contents) >= 1
-    for item in contents:
-        assert "uri" in item, "resources/read contents must include uri"
-        assert isinstance(item["uri"], str)
-        assert "text" in item, "resources/read contents must include text"
-        assert isinstance(item["text"], str)
-        assert len(item["text"]) > 0
-
-
 def test_tool_input_schemas_valid():
     """Every tool inputSchema has type=object and properties (MCP spec)."""
-    from app.mcp.server import _tool_definitions
-    defs = _tool_definitions()
+    from app.mcp.server import _tool_definitions, _TOOL_LIST_PUBLIC
+    defs = _tool_definitions(_TOOL_LIST_PUBLIC)
     for d in defs:
         schema = d["inputSchema"]
         assert schema.get("type") == "object", (
@@ -478,46 +322,8 @@ def test_tool_input_schemas_valid():
         )
 
 
-def test_resource_template_uri_format():
-    """Resource template URIs use RFC 6570 {param} syntax, not :param."""
-    import re
-    from app.mcp.resources import RESOURCE_TEMPLATES
-    for tmpl in RESOURCE_TEMPLATES:
-        uri = tmpl["uriTemplate"]
-        # Must contain at least one {param}
-        assert re.search(r"\{\w+\}", uri), (
-            f"Template '{tmpl['name']}' uriTemplate must use {{param}} syntax: {uri}"
-        )
-        # Must not contain Express-style :param
-        assert not re.search(r":\w+", uri), (
-            f"Template '{tmpl['name']}' uriTemplate must not use :param syntax: {uri}"
-        )
-
-
-def test_prompt_arguments_match_handlers():
-    """PROMPTS argument names match the handler function signatures."""
-    import inspect
-    from app.mcp.prompts import PROMPTS, _PROMPT_HANDLERS
-
-    for prompt_def in PROMPTS:
-        name = prompt_def["name"]
-        handler = _PROMPT_HANDLERS.get(name)
-        assert handler is not None, f"Prompt '{name}' has no handler in _PROMPT_HANDLERS"
-
-        # Get expected args from PROMPTS registry
-        declared_args = {a["name"] for a in prompt_def.get("arguments", [])}
-        # Get actual args from handler function signature (skip 'self')
-        sig = inspect.signature(handler)
-        actual_args = set(sig.parameters.keys())
-
-        assert declared_args == actual_args, (
-            f"Prompt '{name}' argument mismatch: "
-            f"PROMPTS declares {declared_args}, handler accepts {actual_args}"
-        )
-
-
 def test_initialize_advertises_capabilities():
-    """MCP initialize includes resources and prompts capabilities."""
+    """MCP initialize includes tools capability."""
     from fastapi.testclient import TestClient
     from app.main import app
     from app.settings import settings
@@ -529,47 +335,12 @@ def test_initialize_advertises_capabilities():
     )
     assert resp.status_code == 200
     caps = resp.json()["result"]["capabilities"]
-    assert "resources" in caps
-    assert "prompts" in caps
+    assert "tools" in caps
 
 
 # ---------------------------------------------------------------------------
 # Search improvements: name boost, freshness, pagination, npm discovery
 # ---------------------------------------------------------------------------
-
-class TestNameBoost:
-    """_name_boost helper gives exact and substring bonuses."""
-
-    def test_exact_match(self):
-        from app.mcp.server import _name_boost
-        score = _name_boost("fastapi", "fastapi")
-        assert score == 0.15
-
-    def test_substring(self):
-        from app.mcp.server import _name_boost
-        score = _name_boost("fast", "fastapi-server")
-        assert score == 0.08
-
-    def test_full_name_slash(self):
-        from app.mcp.server import _name_boost
-        score = _name_boost("langchain", "langchain-ai/langchain")
-        assert score == 0.15
-
-    def test_no_match(self):
-        from app.mcp.server import _name_boost
-        score = _name_boost("pytorch", "tensorflow")
-        assert score == 0.0
-
-    def test_none_fields(self):
-        from app.mcp.server import _name_boost
-        score = _name_boost("test", None, None)
-        assert score == 0.0
-
-    def test_empty_query(self):
-        from app.mcp.server import _name_boost
-        score = _name_boost("", "fastapi")
-        assert score == 0.0
-
 
 class TestFreshnessIndicator:
     """_freshness_indicator returns human-readable freshness strings."""
@@ -594,30 +365,16 @@ class TestFreshnessIndicator:
         assert "[STALE]" in result
         assert "month" in result
 
-    def test_moderate_age(self):
-        from datetime import datetime, timezone, timedelta
-        from app.mcp.server import _freshness_indicator
-        moderate = datetime.now(timezone.utc) - timedelta(days=90)
-        result = _freshness_indicator(moderate)
-        assert "month" in result
-        assert "[STALE]" not in result
 
-
-def test_search_tools_have_offset_param():
-    """All 5 search wrapper tools accept an offset parameter."""
+def test_find_ai_tool_has_offset_param():
+    """find_ai_tool accepts an offset parameter."""
     import inspect
-    from app.mcp.server import (
-        find_ai_tool, find_mcp_server, find_public_api,
-        find_dataset, find_model, _tool_fn,
-    )
-    for tool in [find_ai_tool, find_mcp_server, find_public_api,
-                 find_dataset, find_model]:
-        fn = _tool_fn(tool)
-        sig = inspect.signature(fn)
-        assert "offset" in sig.parameters, (
-            f"{fn.__name__} missing offset parameter"
-        )
-        assert sig.parameters["offset"].default == 0
+    from app.mcp.server import _TOOLS
+    from app.core.mcp.server import _tool_fn
+    fn = _tool_fn(_TOOLS["find_ai_tool"])
+    sig = inspect.signature(fn)
+    assert "offset" in sig.parameters
+    assert sig.parameters["offset"].default == 0
 
 
 def test_npm_mcp_ingest_imports():
@@ -662,71 +419,14 @@ class TestExtractGithubSlug:
 # ---------------------------------------------------------------------------
 
 
-class TestStripSummary:
-    """_strip_summary cleans HTML/markdown artifacts from release summaries."""
-
-    def test_removes_html_tags(self):
-        from app.mcp.server import _strip_summary
-        assert "<details>" not in _strip_summary("<details><summary>Changelog</summary></details>")
-
-    def test_removes_markdown_headers(self):
-        from app.mcp.server import _strip_summary
-        result = _strip_summary("## Breaking Changes\nSome text")
-        assert result.startswith("Breaking Changes")
-
-    def test_removes_github_urls(self):
-        from app.mcp.server import _strip_summary
-        result = _strip_summary("Fixed bug https://github.com/owner/repo/issues/123 in parser")
-        assert "github.com" not in result
-
-    def test_truncates_at_sentence(self):
-        from app.mcp.server import _strip_summary
-        long_text = "First sentence. Second sentence. " + "x " * 100
-        result = _strip_summary(long_text, max_len=120)
-        assert len(result) <= 123  # allow for "..."
-
-    def test_truncates_at_word_boundary(self):
-        from app.mcp.server import _strip_summary
-        long_text = "Word " * 50  # 250 chars
-        result = _strip_summary(long_text, max_len=120)
-        assert result.endswith("...")
-        assert not result.rstrip("...").endswith("Wor")  # no mid-word cut
-
-    def test_empty_input(self):
-        from app.mcp.server import _strip_summary
-        assert _strip_summary("") == ""
-        assert _strip_summary(None) == ""
-
-    def test_short_input_unchanged(self):
-        from app.mcp.server import _strip_summary
-        assert _strip_summary("Simple release note") == "Simple release note"
-
-
-class TestFmtDeltaSafe:
-    """_fmt_delta_safe shows — for missing baselines."""
-
-    def test_no_baseline_returns_dash(self):
-        from app.mcp.server import _fmt_delta_safe
-        assert _fmt_delta_safe(100, False) == "—"
-
-    def test_with_baseline_formats_delta(self):
-        from app.mcp.server import _fmt_delta_safe
-        assert _fmt_delta_safe(100, True) == "+100"
-
-    def test_with_baseline_negative(self):
-        from app.mcp.server import _fmt_delta_safe
-        assert _fmt_delta_safe(-50, True) == "-50"
-
-
-def test_describe_schema_has_exclusion_list():
-    """describe_schema defines an exclusion list for system tables."""
-    import app.mcp.server as srv
-    # Read the source file to check for the exclusion list
+def test_core_api_has_exclusion_list():
+    """Core API has an exclusion list for system tables."""
+    import app.core.api.core as core_mod
     import pathlib
-    src = pathlib.Path(srv.__file__).read_text()
+    src = pathlib.Path(core_mod.__file__).read_text()
     assert "pg_stat_statements" in src
     assert "alembic_version" in src
-    assert "_exclude_tables" in src
+    assert "_EXCLUDE_TABLES" in src
 
 
 # ---------------------------------------------------------------------------
@@ -762,10 +462,10 @@ def test_builder_tools_in_runner():
     assert "fetch_builder_tools" in TASK_HANDLERS
 
 
-def test_mcp_coverage_registered():
-    """mcp_coverage tool is registered in the tool list."""
+def test_mcp_coverage_removed():
+    """mcp_coverage tool was removed in the slim cleanup."""
     from app.mcp.server import _TOOLS
-    assert "mcp_coverage" in _TOOLS
+    assert "mcp_coverage" not in _TOOLS
 
 
 class TestCuratedTools:
@@ -793,30 +493,12 @@ class TestCuratedTools:
             assert cat, f"{slug} has empty category"
 
 
-def test_recall_and_workspace_removed():
-    """recall and workspace tools have been removed."""
-    from app.mcp.server import _CORE_TOOL_NAMES, _TOOLS
-    assert "recall" not in _CORE_TOOL_NAMES
-    assert "workspace" not in _CORE_TOOL_NAMES
-    assert "recall" not in _TOOLS
-    assert "workspace" not in _TOOLS
-
-
-# ---------------------------------------------------------------------------
-# Briefings — persistent narrative layer
-# ---------------------------------------------------------------------------
-
-def test_briefing_tool_registered():
-    """Briefing tool is registered in the tool list."""
+def test_legacy_tools_all_removed():
+    """All legacy tools (recall, workspace, briefing, etc) have been removed."""
     from app.mcp.server import _TOOLS
-    assert "briefing" in _TOOLS
-
-
-def test_briefing_still_callable():
-    """Briefing tool is still callable via JSON-RPC (legacy, not in slim core)."""
-    from app.mcp.server import _TOOLS, _CORE_TOOL_NAMES
-    assert "briefing" not in _CORE_TOOL_NAMES  # removed from slim core
-    assert "briefing" in _TOOLS  # still callable by name
+    for name in ["recall", "workspace", "briefing", "about", "more_tools",
+                 "hn_pulse", "hype_check", "deep_dive"]:
+        assert name not in _TOOLS
 
 
 def test_briefing_model_import():
@@ -834,9 +516,10 @@ def test_briefing_model_fields():
 
 
 def test_core_tool_count():
-    """Core tool list has 8 slim tools (Oakbridge pattern)."""
-    from app.mcp.server import _CORE_TOOL_NAMES
+    """Core tool list has 8 tools (5 core + 3 domain)."""
+    from app.mcp.server import _CORE_TOOL_NAMES, _TOOLS
     assert len(_CORE_TOOL_NAMES) == 8
+    assert len(_TOOLS) == 8
 
 
 def test_briefing_seed_entries():
