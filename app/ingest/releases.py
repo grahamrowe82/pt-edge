@@ -17,6 +17,7 @@ from app.db import engine, SessionLocal
 from app.embeddings import is_enabled as embeddings_enabled, build_release_text, embed_batch
 from app.github_client import get_github_client
 from app.models import Project, SyncLog
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 

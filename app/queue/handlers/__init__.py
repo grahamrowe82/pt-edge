@@ -11,7 +11,6 @@ from app.queue.handlers.fetch_releases import handle_fetch_releases
 from app.queue.handlers.compute_mv_refresh import handle_compute_mv_refresh
 from app.queue.handlers.compute_content_budget import handle_compute_content_budget
 from app.queue.handlers.compute_embeddings import handle_compute_embeddings
-from app.queue.handlers.export_static_site import handle_export_static_site
 from app.queue.handlers.enrich_subcategory import handle_enrich_subcategory
 from app.queue.handlers.enrich_stack_layer import handle_enrich_stack_layer
 from app.queue.handlers.enrich_hn_match import handle_enrich_hn_match
@@ -30,7 +29,7 @@ from app.queue.handlers.compute_post_process import (
     handle_compute_hn_backfill, handle_compute_hn_lab_backfill,
     handle_compute_v2ex_lab_backfill, handle_compute_domain_reassign,
     handle_compute_project_linking, handle_compute_briefing_refresh,
-    handle_export_dataset, handle_discover_ai_repos, handle_compute_structural,
+    handle_discover_ai_repos, handle_compute_structural,
 )
 from app.queue.handlers.compute_demand_radar import (
     handle_snapshot_bot_activity,
@@ -51,7 +50,6 @@ TASK_HANDLERS: dict = {
     "compute_mv_refresh": handle_compute_mv_refresh,
     "compute_content_budget": handle_compute_content_budget,
     "compute_embeddings": handle_compute_embeddings,
-    "export_static_site": handle_export_static_site,
     "enrich_subcategory": handle_enrich_subcategory,
     "enrich_stack_layer": handle_enrich_stack_layer,
     "enrich_hn_match": handle_enrich_hn_match,
@@ -88,7 +86,6 @@ TASK_HANDLERS: dict = {
     "compute_domain_reassign": handle_compute_domain_reassign,
     "compute_project_linking": handle_compute_project_linking,
     "compute_briefing_refresh": handle_compute_briefing_refresh,
-    "export_dataset": handle_export_dataset,
     "discover_ai_repos": handle_discover_ai_repos,
     "compute_structural": handle_compute_structural,
     # Demand Radar

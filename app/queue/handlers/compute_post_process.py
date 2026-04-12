@@ -66,24 +66,6 @@ async def handle_compute_briefing_refresh(task: dict) -> dict:
     return await refresh_briefing_evidence()
 
 
-async def handle_export_dataset(task: dict) -> dict:
-    """Push dataset export to GitHub + HuggingFace."""
-    import asyncio
-    proc = await asyncio.create_subprocess_exec(
-        "bash", "scripts/push_dataset.sh",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
-    except asyncio.TimeoutError:
-        proc.kill()
-        raise RuntimeError("Dataset export timed out after 120s")
-    if proc.returncode != 0:
-        raise RuntimeError(f"Dataset export failed: {stderr.decode()[:200]}")
-    return {"status": "pushed"}
-
-
 async def handle_discover_ai_repos(task: dict) -> dict:
     """Run the weekly AI repos GitHub Search discovery."""
     from app.ingest.ai_repos import ingest_ai_repos
