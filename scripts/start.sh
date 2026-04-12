@@ -39,4 +39,7 @@ python scripts/generate_site.py --portal --output-dir site
 echo "Generating deep dive pages..."
 python scripts/generate_deep_dives.py --output-dir site
 
+echo "Generating redirect pages..."
+python scripts/generate_redirects.py --output-dir site
+
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2

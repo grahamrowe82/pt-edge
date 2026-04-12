@@ -114,6 +114,12 @@ async def reassign_domains():
         if reassign_ids:
             with engine.connect() as conn:
                 for new_domain, ids in reassign_ids.items():
+                    # Record old domain for static redirect generation
+                    conn.execute(text("""
+                        INSERT INTO domain_redirects (full_name, old_domain)
+                        SELECT full_name, domain FROM ai_repos WHERE id = ANY(:ids)
+                        ON CONFLICT DO NOTHING
+                    """), {"ids": ids})
                     conn.execute(text(
                         "UPDATE ai_repos SET domain = :domain WHERE id = ANY(:ids)"
                     ), {"domain": new_domain, "ids": ids})
