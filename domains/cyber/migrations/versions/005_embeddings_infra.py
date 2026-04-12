@@ -19,12 +19,23 @@ ENTITY_TABLES = ["cves", "software", "vendors", "weaknesses", "techniques", "att
 
 
 def upgrade():
+    # Ensure pgvector extension is available
+    op.execute("CREATE EXTENSION IF NOT EXISTS vector")
+
     # OpenAI resource budget for embeddings
     op.execute("""
         INSERT INTO resource_budgets (resource_type, period_hours, budget, rpm)
         VALUES ('openai', 1, 24000, 400)
         ON CONFLICT (resource_type) DO NOTHING
     """)
+
+    # Convert embedding columns from text to vector(1536) for HNSW indexing
+    for table in ENTITY_TABLES:
+        op.execute(f"""
+            ALTER TABLE {table}
+            ALTER COLUMN embedding TYPE vector(1536)
+            USING CASE WHEN embedding IS NOT NULL THEN embedding::vector(1536) END
+        """)
 
     # HNSW indexes for cosine similarity search on all entity tables
     for table in ENTITY_TABLES:

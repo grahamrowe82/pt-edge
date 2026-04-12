@@ -187,8 +187,14 @@ def upgrade():
                 + LEAST(25, COALESCE(agg.max_exploitability, 0))
                 + LEAST(25, (LN(GREATEST(1, COALESCE(agg.cve_count, 0)) + 1) * 3)::int)
                 + COALESCE(agg.max_patch, 0)) >= 70 THEN 'critical-risk'
-                WHEN ... >= 50 THEN 'high-risk'
-                WHEN ... >= 30 THEN 'moderate-risk'
+                WHEN LEAST(100, LEAST(25, COALESCE(agg.max_severity, 0))
+                + LEAST(25, COALESCE(agg.max_exploitability, 0))
+                + LEAST(25, (LN(GREATEST(1, COALESCE(agg.cve_count, 0)) + 1) * 3)::int)
+                + COALESCE(agg.max_patch, 0)) >= 50 THEN 'high-risk'
+                WHEN LEAST(100, LEAST(25, COALESCE(agg.max_severity, 0))
+                + LEAST(25, COALESCE(agg.max_exploitability, 0))
+                + LEAST(25, (LN(GREATEST(1, COALESCE(agg.cve_count, 0)) + 1) * 3)::int)
+                + COALESCE(agg.max_patch, 0)) >= 30 THEN 'moderate-risk'
                 ELSE 'low-risk' END AS quality_tier
         FROM weaknesses w LEFT JOIN (
             SELECT cw.weakness_id, COUNT(DISTINCT cw.cve_id) AS cve_count,
@@ -216,8 +222,14 @@ def upgrade():
                 + LEAST(25, COALESCE(agg.max_exploitability, 0))
                 + LEAST(25, (LN(GREATEST(1, COALESCE(agg.cve_count, 0)) + 1) * 2.5)::int)
                 + COALESCE(agg.max_patch, 0)) >= 70 THEN 'critical-risk'
-                WHEN ... >= 50 THEN 'high-risk'
-                WHEN ... >= 30 THEN 'moderate-risk'
+                WHEN LEAST(100, LEAST(25, COALESCE(agg.max_severity, 0))
+                + LEAST(25, COALESCE(agg.max_exploitability, 0))
+                + LEAST(25, (LN(GREATEST(1, COALESCE(agg.cve_count, 0)) + 1) * 2.5)::int)
+                + COALESCE(agg.max_patch, 0)) >= 50 THEN 'high-risk'
+                WHEN LEAST(100, LEAST(25, COALESCE(agg.max_severity, 0))
+                + LEAST(25, COALESCE(agg.max_exploitability, 0))
+                + LEAST(25, (LN(GREATEST(1, COALESCE(agg.cve_count, 0)) + 1) * 2.5)::int)
+                + COALESCE(agg.max_patch, 0)) >= 30 THEN 'moderate-risk'
                 ELSE 'low-risk' END AS quality_tier
         FROM attack_patterns ap LEFT JOIN (
             SELECT wp.pattern_id, COUNT(DISTINCT cw.cve_id) AS cve_count,
@@ -247,8 +259,14 @@ def upgrade():
                 + LEAST(25, COALESCE(agg.max_exploitability, 0))
                 + LEAST(25, (LN(GREATEST(1, COALESCE(agg.cve_count, 0)) + 1) * 2)::int)
                 + COALESCE(agg.max_patch, 0)) >= 70 THEN 'critical-risk'
-                WHEN ... >= 50 THEN 'high-risk'
-                WHEN ... >= 30 THEN 'moderate-risk'
+                WHEN LEAST(100, LEAST(25, COALESCE(agg.max_severity, 0))
+                + LEAST(25, COALESCE(agg.max_exploitability, 0))
+                + LEAST(25, (LN(GREATEST(1, COALESCE(agg.cve_count, 0)) + 1) * 2)::int)
+                + COALESCE(agg.max_patch, 0)) >= 50 THEN 'high-risk'
+                WHEN LEAST(100, LEAST(25, COALESCE(agg.max_severity, 0))
+                + LEAST(25, COALESCE(agg.max_exploitability, 0))
+                + LEAST(25, (LN(GREATEST(1, COALESCE(agg.cve_count, 0)) + 1) * 2)::int)
+                + COALESCE(agg.max_patch, 0)) >= 30 THEN 'moderate-risk'
                 ELSE 'low-risk' END AS quality_tier
         FROM techniques t LEFT JOIN (
             SELECT pt.technique_id, COUNT(DISTINCT cw.cve_id) AS cve_count,
