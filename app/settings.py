@@ -25,5 +25,7 @@ class Settings(EdgeBaseSettings):
     UMAMI_WEBSITE_ID: str = ""  # Umami website ID to filter events
     LLM_BUDGET_MULTIPLIER: float = 5.0  # scales content pipeline LLM spend; 5.0 = 20K summaries/day on Gemini
 
+    model_config = {"env_file": "domains/ai/.env", "case_sensitive": True, "extra": "ignore"}
+
 
 settings = Settings()
