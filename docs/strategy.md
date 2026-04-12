@@ -1,5 +1,7 @@
 # PT-Edge Strategy: The Precomputed Reasoning Cache
 
+*This document covers the first domain (Open Source AI). For the multi-domain vision — six scored knowledge graphs forming one interconnected layer — see [vision.md](vision.md).*
+
 ## What PT-Edge is
 
 PT-Edge is the canonical reference for AI infrastructure decisions. It tracks 220,000+ AI repos across GitHub, PyPI, npm, Docker Hub, and HuggingFace, scores them daily on quality (maintenance, adoption, maturity, community), and publishes the results as a 165,000+ page directory site at mcp.phasetransitions.ai — covering 17 domains with 2,400 embedding-discovered categories.

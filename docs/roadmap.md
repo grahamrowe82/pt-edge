@@ -1,5 +1,7 @@
 # Roadmap
 
+*This roadmap covers the OS AI domain. For the broader multi-domain vision, see [vision.md](vision.md).*
+
 ## Organising principle
 
 Build what the data says matters. The allocation engine (Bayesian surprise, position strength, CTR vs benchmark) tells us where the demand/supply gap is widest. That drives what we enrich, what we write about, and what infrastructure we invest in. Speculative features wait until data validates them.
