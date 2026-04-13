@@ -5,7 +5,7 @@ databases:
     user: pt_edge_user
 
   - name: cyber-edge-db
-    plan: basic-1gb
+    plan: basic-4gb
     databaseName: cyber_edge
     user: cyber_edge_user
 
