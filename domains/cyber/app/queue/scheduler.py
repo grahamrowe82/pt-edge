@@ -502,8 +502,12 @@ def schedule_all() -> dict:
     counts["osv"] = schedule_ingest_osv()
     counts["ghsa"] = schedule_ingest_ghsa()
     counts["exploit_db"] = schedule_ingest_exploit_db()
-    counts["pairs"] = schedule_compute_pairs()
-    counts["hypotheses"] = schedule_compute_hypotheses()
+    # Disabled: compute_pairs and compute_hypotheses run queries too heavy
+    # for the 1GB basic Postgres instance (window functions over 2.3M rows,
+    # multi-table aggregations). They crash the DB and take the worker down.
+    # Re-enable after DB upgrade or query optimisation.
+    # counts["pairs"] = schedule_compute_pairs()
+    # counts["hypotheses"] = schedule_compute_hypotheses()
     counts["embeddings"] = schedule_compute_embeddings()
     counts["views"] = schedule_refresh_views()
 
