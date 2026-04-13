@@ -53,19 +53,19 @@
             <h2 class="text-lg font-semibold mb-3">Kill Chain</h2>
             {% for chain in kill_chain[:5] %}
             <div class="flex items-center space-x-2 text-sm mb-2 bg-gray-50 rounded p-2">
-                {% if chain.cwe_id in lookups.get('weakness', set()) %}
+                {% if chain.cwe_id in lookups.get('weakness', []) %}
                 <a href="/weakness/{{ chain.cwe_id }}/" class="text-indigo-600 hover:underline">{{ chain.cwe_id }}</a>
                 {% else %}
                 <span>{{ chain.cwe_id }}</span>
                 {% endif %}
                 <span class="text-gray-400">&rarr;</span>
-                {% if chain.capec_id in lookups.get('pattern', set()) %}
+                {% if chain.capec_id in lookups.get('pattern', []) %}
                 <a href="/attack-pattern/{{ chain.capec_id }}/" class="text-indigo-600 hover:underline">{{ chain.capec_id }}</a>
                 {% else %}
                 <span>{{ chain.capec_id }}</span>
                 {% endif %}
                 <span class="text-gray-400">&rarr;</span>
-                {% if chain.technique_id in lookups.get('technique', set()) %}
+                {% if chain.technique_id in lookups.get('technique', []) %}
                 <a href="/technique/{{ chain.technique_id }}/" class="text-indigo-600 hover:underline">{{ chain.technique_id }}</a>
                 {% else %}
                 <span>{{ chain.technique_id }}</span>
@@ -83,7 +83,7 @@
             <div class="space-y-1 text-sm">
                 {% for sw in software %}
                 <div>
-                    {% if slugify(sw.name) in lookups.get('software', set()) %}
+                    {% if slugify(sw.name) in lookups.get('software', []) %}
                     <a href="/software/{{ slugify(sw.name) }}/" class="text-indigo-600 hover:underline">{{ sw.name }}</a>
                     {% else %}
                     {{ sw.name }}
@@ -100,7 +100,7 @@
             <h2 class="text-lg font-semibold mb-3">Affected Vendors</h2>
             <div class="flex flex-wrap gap-2 text-sm">
                 {% for v in vendors %}
-                {% if v.slug in lookups.get('vendor', set()) %}
+                {% if v.slug in lookups.get('vendor', []) %}
                 <a href="/vendor/{{ v.slug }}/" class="px-2 py-1 rounded bg-gray-100 text-indigo-600 hover:bg-indigo-50">{{ v.name }}</a>
                 {% else %}
                 <span class="px-2 py-1 rounded bg-gray-100">{{ v.name }}</span>
