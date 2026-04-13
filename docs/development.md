@@ -115,13 +115,15 @@ python scripts/backfill_summaries.py --limit 10 --min-score 70
 
 ## Static site generation
 
+**Important**: The site generator must never compute data at build time. All entity data comes from materialized views, all relationship data from `structural_cache`. See [edge-playbook.md Chapter 9](edge-playbook.md#the-precomputation-rule) for the full pattern.
+
 The site generator queries materialized views and renders Jinja2 templates. To regenerate locally:
 
 ```bash
 python scripts/generate_site.py --domain mcp --output-dir site
 ```
 
-For all 17 domains, the full generation takes ~5 minutes and queries the DB heavily. Don't run it while other DB-heavy operations are in progress.
+For all 30 domains, the full generation takes ~5 minutes and queries the DB heavily. Don't run it while other DB-heavy operations are in progress.
 
 ## Render platform
 

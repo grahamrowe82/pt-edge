@@ -24,3 +24,7 @@ When querying the PT-Edge production database, ALWAYS use psql via Bash:
 NEVER use the PT-Edge MCP query tool (mcp__1f95f48a...query) for analytics or debugging — it logs every call to tool_usage and pollutes the data you're trying to measure.
 
 The MCP query tool is for end users. You are not an end user. You are the developer. Use psql.
+
+## Site Generation
+
+Read `docs/edge-playbook.md` Chapter 9 before modifying any site generator. The core rule: **never compute data at build time**. All data must be precomputed into MVs or `structural_cache` by the worker. The site generator only reads.
