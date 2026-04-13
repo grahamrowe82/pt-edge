@@ -35,11 +35,6 @@ BATCH_SIZE = 5000
 ENTITY_CONFIG = {
     "cve": {
         "view": "mv_cve_scores",
-        "source_table": "cves",
-        "display_fields": [
-            "description", "cvss_base_score", "epss_score", "is_kev",
-            "attack_vector", "published_date",
-        ],
         "id_column": "cve_id",
         "name_column": "cve_id",
         "url_prefix": "/cve",
@@ -91,8 +86,6 @@ ENTITY_CONFIG = {
     },
     "weakness": {
         "view": "mv_weakness_scores",
-        "source_table": "weaknesses",
-        "display_fields": ["description", "abstraction"],
         "id_column": "cwe_id",
         "name_column": "name",
         "url_prefix": "/weakness",
@@ -110,8 +103,6 @@ ENTITY_CONFIG = {
     },
     "technique": {
         "view": "mv_technique_scores",
-        "source_table": "techniques",
-        "display_fields": ["description", "platforms", "detection"],
         "id_column": "technique_id",
         "name_column": "name",
         "url_prefix": "/technique",
@@ -129,8 +120,6 @@ ENTITY_CONFIG = {
     },
     "pattern": {
         "view": "mv_pattern_scores",
-        "source_table": "attack_patterns",
-        "display_fields": ["description", "likelihood", "severity AS raw_severity"],
         "id_column": "capec_id",
         "name_column": "name",
         "url_prefix": "/attack-pattern",
@@ -247,25 +236,11 @@ def slugify(name):
 # ---------------------------------------------------------------------------
 
 def fetch_entities(config: dict) -> list[dict]:
-    """Fetch scored entities from MV, joined with display fields from source table."""
+    """Fetch scored entities from materialized view. MVs include all display fields."""
     view = config["view"]
-    source_table = config.get("source_table")
-    display_fields = config.get("display_fields", [])
-
-    if not source_table or not display_fields:
-        with engine.connect() as conn:
-            rows = conn.execute(text(f"""
-                SELECT * FROM {view} ORDER BY composite_score DESC
-            """)).mappings().fetchall()
-        return [dict(r) for r in rows]
-
-    field_list = ", ".join(f"s.{f}" for f in display_fields)
     with engine.connect() as conn:
         rows = conn.execute(text(f"""
-            SELECT mv.*, {field_list}
-            FROM {view} mv
-            JOIN {source_table} s ON s.id = mv.id
-            ORDER BY mv.composite_score DESC
+            SELECT * FROM {view} ORDER BY composite_score DESC
         """)).mappings().fetchall()
     return [dict(r) for r in rows]
 
@@ -323,18 +298,62 @@ def fetch_trending() -> dict:
     return trending
 
 
-def load_cached_dict(key: str) -> dict:
-    """Load pre-computed dict from structural_cache. Returns {} if empty."""
-    try:
-        with engine.connect() as conn:
-            row = conn.execute(text(
-                "SELECT value FROM structural_cache WHERE key = :k"
-            ), {"k": key}).fetchone()
-        if row and row[0] and isinstance(row[0], dict):
-            return row[0]
-    except Exception:
-        pass
-    return {}
+def fetch_cve_enrichment() -> dict:
+    """Fetch all CVE enrichment in 4 simple queries. Same pattern as OS AI's
+    fetch_hn_posts / fetch_releases — one query per data type, no batching."""
+    result = {}
+    with engine.connect() as conn:
+        # Software links
+        rows = conn.execute(text("""
+            SELECT cs.cve_id, s.name, s.cpe_id
+            FROM cve_software cs
+            JOIN software s ON s.id = cs.software_id
+        """)).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["cve_id"], {}).setdefault("software", []).append(
+                {"name": r["name"], "cpe_id": r["cpe_id"]})
+        print(f"  CVE enrichment: {len(rows):,} software links")
+
+        # Vendor links
+        rows = conn.execute(text("""
+            SELECT cv.cve_id, v.name, v.slug
+            FROM cve_vendors cv
+            JOIN vendors v ON v.id = cv.vendor_id
+        """)).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["cve_id"], {}).setdefault("vendors", []).append(
+                {"name": r["name"], "slug": r["slug"]})
+        print(f"  CVE enrichment: {len(rows):,} vendor links")
+
+        # Weakness links
+        rows = conn.execute(text("""
+            SELECT cw.cve_id, w.cwe_id, w.name
+            FROM cve_weaknesses cw
+            JOIN weaknesses w ON w.id = cw.weakness_id
+        """)).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["cve_id"], {}).setdefault("weaknesses", []).append(
+                {"cwe_id": r["cwe_id"], "name": r["name"]})
+        print(f"  CVE enrichment: {len(rows):,} weakness links")
+
+        # Kill chain: CWE → CAPEC → ATT&CK
+        rows = conn.execute(text("""
+            SELECT DISTINCT cw.cve_id, w.cwe_id, ap.capec_id,
+                   t.technique_id, t.name AS technique_name
+            FROM cve_weaknesses cw
+            JOIN weaknesses w ON w.id = cw.weakness_id
+            JOIN weakness_patterns wp ON wp.weakness_id = w.id
+            JOIN attack_patterns ap ON ap.id = wp.pattern_id
+            JOIN pattern_techniques pt ON pt.pattern_id = ap.id
+            JOIN techniques t ON t.id = pt.technique_id
+        """)).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["cve_id"], {}).setdefault("kill_chain", []).append(
+                {"cwe_id": r["cwe_id"], "capec_id": r["capec_id"],
+                 "technique_id": r["technique_id"], "technique_name": r["technique_name"]})
+        print(f"  CVE enrichment: {len(rows):,} kill chain paths")
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -460,10 +479,8 @@ def main():
         else:
             lookups[entity_type] = {e.get(slug_field) for e in all_entities[entity_type]}
 
-    # Load precomputed CVE enrichment from structural_cache
-    raw_enrichment = load_cached_dict("cve_enrichment")
-    cve_enrichment = {int(k): v for k, v in raw_enrichment.items()} if raw_enrichment else {}
-    print(f"  CVE enrichment: {len(cve_enrichment):,} CVEs from cache")
+    # Fetch CVE enrichment: 4 simple queries, same pattern as OS AI
+    cve_enrichment = fetch_cve_enrichment()
 
     # -----------------------------------------------------------------------
     # Phase 2: Render pages
