@@ -19,10 +19,10 @@
         {% endif %}
 
         <div class="grid grid-cols-2 gap-3 mb-6">
-            {% if entity.severity %}
+            {% if entity.raw_severity %}
             <div class="bg-white rounded border border-gray-200 p-3">
                 <div class="text-xs text-gray-500">Severity</div>
-                <div class="text-sm font-bold">{{ entity.severity }}</div>
+                <div class="text-sm font-bold">{{ entity.raw_severity }}</div>
             </div>
             {% endif %}
             {% if entity.likelihood %}

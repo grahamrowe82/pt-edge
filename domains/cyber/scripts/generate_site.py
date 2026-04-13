@@ -35,6 +35,11 @@ BATCH_SIZE = 5000
 ENTITY_CONFIG = {
     "cve": {
         "view": "mv_cve_scores",
+        "source_table": "cves",
+        "display_fields": [
+            "description", "cvss_base_score", "epss_score", "is_kev",
+            "attack_vector", "published_date",
+        ],
         "id_column": "cve_id",
         "name_column": "cve_id",
         "url_prefix": "/cve",
@@ -86,6 +91,8 @@ ENTITY_CONFIG = {
     },
     "weakness": {
         "view": "mv_weakness_scores",
+        "source_table": "weaknesses",
+        "display_fields": ["description", "abstraction"],
         "id_column": "cwe_id",
         "name_column": "name",
         "url_prefix": "/weakness",
@@ -103,6 +110,8 @@ ENTITY_CONFIG = {
     },
     "technique": {
         "view": "mv_technique_scores",
+        "source_table": "techniques",
+        "display_fields": ["description", "platforms", "detection"],
         "id_column": "technique_id",
         "name_column": "name",
         "url_prefix": "/technique",
@@ -120,6 +129,8 @@ ENTITY_CONFIG = {
     },
     "pattern": {
         "view": "mv_pattern_scores",
+        "source_table": "attack_patterns",
+        "display_fields": ["description", "likelihood", "severity AS raw_severity"],
         "id_column": "capec_id",
         "name_column": "name",
         "url_prefix": "/attack-pattern",
@@ -236,12 +247,25 @@ def slugify(name):
 # ---------------------------------------------------------------------------
 
 def fetch_entities(config: dict) -> list[dict]:
-    """Fetch scored entities from a materialized view."""
+    """Fetch scored entities from MV, joined with display fields from source table."""
     view = config["view"]
+    source_table = config.get("source_table")
+    display_fields = config.get("display_fields", [])
+
+    if not source_table or not display_fields:
+        with engine.connect() as conn:
+            rows = conn.execute(text(f"""
+                SELECT * FROM {view} ORDER BY composite_score DESC
+            """)).mappings().fetchall()
+        return [dict(r) for r in rows]
+
+    field_list = ", ".join(f"s.{f}" for f in display_fields)
     with engine.connect() as conn:
         rows = conn.execute(text(f"""
-            SELECT * FROM {view}
-            ORDER BY composite_score DESC
+            SELECT mv.*, {field_list}
+            FROM {view} mv
+            JOIN {source_table} s ON s.id = mv.id
+            ORDER BY mv.composite_score DESC
         """)).mappings().fetchall()
     return [dict(r) for r in rows]
 
