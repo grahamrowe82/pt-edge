@@ -323,66 +323,18 @@ def fetch_trending() -> dict:
     return trending
 
 
-def fetch_cve_enrichment(cve_ids: list[int]) -> dict:
-    """Batch fetch CVE enrichment: software, vendors, weaknesses, kill chain."""
-    if not cve_ids:
-        return {}
-
-    result = {}
-    with engine.connect() as conn:
-        # Software links
-        for start in range(0, len(cve_ids), BATCH_SIZE):
-            batch = cve_ids[start:start + BATCH_SIZE]
-            rows = conn.execute(text("""
-                SELECT cs.cve_id, s.name, s.cpe_id
-                FROM cve_software cs
-                JOIN software s ON s.id = cs.software_id
-                WHERE cs.cve_id = ANY(:ids)
-            """), {"ids": batch}).mappings().fetchall()
-            for r in rows:
-                result.setdefault(r["cve_id"], {}).setdefault("software", []).append(dict(r))
-
-        # Vendor links
-        for start in range(0, len(cve_ids), BATCH_SIZE):
-            batch = cve_ids[start:start + BATCH_SIZE]
-            rows = conn.execute(text("""
-                SELECT cv.cve_id, v.name, v.slug
-                FROM cve_vendors cv
-                JOIN vendors v ON v.id = cv.vendor_id
-                WHERE cv.cve_id = ANY(:ids)
-            """), {"ids": batch}).mappings().fetchall()
-            for r in rows:
-                result.setdefault(r["cve_id"], {}).setdefault("vendors", []).append(dict(r))
-
-        # Weakness links (kill chain step 1)
-        for start in range(0, len(cve_ids), BATCH_SIZE):
-            batch = cve_ids[start:start + BATCH_SIZE]
-            rows = conn.execute(text("""
-                SELECT cw.cve_id, w.cwe_id, w.name
-                FROM cve_weaknesses cw
-                JOIN weaknesses w ON w.id = cw.weakness_id
-                WHERE cw.cve_id = ANY(:ids)
-            """), {"ids": batch}).mappings().fetchall()
-            for r in rows:
-                result.setdefault(r["cve_id"], {}).setdefault("weaknesses", []).append(dict(r))
-
-        # Kill chain: CWE → CAPEC → ATT&CK
-        for start in range(0, len(cve_ids), BATCH_SIZE):
-            batch = cve_ids[start:start + BATCH_SIZE]
-            rows = conn.execute(text("""
-                SELECT DISTINCT cw.cve_id, w.cwe_id, ap.capec_id, t.technique_id, t.name AS technique_name
-                FROM cve_weaknesses cw
-                JOIN weaknesses w ON w.id = cw.weakness_id
-                JOIN weakness_patterns wp ON wp.weakness_id = w.id
-                JOIN attack_patterns ap ON ap.id = wp.pattern_id
-                JOIN pattern_techniques pt ON pt.pattern_id = ap.id
-                JOIN techniques t ON t.id = pt.technique_id
-                WHERE cw.cve_id = ANY(:ids)
-            """), {"ids": batch}).mappings().fetchall()
-            for r in rows:
-                result.setdefault(r["cve_id"], {}).setdefault("kill_chain", []).append(dict(r))
-
-    return result
+def load_cached_dict(key: str) -> dict:
+    """Load pre-computed dict from structural_cache. Returns {} if empty."""
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(text(
+                "SELECT value FROM structural_cache WHERE key = :k"
+            ), {"k": key}).fetchone()
+        if row and row[0] and isinstance(row[0], dict):
+            return row[0]
+    except Exception:
+        pass
+    return {}
 
 
 # ---------------------------------------------------------------------------
@@ -508,12 +460,10 @@ def main():
         else:
             lookups[entity_type] = {e.get(slug_field) for e in all_entities[entity_type]}
 
-    # Batch fetch CVE enrichment (software, vendors, weaknesses, kill chain)
-    cve_ids = [e["id"] for e in all_entities.get("cve", [])]
-    cve_enrichment = {}
-    if cve_ids:
-        print(f"  Fetching CVE enrichment for {len(cve_ids):,} CVEs...")
-        cve_enrichment = fetch_cve_enrichment(cve_ids)
+    # Load precomputed CVE enrichment from structural_cache
+    raw_enrichment = load_cached_dict("cve_enrichment")
+    cve_enrichment = {int(k): v for k, v in raw_enrichment.items()} if raw_enrichment else {}
+    print(f"  CVE enrichment: {len(cve_enrichment):,} CVEs from cache")
 
     # -----------------------------------------------------------------------
     # Phase 2: Render pages

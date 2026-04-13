@@ -122,8 +122,85 @@ def _compute_kill_chain_pages() -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def _compute_cve_enrichment() -> dict:
+    """Pre-compute per-CVE enrichment for site generation.
+
+    Builds a dict keyed by cve.id containing software, vendors, weaknesses,
+    and kill chain data. Only includes CVEs in mv_cve_scores (those with pages).
+    """
+    result = {}
+    with engine.connect() as conn:
+        # Software links (top 20 per CVE by name)
+        rows = conn.execute(text("""
+            WITH ranked AS (
+                SELECT cs.cve_id, s.name, s.cpe_id,
+                       ROW_NUMBER() OVER (PARTITION BY cs.cve_id ORDER BY s.name) AS rn
+                FROM cve_software cs
+                JOIN software s ON s.id = cs.software_id
+                WHERE cs.cve_id IN (SELECT id FROM mv_cve_scores)
+            )
+            SELECT cve_id, name, cpe_id FROM ranked WHERE rn <= 20
+        """)).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["cve_id"], {}).setdefault("software", []).append(
+                {"name": r["name"], "cpe_id": r["cpe_id"]})
+        logger.info(f"  CVE enrichment: {len(rows):,} software links")
+
+        # Vendor links
+        rows = conn.execute(text("""
+            SELECT cv.cve_id, v.name, v.slug
+            FROM cve_vendors cv
+            JOIN vendors v ON v.id = cv.vendor_id
+            WHERE cv.cve_id IN (SELECT id FROM mv_cve_scores)
+        """)).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["cve_id"], {}).setdefault("vendors", []).append(
+                {"name": r["name"], "slug": r["slug"]})
+        logger.info(f"  CVE enrichment: {len(rows):,} vendor links")
+
+        # Weakness links
+        rows = conn.execute(text("""
+            SELECT cw.cve_id, w.cwe_id, w.name
+            FROM cve_weaknesses cw
+            JOIN weaknesses w ON w.id = cw.weakness_id
+            WHERE cw.cve_id IN (SELECT id FROM mv_cve_scores)
+        """)).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["cve_id"], {}).setdefault("weaknesses", []).append(
+                {"cwe_id": r["cwe_id"], "name": r["name"]})
+        logger.info(f"  CVE enrichment: {len(rows):,} weakness links")
+
+        # Kill chain: CWE → CAPEC → ATT&CK (top 5 per CVE)
+        rows = conn.execute(text("""
+            WITH chains AS (
+                SELECT DISTINCT cw.cve_id, w.cwe_id, ap.capec_id,
+                       t.technique_id, t.name AS technique_name
+                FROM cve_weaknesses cw
+                JOIN weaknesses w ON w.id = cw.weakness_id
+                JOIN weakness_patterns wp ON wp.weakness_id = w.id
+                JOIN attack_patterns ap ON ap.id = wp.pattern_id
+                JOIN pattern_techniques pt ON pt.pattern_id = ap.id
+                JOIN techniques t ON t.id = pt.technique_id
+                WHERE cw.cve_id IN (SELECT id FROM mv_cve_scores)
+            ),
+            ranked AS (
+                SELECT *, ROW_NUMBER() OVER (PARTITION BY cve_id ORDER BY technique_id) AS rn
+                FROM chains
+            )
+            SELECT cve_id, cwe_id, capec_id, technique_id, technique_name
+            FROM ranked WHERE rn <= 5
+        """)).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["cve_id"], {}).setdefault("kill_chain", []).append(
+                {"cwe_id": r["cwe_id"], "capec_id": r["capec_id"],
+                 "technique_id": r["technique_id"], "technique_name": r["technique_name"]})
+        logger.info(f"  CVE enrichment: {len(rows):,} kill chain paths")
+
+    return result
+
+
 async def compute_all_pairs() -> dict:
-    """Pre-compute all relationship pairs and cache as JSON."""
+    """Pre-compute all relationship pairs and CVE enrichment, cache as JSON."""
     started = datetime.now(timezone.utc)
 
     try:
@@ -139,13 +216,18 @@ async def compute_all_pairs() -> dict:
         logger.info(f"Computed {len(chains):,} kill chain pages")
         _cache_json("kill_chain_pages", chains)
 
-        total = len(cve_sw) + len(vendor_weak) + len(chains)
+        enrichment = _compute_cve_enrichment()
+        logger.info(f"Computed CVE enrichment for {len(enrichment):,} CVEs")
+        _cache_json("cve_enrichment", enrichment)
+
+        total = len(cve_sw) + len(vendor_weak) + len(chains) + len(enrichment)
         _log_sync(started, total, "success")
 
         return {
             "cve_software_pairs": len(cve_sw),
             "vendor_weakness_pairs": len(vendor_weak),
             "kill_chain_pages": len(chains),
+            "cve_enrichment": len(enrichment),
             "total": total,
         }
 

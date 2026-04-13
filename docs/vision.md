@@ -66,3 +66,4 @@ An agent that lands on a PT-Edge page gets a structured answer with numbers, con
 - [strategy/master-plan.md](strategy/master-plan.md) — The thesis: agents are the primary discovery mechanism
 - [roadmap.md](roadmap.md) — What's built, what's next, the content flywheel
 - [commercial-plan.md](commercial-plan.md) — The 8-step user journey and pricing model
+- [edge-playbook.md](edge-playbook.md) — Production-tested patterns for building new *-edge domains

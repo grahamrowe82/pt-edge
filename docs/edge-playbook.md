@@ -680,6 +680,22 @@ Every project page includes:
 
 **Two audiences drive page design**: AI agents need front-loaded answers, specific numbers, and freshness signals in prose. Humans need original analysis, dense internal linking (10-15 links per page), and structured data for rich snippets.
 
+### The Precomputation Rule
+
+**Never compute data at site generation time.** The site generator runs inside Render's deploy window (~5 minutes before port detection timeout). Every query it runs delays uvicorn startup. With 200K+ entities, even modest per-entity work is fatal.
+
+Two data sources at build time, both pre-computed:
+
+1. **Entity data** (scores + display fields): Materialized views joined to source tables. Configure `display_fields` in ENTITY_CONFIG so `fetch_entities()` adds them via a single JOIN. One query per entity type.
+
+2. **Relationship/enrichment data** (which entities link to which): The `structural_cache` table, populated by the `compute_pairs` worker task. The site generator reads via `load_cached(key)`. One read per cache key.
+
+**The test**: If `generate_site.py` contains a loop that runs a query per entity, or batch queries that scale with entity count, it's wrong. Move that computation to a worker task that writes to `structural_cache`.
+
+**What went wrong on CyberEdge**: `fetch_cve_enrichment()` ran 196 batch queries for 242K CVEs at deploy time to fetch software/vendor/weakness links. Render killed the process before uvicorn started. The fix: precompute the same data in the `compute_pairs` worker task and read from `structural_cache` at build time.
+
+**The OS AI site never hit this** because its MVs are rich — they include all fields the templates need (description, ai_summary, stars, downloads, quality scores). No enrichment queries at build time.
+
 ### Structured Data: JSON-LD SoftwareApplication
 
 ```json
