@@ -559,6 +559,52 @@ def fetch_technique_enrichment() -> dict:
     return result
 
 
+def fetch_vendor_enrichment() -> dict:
+    """Fetch product stats + top products for rendered vendor pages."""
+    result = {}
+    with engine.connect() as conn:
+        # Aggregate stats per vendor from mv_product_scores
+        rows = conn.execute(text("""
+            SELECT p.vendor_id,
+                COUNT(*) AS product_count,
+                SUM(p.cve_count) AS total_cves,
+                SUM(p.high_epss_count) AS high_epss_cves,
+                SUM(p.kev_count) AS kev_cves,
+                SUM(p.exploit_count) AS exploit_cves,
+                ROUND(AVG(p.composite_score)::numeric, 1) AS avg_product_score
+            FROM mv_product_scores p
+            WHERE p.vendor_id IN (
+                SELECT id FROM mv_vendor_scores WHERE composite_score >= :min_score
+            )
+            GROUP BY p.vendor_id
+        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        for r in rows:
+            result[r["vendor_id"]] = {"stats": dict(r)}
+        print(f"  Vendor enrichment: {len(rows):,} vendor stats")
+
+        # Top products per vendor by composite score
+        rows = conn.execute(text("""
+            WITH ranked AS (
+                SELECT p.vendor_id, p.id, p.display_name, p.composite_score,
+                    p.quality_tier, p.cve_count, p.kev_count,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY p.vendor_id
+                        ORDER BY p.composite_score DESC
+                    ) AS rn
+                FROM mv_product_scores p
+                WHERE p.vendor_id IN (
+                    SELECT id FROM mv_vendor_scores WHERE composite_score >= :min_score
+                )
+            )
+            SELECT * FROM ranked WHERE rn <= 10
+        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["vendor_id"], {}).setdefault("top_products", []).append(dict(r))
+        print(f"  Vendor enrichment: {len(rows):,} top product links")
+
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Page writing
 # ---------------------------------------------------------------------------
@@ -693,6 +739,9 @@ def main():
     # Fetch technique enrichment: data sources + top CVEs
     technique_enrichment = fetch_technique_enrichment()
 
+    # Fetch vendor enrichment: product stats + top products
+    vendor_enrichment = fetch_vendor_enrichment()
+
     # -----------------------------------------------------------------------
     # Phase 2: Render pages
     # -----------------------------------------------------------------------
@@ -803,6 +852,12 @@ def main():
                 tenr = technique_enrichment.get(entity["id"], {})
                 ctx["technique_extra"] = tenr
                 ctx["top_cves"] = tenr.get("top_cves", [])
+
+            # Vendor-specific enrichment
+            if entity_type == "vendor":
+                venr = vendor_enrichment.get(entity["id"], {})
+                ctx["vendor_stats"] = venr.get("stats", {})
+                ctx["top_products"] = venr.get("top_products", [])
 
             html = tpl_detail.render(**ctx)
             write_page(out_dir, page_path, html)
