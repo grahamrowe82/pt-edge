@@ -14,38 +14,159 @@
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
     <!-- Main content -->
     <div class="lg:col-span-2">
-        <h1 class="text-2xl font-bold mb-2">{{ entity.cve_id }}</h1>
+        <div class="flex items-start justify-between mb-2">
+            <h1 class="text-2xl font-bold">{{ entity.cve_id }}</h1>
+            <span class="inline-block px-3 py-1 rounded text-sm font-medium border {{ tier_classes(entity.quality_tier) }}">{{ entity.quality_tier }}</span>
+        </div>
+
+        <div class="text-sm text-gray-500 mb-4">
+            {% if entity.published_date %}Published {{ entity.published_date.strftime('%Y-%m-%d') }}{% endif %}
+        </div>
+
         {% if entity.description %}
-        <p class="text-gray-600 mb-4">{{ entity.description[:500] }}</p>
+        <p class="text-gray-700 mb-6 leading-relaxed">{{ entity.description }}</p>
         {% endif %}
 
-        <!-- Metadata -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-            {% if entity.cvss_base_score %}
-            <div class="bg-white rounded border border-gray-200 p-3">
-                <div class="text-xs text-gray-500">CVSS</div>
-                <div class="text-lg font-bold">{{ entity.cvss_base_score }}/10</div>
+        <!-- DO I NEED TO ACT? -->
+        <div class="bg-white rounded-lg border-2 border-indigo-200 p-5 mb-6">
+            <h2 class="text-lg font-bold text-indigo-900 mb-4">Do I need to act?</h2>
+
+            <div class="space-y-3">
+                <!-- EPSS -->
+                {% if entity.epss_score is not none %}
+                <div class="flex items-start space-x-3">
+                    {% if entity.epss_score > 0.1 %}
+                    <span class="flex-shrink-0 mt-0.5 w-5 h-5 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold">!</span>
+                    <div>
+                        <div class="font-medium text-red-800">{{ "%.1f"|format(entity.epss_score * 100) }}% chance of exploitation in next 30 days</div>
+                        <div class="text-sm text-gray-500">EPSS score — higher than {{ "%.0f"|format((1 - entity.epss_score) * 100) }}% of all CVEs</div>
+                    </div>
+                    {% elif entity.epss_score > 0.01 %}
+                    <span class="flex-shrink-0 mt-0.5 w-5 h-5 rounded-full bg-yellow-100 text-yellow-700 flex items-center justify-center text-xs font-bold">~</span>
+                    <div>
+                        <div class="font-medium text-yellow-800">{{ "%.1f"|format(entity.epss_score * 100) }}% chance of exploitation in next 30 days</div>
+                        <div class="text-sm text-gray-500">EPSS score — moderate exploit probability</div>
+                    </div>
+                    {% else %}
+                    <span class="flex-shrink-0 mt-0.5 w-5 h-5 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xs">-</span>
+                    <div>
+                        <div class="font-medium text-gray-700">{{ "%.2f"|format(entity.epss_score * 100) }}% chance of exploitation</div>
+                        <div class="text-sm text-gray-500">EPSS score — low exploit probability</div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- KEV -->
+                <div class="flex items-start space-x-3">
+                    {% if entity.is_kev %}
+                    <span class="flex-shrink-0 mt-0.5 w-5 h-5 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold">!</span>
+                    <div>
+                        <div class="font-medium text-red-800">CISA KEV: actively exploited in the wild</div>
+                        <div class="text-sm text-gray-500">On the Known Exploited Vulnerabilities catalog — federal agencies must patch</div>
+                    </div>
+                    {% else %}
+                    <span class="flex-shrink-0 mt-0.5 w-5 h-5 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xs">-</span>
+                    <div>
+                        <div class="font-medium text-gray-700">Not on CISA KEV list</div>
+                        <div class="text-sm text-gray-500">No confirmed active exploitation reported to CISA</div>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- Exploits -->
+                {% if exploits %}
+                <div class="flex items-start space-x-3">
+                    <span class="flex-shrink-0 mt-0.5 w-5 h-5 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-bold">!</span>
+                    <div>
+                        <div class="font-medium text-red-800">{{ exploits|length }} public exploit{{ 's' if exploits|length > 1 else '' }} available</div>
+                        <div class="text-sm text-gray-500">
+                            {% for exp in exploits[:3] %}
+                            <a href="{{ exp.source_url }}" class="text-indigo-600 hover:underline" rel="nofollow noopener" target="_blank">{{ exp.exploit_db_id }}</a>{{ ', ' if not loop.last else '' }}
+                            {% endfor %}
+                            {% if exploits|length > 3 %} and {{ exploits|length - 3 }} more{% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Fix available -->
+                {% if cve_extra.has_fix %}
+                <div class="flex items-start space-x-3">
+                    <span class="flex-shrink-0 mt-0.5 w-5 h-5 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xs font-bold">+</span>
+                    <div>
+                        <div class="font-medium text-green-800">Fix available</div>
+                        {% if cve_extra.fix_versions %}
+                        <div class="text-sm text-gray-500">Upgrade to: {{ cve_extra.fix_versions|join(', ') }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% else %}
+                <div class="flex items-start space-x-3">
+                    <span class="flex-shrink-0 mt-0.5 w-5 h-5 rounded-full bg-yellow-100 text-yellow-700 flex items-center justify-center text-xs">?</span>
+                    <div>
+                        <div class="font-medium text-gray-700">No confirmed fix</div>
+                        <div class="text-sm text-gray-500">Check vendor advisories below for mitigation guidance</div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- CVSS -->
+                {% if entity.cvss_base_score %}
+                <div class="flex items-start space-x-3">
+                    <span class="flex-shrink-0 mt-0.5 w-5 h-5 rounded-full {{ 'bg-red-100 text-red-600' if entity.cvss_base_score >= 9.0 else 'bg-orange-100 text-orange-600' if entity.cvss_base_score >= 7.0 else 'bg-yellow-100 text-yellow-700' if entity.cvss_base_score >= 4.0 else 'bg-green-100 text-green-600' }} flex items-center justify-center text-xs font-bold">{{ entity.cvss_base_score|int }}</span>
+                    <div>
+                        <div class="font-medium">CVSS {{ entity.cvss_base_score }}/10
+                            <span class="text-sm font-normal text-gray-500">
+                                {{ 'Critical' if entity.cvss_base_score >= 9.0 else 'High' if entity.cvss_base_score >= 7.0 else 'Medium' if entity.cvss_base_score >= 4.0 else 'Low' }}
+                            </span>
+                        </div>
+                        <div class="text-sm text-gray-500">
+                            {% if entity.attack_vector %}{{ entity.attack_vector }}{% endif %}
+                            {% if cve_extra.attack_complexity %} / {{ cve_extra.attack_complexity }} complexity{% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
             </div>
-            {% endif %}
-            {% if entity.epss_score is not none %}
-            <div class="bg-white rounded border border-gray-200 p-3">
-                <div class="text-xs text-gray-500">EPSS</div>
-                <div class="text-lg font-bold">{{ "%.1f"|format(entity.epss_score * 100) }}%</div>
-            </div>
-            {% endif %}
-            {% if entity.is_kev %}
-            <div class="bg-red-50 rounded border border-red-200 p-3">
-                <div class="text-xs text-red-600">CISA KEV</div>
-                <div class="text-sm font-bold text-red-700">Known Exploited</div>
-            </div>
-            {% endif %}
-            {% if entity.attack_vector %}
-            <div class="bg-white rounded border border-gray-200 p-3">
-                <div class="text-xs text-gray-500">Attack Vector</div>
-                <div class="text-sm font-bold">{{ entity.attack_vector }}</div>
-            </div>
-            {% endif %}
         </div>
+
+        <!-- Affected software -->
+        {% if software %}
+        <div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <h2 class="text-lg font-semibold mb-3">Affected Products ({{ software|length }})</h2>
+            <div class="space-y-1 text-sm">
+                {% for sw in software %}
+                <div>
+                    {% set sw_product_id = sw.get('vendor_key', '') ~ '/' ~ sw.get('product_key', '') %}
+                    {% if sw_product_id in lookups.get('product', []) %}
+                    <a href="/product/{{ sw_product_id }}/" class="text-indigo-600 hover:underline">{{ sw.name }}</a>
+                    {% elif slugify(sw.name) in lookups.get('software', []) %}
+                    <a href="/software/{{ slugify(sw.name) }}/" class="text-indigo-600 hover:underline">{{ sw.name }}</a>
+                    {% else %}
+                    {{ sw.name }}
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Affected vendors -->
+        {% if vendors %}
+        <div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <h2 class="text-lg font-semibold mb-3">Affected Vendors</h2>
+            <div class="flex flex-wrap gap-2 text-sm">
+                {% for v in vendors %}
+                {% if v.slug in lookups.get('vendor', []) %}
+                <a href="/vendor/{{ v.slug }}/" class="px-2 py-1 rounded bg-gray-100 text-indigo-600 hover:bg-indigo-50">{{ v.name }}</a>
+                {% else %}
+                <span class="px-2 py-1 rounded bg-gray-100">{{ v.name }}</span>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Kill chain -->
         {% if kill_chain %}
@@ -76,36 +197,22 @@
         </div>
         {% endif %}
 
-        <!-- Affected software -->
-        {% if software %}
+        <!-- References -->
+        {% if cve_extra.references %}
         <div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-            <h2 class="text-lg font-semibold mb-3">Affected Software ({{ software|length }})</h2>
-            <div class="space-y-1 text-sm">
-                {% for sw in software %}
-                <div>
-                    {% if slugify(sw.name) in lookups.get('software', []) %}
-                    <a href="/software/{{ slugify(sw.name) }}/" class="text-indigo-600 hover:underline">{{ sw.name }}</a>
-                    {% else %}
-                    {{ sw.name }}
+            <h2 class="text-lg font-semibold mb-3">References ({{ cve_extra.references|length }})</h2>
+            <div class="space-y-2 text-sm">
+                {% for ref in cve_extra.references[:20] %}
+                <div class="flex items-start space-x-2">
+                    {% if ref.tags %}
+                    <span class="flex-shrink-0 px-1.5 py-0.5 rounded text-xs bg-gray-100 text-gray-600">{{ ref.tags[0] if ref.tags else '' }}</span>
                     {% endif %}
+                    <a href="{{ ref.url }}" class="text-indigo-600 hover:underline break-all" rel="nofollow noopener" target="_blank">{{ ref.url[:80] }}{{ '...' if ref.url|length > 80 else '' }}</a>
                 </div>
                 {% endfor %}
-            </div>
-        </div>
-        {% endif %}
-
-        <!-- Affected vendors -->
-        {% if vendors %}
-        <div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-            <h2 class="text-lg font-semibold mb-3">Affected Vendors</h2>
-            <div class="flex flex-wrap gap-2 text-sm">
-                {% for v in vendors %}
-                {% if v.slug in lookups.get('vendor', []) %}
-                <a href="/vendor/{{ v.slug }}/" class="px-2 py-1 rounded bg-gray-100 text-indigo-600 hover:bg-indigo-50">{{ v.name }}</a>
-                {% else %}
-                <span class="px-2 py-1 rounded bg-gray-100">{{ v.name }}</span>
+                {% if cve_extra.references|length > 20 %}
+                <div class="text-gray-500 text-xs">and {{ cve_extra.references|length - 20 }} more references</div>
                 {% endif %}
-                {% endfor %}
             </div>
         </div>
         {% endif %}

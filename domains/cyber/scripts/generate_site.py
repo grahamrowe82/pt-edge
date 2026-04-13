@@ -1,6 +1,6 @@
 """Static site generator for CyberEdge.
 
-Generates ~300K+ static HTML pages from pre-computed materialized views.
+Generates static HTML pages from pre-computed materialized views.
 All expensive computation happens in the worker (view refresh, scoring,
 embeddings, categorization). This script only queries views and renders
 Jinja2 templates. Must complete in <5 minutes on Render.
@@ -43,6 +43,7 @@ ENTITY_CONFIG = {
         "template": "cve_detail.html",
         "label": "CVE",
         "label_plural": "CVEs",
+        "summary_key": "cves",
         "description": "Common Vulnerabilities and Exposures scored on severity, exploitability, exposure, and patch availability.",
         "dimensions": [
             ("severity", "Severity"),
@@ -51,21 +52,22 @@ ENTITY_CONFIG = {
             ("patch_availability", "Patch Availability"),
         ],
     },
-    "software": {
-        "view": "mv_software_scores",
-        "id_column": "cpe_id",
-        "name_column": "name",
-        "url_prefix": "/software",
-        "slug_field": "name",
-        "template": "software_detail.html",
-        "label": "Software",
-        "label_plural": "Software Products",
-        "description": "Software products scored by aggregate vulnerability risk across their CVE portfolio.",
+    "product": {
+        "view": "mv_product_scores",
+        "id_column": "id",
+        "name_column": "display_name",
+        "url_prefix": "/product",
+        "slug_field": "id",
+        "template": "product_detail.html",
+        "label": "Product",
+        "label_plural": "Products",
+        "summary_key": "products",
+        "description": "Software products scored by proportion of dangerous CVEs — active threats, exploit availability, severity, and recency.",
         "dimensions": [
-            ("severity", "Severity"),
-            ("exploitability", "Exploitability"),
-            ("exposure", "Exposure"),
-            ("patch_availability", "Patch Availability"),
+            ("active_threat", "Active Threat"),
+            ("exploit_availability", "Exploit Availability"),
+            ("severity_profile", "Severity Profile"),
+            ("recency", "Recency"),
         ],
     },
     "vendor": {
@@ -77,6 +79,7 @@ ENTITY_CONFIG = {
         "template": "vendor_detail.html",
         "label": "Vendor",
         "label_plural": "Vendors",
+        "summary_key": "vendors",
         "description": "Vendors scored by aggregate vulnerability risk across their product portfolio.",
         "dimensions": [
             ("severity", "Severity"),
@@ -94,6 +97,7 @@ ENTITY_CONFIG = {
         "template": "weakness_detail.html",
         "label": "Weakness",
         "label_plural": "Weaknesses",
+        "summary_key": "weaknesses",
         "description": "CWE weakness types scored by the severity and exploitability of associated CVEs.",
         "dimensions": [
             ("severity", "Severity"),
@@ -111,6 +115,7 @@ ENTITY_CONFIG = {
         "template": "technique_detail.html",
         "label": "Technique",
         "label_plural": "ATT&CK Techniques",
+        "summary_key": "techniques",
         "description": "MITRE ATT&CK techniques scored by the CVEs reachable through the kill chain.",
         "dimensions": [
             ("severity", "Severity"),
@@ -128,6 +133,7 @@ ENTITY_CONFIG = {
         "template": "pattern_detail.html",
         "label": "Attack Pattern",
         "label_plural": "CAPEC Attack Patterns",
+        "summary_key": "attack_patterns",
         "description": "CAPEC attack patterns scored by the CVEs reachable through linked weaknesses.",
         "dimensions": [
             ("severity", "Severity"),
@@ -149,7 +155,7 @@ TIER_ORDER = ["critical-risk", "high-risk", "moderate-risk", "low-risk"]
 
 NAV_LINKS = [
     ("/cve/", "CVEs"),
-    ("/software/", "Software"),
+    ("/product/", "Products"),
     ("/vendor/", "Vendors"),
     ("/weakness/", "Weaknesses"),
     ("/technique/", "Techniques"),
@@ -266,7 +272,6 @@ def fetch_trending() -> dict:
     trending = {}
     snapshot_tables = {
         "cve": ("cve_score_snapshots", "cve_id", "cves", "cve_id"),
-        "software": ("software_score_snapshots", "software_id", "software", "name"),
         "vendor": ("vendor_score_snapshots", "vendor_id", "vendors", "name"),
         "weakness": ("weakness_score_snapshots", "weakness_id", "weaknesses", "cwe_id"),
         "technique": ("technique_score_snapshots", "technique_id", "techniques", "technique_id"),
@@ -302,6 +307,35 @@ def fetch_trending() -> dict:
     return trending
 
 
+def fetch_homepage_data() -> dict:
+    """Fetch data for homepage 'What's Happening Now' sections."""
+    data = {}
+    with engine.connect() as conn:
+        # Most dangerous unpatched CVEs (high EPSS, no fix)
+        rows = conn.execute(text("""
+            SELECT cve_id, cvss_base_score, epss_score, is_kev
+            FROM cves
+            WHERE NOT has_fix AND epss_score > 0.1
+            ORDER BY epss_score DESC
+            LIMIT 10
+        """)).mappings().fetchall()
+        data["unpatched_dangerous"] = [dict(r) for r in rows]
+        print(f"  Homepage: {len(data['unpatched_dangerous'])} unpatched high-EPSS CVEs")
+
+        # Recent KEV additions
+        rows = conn.execute(text("""
+            SELECT cve_id, cvss_base_score, epss_score
+            FROM cves
+            WHERE is_kev = true AND cvss_base_score IS NOT NULL
+            ORDER BY published_date DESC
+            LIMIT 10
+        """)).mappings().fetchall()
+        data["kev_recent"] = [dict(r) for r in rows]
+        print(f"  Homepage: {len(data['kev_recent'])} recent KEV CVEs")
+
+    return data
+
+
 def fetch_cve_enrichment(cve_ids: set[int]) -> dict:
     """Fetch CVE enrichment for rendered CVEs only. Filters by cve_ids to avoid
     loading millions of rows for CVEs that won't get detail pages."""
@@ -311,14 +345,17 @@ def fetch_cve_enrichment(cve_ids: set[int]) -> dict:
     with engine.connect() as conn:
         # Software links (only for rendered CVEs)
         rows = conn.execute(text("""
-            SELECT cs.cve_id, s.name, s.cpe_id
+            SELECT cs.cve_id, s.name, s.cpe_id,
+                   split_part(s.cpe_id, ':', 4) AS vendor_key,
+                   split_part(s.cpe_id, ':', 5) AS product_key
             FROM cve_software cs
             JOIN software s ON s.id = cs.software_id
             WHERE cs.cve_id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
         """), {"min": MIN_SCORE}).mappings().fetchall()
         for r in rows:
             result.setdefault(r["cve_id"], {}).setdefault("software", []).append(
-                {"name": r["name"], "cpe_id": r["cpe_id"]})
+                {"name": r["name"], "cpe_id": r["cpe_id"],
+                 "vendor_key": r["vendor_key"], "product_key": r["product_key"]})
         print(f"  CVE enrichment: {len(rows):,} software links")
 
         # Vendor links
@@ -362,6 +399,162 @@ def fetch_cve_enrichment(cve_ids: set[int]) -> dict:
                 {"cwe_id": r["cwe_id"], "capec_id": r["capec_id"],
                  "technique_id": r["technique_id"], "technique_name": r["technique_name"]})
         print(f"  CVE enrichment: {len(rows):,} kill chain paths")
+
+        # Exploits for rendered CVEs
+        rows = conn.execute(text("""
+            SELECT ce.cve_id, ce.exploit_db_id, ce.exploit_type, ce.verified, ce.source_url
+            FROM cve_exploits ce
+            WHERE ce.cve_id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
+        """), {"min": MIN_SCORE}).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["cve_id"], {}).setdefault("exploits", []).append(dict(r))
+        print(f"  CVE enrichment: {len(rows):,} exploit links")
+
+        # Extra CVE fields not in MV (has_fix, fix_versions, references, attack_complexity)
+        rows = conn.execute(text("""
+            SELECT c.id, c.has_fix, c.fix_versions, c."references", c.attack_complexity
+            FROM cves c
+            WHERE c.id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
+        """), {"min": MIN_SCORE}).mappings().fetchall()
+        for r in rows:
+            refs = r["references"]
+            if isinstance(refs, str):
+                import json
+                try:
+                    refs = json.loads(refs)
+                except Exception:
+                    refs = []
+            fix_vers = r["fix_versions"]
+            if isinstance(fix_vers, str):
+                import json
+                try:
+                    fix_vers = json.loads(fix_vers)
+                except Exception:
+                    fix_vers = []
+            result.setdefault(r["id"], {})["extra"] = {
+                "has_fix": r["has_fix"],
+                "fix_versions": fix_vers or [],
+                "references": refs or [],
+                "attack_complexity": r["attack_complexity"],
+            }
+        print(f"  CVE enrichment: {len(rows):,} extra field lookups")
+
+    return result
+
+
+def fetch_product_enrichment() -> dict:
+    """Fetch top CVEs per product for rendered product pages."""
+    result = {}
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            WITH ranked AS (
+                SELECT
+                    split_part(s.cpe_id, ':', 4) || '/' || split_part(s.cpe_id, ':', 5) AS product_id,
+                    c.cve_id, c.cvss_base_score, c.epss_score, c.is_kev, c.published_date,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY split_part(s.cpe_id, ':', 4), split_part(s.cpe_id, ':', 5)
+                        ORDER BY COALESCE(c.epss_score, 0) DESC
+                    ) AS rn
+                FROM software s
+                JOIN cve_software cs ON cs.software_id = s.id
+                JOIN cves c ON c.id = cs.cve_id
+                JOIN mv_product_scores p
+                    ON p.vendor_key = split_part(s.cpe_id, ':', 4)
+                    AND p.product_key = split_part(s.cpe_id, ':', 5)
+                WHERE c.cvss_base_score IS NOT NULL
+                  AND p.composite_score >= :min_score
+            )
+            SELECT * FROM ranked WHERE rn <= 20
+        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["product_id"], []).append(dict(r))
+    print(f"  Product enrichment: {len(rows):,} top CVE links across {len(result):,} products")
+    return result
+
+
+def fetch_weakness_enrichment() -> dict:
+    """Fetch JSONB data + top CVEs for rendered weakness pages."""
+    result = {}
+    with engine.connect() as conn:
+        # JSONB extra fields (common_consequences, detection_methods)
+        rows = conn.execute(text("""
+            SELECT w.id, w.common_consequences, w.detection_methods
+            FROM weaknesses w
+            JOIN mv_weakness_scores ws ON ws.id = w.id
+            WHERE ws.composite_score >= :min_score
+        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        for r in rows:
+            cons = r["common_consequences"] or []
+            det = r["detection_methods"] or []
+            result[r["id"]] = {
+                "consequences": cons if isinstance(cons, list) else [],
+                "detection_methods": det if isinstance(det, list) else [],
+            }
+        print(f"  Weakness enrichment: {len(rows):,} JSONB lookups")
+
+        # Top CVEs per weakness
+        rows = conn.execute(text("""
+            WITH ranked AS (
+                SELECT cw.weakness_id, c.cve_id, c.cvss_base_score, c.epss_score, c.is_kev,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY cw.weakness_id
+                        ORDER BY COALESCE(c.epss_score, 0) DESC
+                    ) AS rn
+                FROM cve_weaknesses cw
+                JOIN cves c ON c.id = cw.cve_id
+                WHERE c.cvss_base_score IS NOT NULL
+                  AND cw.weakness_id IN (
+                    SELECT id FROM mv_weakness_scores WHERE composite_score >= :min_score
+                  )
+            )
+            SELECT * FROM ranked WHERE rn <= 10
+        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["weakness_id"], {}).setdefault("top_cves", []).append(dict(r))
+        print(f"  Weakness enrichment: {len(rows):,} top CVE links")
+
+    return result
+
+
+def fetch_technique_enrichment() -> dict:
+    """Fetch extra fields + top CVEs for rendered technique pages."""
+    result = {}
+    with engine.connect() as conn:
+        # Data sources (ARRAY field not in MV)
+        rows = conn.execute(text("""
+            SELECT t.id, t.data_sources
+            FROM techniques t
+            JOIN mv_technique_scores ts ON ts.id = t.id
+            WHERE ts.composite_score >= :min_score
+        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        for r in rows:
+            result[r["id"]] = {
+                "data_sources": r["data_sources"] or [],
+            }
+        print(f"  Technique enrichment: {len(rows):,} data source lookups")
+
+        # Top CVEs per technique (through kill chain)
+        rows = conn.execute(text("""
+            WITH ranked AS (
+                SELECT pt.technique_id AS tech_id, c.cve_id, c.cvss_base_score, c.epss_score, c.is_kev,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY pt.technique_id
+                        ORDER BY COALESCE(c.epss_score, 0) DESC
+                    ) AS rn
+                FROM pattern_techniques pt
+                JOIN weakness_patterns wp ON wp.pattern_id = pt.pattern_id
+                JOIN cve_weaknesses cw ON cw.weakness_id = wp.weakness_id
+                JOIN cves c ON c.id = cw.cve_id
+                WHERE c.cvss_base_score IS NOT NULL
+                  AND pt.technique_id IN (
+                    SELECT id FROM mv_technique_scores WHERE composite_score >= :min_score
+                  )
+            )
+            SELECT * FROM ranked WHERE rn <= 10
+        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        for r in rows:
+            result.setdefault(r["tech_id"], {}).setdefault("top_cves", []).append(dict(r))
+        print(f"  Technique enrichment: {len(rows):,} top CVE links")
 
     return result
 
@@ -479,19 +672,26 @@ def main():
 
     entity_summary = fetch_entity_summary()
     trending = fetch_trending()
+    homepage_data = fetch_homepage_data()
 
     # Build lookup sets for dead-link prevention
     lookups = {}
     for entity_type, config in ENTITY_CONFIG.items():
         slug_field = config["slug_field"]
-        if entity_type == "software":
-            lookups[entity_type] = {slugify(e.get("name", "")) for e in all_entities[entity_type]}
-        else:
-            lookups[entity_type] = {e.get(slug_field) for e in all_entities[entity_type]}
+        lookups[entity_type] = {e.get(slug_field) for e in all_entities[entity_type]}
 
-    # Fetch CVE enrichment: 4 simple queries, same pattern as OS AI
+    # Fetch CVE enrichment: software, vendors, weaknesses, kill chain, exploits, extra fields
     cve_ids = {e["id"] for e in all_entities.get("cve", [])}
     cve_enrichment = fetch_cve_enrichment(cve_ids)
+
+    # Fetch product enrichment: top CVEs per product
+    product_enrichment = fetch_product_enrichment()
+
+    # Fetch weakness enrichment: JSONB data + top CVEs
+    weakness_enrichment = fetch_weakness_enrichment()
+
+    # Fetch technique enrichment: data sources + top CVEs
+    technique_enrichment = fetch_technique_enrichment()
 
     # -----------------------------------------------------------------------
     # Phase 2: Render pages
@@ -507,6 +707,7 @@ def main():
         top_entities=top_entities,
         entity_summary=entity_summary,
         entity_config=ENTITY_CONFIG,
+        homepage_data=homepage_data,
         total_entities=sum(len(v) for v in all_entities.values()),
         slugify=slugify,
     )
@@ -526,7 +727,7 @@ def main():
         slug_field = config["slug_field"]
 
         # Tier distribution for this entity type
-        tiers = entity_summary.get(entity_type + ("s" if entity_type != "software" else ""), {})
+        tiers = entity_summary.get(config.get("summary_key", entity_type + "s"), {})
 
         # Index pages (paginated)
         total_pages = max(1, math.ceil(len(entities) / PER_PAGE))
@@ -554,10 +755,7 @@ def main():
         # Detail pages
         detail_count = 0
         for entity in entities:
-            if entity_type == "software":
-                slug = slugify(entity.get("name", ""))
-            else:
-                slug = entity.get(slug_field, "")
+            slug = entity.get(slug_field, "")
             if not slug:
                 continue
 
@@ -587,6 +785,24 @@ def main():
                 ctx["vendors"] = enr.get("vendors", [])
                 ctx["weaknesses"] = enr.get("weaknesses", [])
                 ctx["kill_chain"] = enr.get("kill_chain", [])
+                ctx["exploits"] = enr.get("exploits", [])
+                ctx["cve_extra"] = enr.get("extra", {})
+
+            # Product-specific enrichment
+            if entity_type == "product":
+                ctx["top_cves"] = product_enrichment.get(entity["id"], [])
+
+            # Weakness-specific enrichment
+            if entity_type == "weakness":
+                wenr = weakness_enrichment.get(entity["id"], {})
+                ctx["weakness_extra"] = wenr
+                ctx["top_cves"] = wenr.get("top_cves", [])
+
+            # Technique-specific enrichment
+            if entity_type == "technique":
+                tenr = technique_enrichment.get(entity["id"], {})
+                ctx["technique_extra"] = tenr
+                ctx["top_cves"] = tenr.get("top_cves", [])
 
             html = tpl_detail.render(**ctx)
             write_page(out_dir, page_path, html)
