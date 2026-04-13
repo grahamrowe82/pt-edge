@@ -7,6 +7,7 @@ generator reads from cache — zero computation at build time.
 Runs weekly via the task queue (pairs change slowly).
 """
 
+import gc
 import json
 import logging
 from datetime import datetime, timezone
@@ -205,29 +206,41 @@ async def compute_all_pairs() -> dict:
 
     try:
         cve_sw = _compute_cve_software_pairs()
-        logger.info(f"Computed {len(cve_sw):,} CVE-software pairs")
+        n_sw = len(cve_sw)
+        logger.info(f"Computed {n_sw:,} CVE-software pairs")
         _cache_json("cve_software_pairs", cve_sw)
+        del cve_sw
+        gc.collect()
 
         vendor_weak = _compute_vendor_weakness_pairs()
-        logger.info(f"Computed {len(vendor_weak):,} vendor-weakness pairs")
+        n_vw = len(vendor_weak)
+        logger.info(f"Computed {n_vw:,} vendor-weakness pairs")
         _cache_json("vendor_weakness_pairs", vendor_weak)
+        del vendor_weak
+        gc.collect()
 
         chains = _compute_kill_chain_pages()
-        logger.info(f"Computed {len(chains):,} kill chain pages")
+        n_chains = len(chains)
+        logger.info(f"Computed {n_chains:,} kill chain pages")
         _cache_json("kill_chain_pages", chains)
+        del chains
+        gc.collect()
 
         enrichment = _compute_cve_enrichment()
-        logger.info(f"Computed CVE enrichment for {len(enrichment):,} CVEs")
+        n_enrich = len(enrichment)
+        logger.info(f"Computed CVE enrichment for {n_enrich:,} CVEs")
         _cache_json("cve_enrichment", enrichment)
+        del enrichment
+        gc.collect()
 
-        total = len(cve_sw) + len(vendor_weak) + len(chains) + len(enrichment)
+        total = n_sw + n_vw + n_chains + n_enrich
         _log_sync(started, total, "success")
 
         return {
-            "cve_software_pairs": len(cve_sw),
-            "vendor_weakness_pairs": len(vendor_weak),
-            "kill_chain_pages": len(chains),
-            "cve_enrichment": len(enrichment),
+            "cve_software_pairs": n_sw,
+            "vendor_weakness_pairs": n_vw,
+            "kill_chain_pages": n_chains,
+            "cve_enrichment": n_enrich,
             "total": total,
         }
 

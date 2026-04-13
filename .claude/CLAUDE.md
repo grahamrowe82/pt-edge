@@ -28,3 +28,7 @@ The MCP query tool is for end users. You are not an end user. You are the develo
 ## Site Generation
 
 Read `docs/edge-playbook.md` Chapter 9 before modifying any site generator. The core rule: **never compute data at build time**. All data must be precomputed into MVs or `structural_cache` by the worker. The site generator only reads.
+
+## Worker Memory
+
+Workers run forever and Python doesn't return freed memory to the OS. The core worker loop (`app/core/queue/worker.py`) runs `gc.collect()` + RSS check after every task. Heavy handlers must `del` large objects after committing results. See `docs/edge-playbook.md` Chapter 4 for the full pattern.

@@ -397,6 +397,22 @@ UPDATE tasks SET state = 'claimed' ...
 
 **Why this is easy to miss**: You add a new task type, set `resource_type=NULL` because it's compute-only, schedule it, and it sits in pending forever because no claim query matches it. The scheduler keeps logging "Scheduled compute_mv_refresh task" but nothing ever picks it up.
 
+### Worker Memory Discipline
+
+Workers run forever in a single Python process. Python's memory allocator does not return freed heap pages to the OS. Every task that allocates significant memory permanently increases RSS even after objects are garbage collected.
+
+**Three mandatory practices:**
+
+1. **GC + RSS check after every task.** The core worker loop (`app/core/queue/worker.py`) calls `gc.collect()` and checks RSS after each task completes. If RSS exceeds 75% of the container memory limit, the worker hard-restarts via `os.execv()`. This is not a workaround — it is the correct pattern for long-running Python processes that handle variable-size work.
+
+2. **Connection pool recycling.** SQLAlchemy engines must set `pool_recycle=1800` to force connection refresh every 30 minutes. Without this, psycopg2 statement caches accumulate per connection for the entire process lifetime.
+
+3. **Explicit cleanup in heavy handlers.** After caching or committing a large result, `del` the object and call `gc.collect()`. Don't rely on Python's generational GC to clean up 200MB dicts promptly.
+
+**What the memory graph should look like:** Sawtooth — RSS climbs during task execution, drops after GC, climbs again. NOT a staircase. If you see a staircase, a handler is holding references or GC isn't running between tasks.
+
+**What went wrong on CyberEdge:** No GC, no RSS checks, no pool recycling. The NVD bootstrap (344K CVEs) and compute_pairs (242K CVE enrichment dict) drove RSS to 2GB over 12 hours. The staircase was Python hoarding freed heap pages with no mechanism to release them.
+
 ---
 
 ## Chapter 5: Resource Budget System
