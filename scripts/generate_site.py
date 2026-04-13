@@ -924,6 +924,11 @@ def generate_robots(base_url, base_path, out_dir):
     write_file(os.path.join(out_dir, "robots.txt"), content)
 
 
+def generate_ads_txt(out_dir):
+    write_file(os.path.join(out_dir, "ads.txt"),
+               "google.com, pub-1637070870818032, DIRECT, f08c47fec0942fa0\n")
+
+
 def generate_portal(output_dir, base_url):
     """Generate the all-domains portal homepage."""
     template_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
@@ -1331,6 +1336,7 @@ def main():
     sitemap_path = os.path.join(out_dir, "sitemap.xml")
     generate_sitemap(base_url, generated_urls, out_dir)
     generate_robots(base_url, base_path, out_dir)
+    generate_ads_txt(out_dir)
 
     # Verify sitemap/page alignment
     mismatches = verify_sitemap(sitemap_path, out_dir, base_url, base_path)
