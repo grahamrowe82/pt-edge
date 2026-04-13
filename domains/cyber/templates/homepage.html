@@ -4,79 +4,146 @@
 {% block canonical_path %}/{% endblock %}
 
 {% block content %}
-<div class="text-center mb-12">
+<div class="text-center mb-10">
     <h1 class="text-4xl font-bold text-gray-900 mb-3">CyberEdge</h1>
-    <p class="text-lg text-gray-600 max-w-2xl mx-auto">Precomputed reasoning cache for cybersecurity decisions. Every CVE, software product, vendor, weakness, and attack technique — scored, cross-referenced, and served fast.</p>
+    <p class="text-lg text-gray-600 max-w-2xl mx-auto">Cybersecurity intelligence that answers real questions. Every CVE, product, vendor, weakness, and attack technique — scored by actual danger, not volume.</p>
 </div>
 
-<!-- Entity counts -->
-<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-12">
-    {% for et, config in entity_config.items() %}
-    <a href="{{ config.url_prefix }}/" class="bg-white rounded-lg border border-gray-200 p-4 text-center hover:border-indigo-300 transition">
-        <div class="text-2xl font-bold text-indigo-600">{{ human_number(top_entities.get(et, [])|length * 100) }}+</div>
-        <div class="text-sm text-gray-500">{{ config.label_plural }}</div>
-    </a>
-    {% endfor %}
-</div>
+<!-- WHAT'S HAPPENING NOW -->
+{% if homepage_data %}
+<div class="mb-12">
+    <h2 class="text-xl font-bold mb-6">What's Happening Now</h2>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-<!-- Top entities per type -->
-{% for et in ["cve", "software", "vendor"] %}
-{% set config = entity_config[et] %}
-{% set entities = top_entities.get(et, []) %}
-{% if entities %}
-<div class="mb-10">
-    <div class="flex items-center justify-between mb-4">
-        <h2 class="text-xl font-semibold">Top {{ config.label_plural }}</h2>
-        <a href="{{ config.url_prefix }}/" class="text-sm text-indigo-600 hover:underline">View all</a>
-    </div>
-    <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <table class="w-full text-sm">
-            <thead class="bg-gray-50 border-b border-gray-200">
-                <tr>
-                    <th class="px-4 py-2 text-left font-medium text-gray-500">#</th>
-                    <th class="px-4 py-2 text-left font-medium text-gray-500">{{ config.label }}</th>
-                    <th class="px-4 py-2 text-right font-medium text-gray-500">Score</th>
-                    <th class="px-4 py-2 text-right font-medium text-gray-500">Tier</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for e in entities %}
-                <tr class="border-b border-gray-100 hover:bg-gray-50">
-                    <td class="px-4 py-2 text-gray-400">{{ loop.index }}</td>
-                    <td class="px-4 py-2">
-                        {% if et == "software" %}
-                        <a href="{{ config.url_prefix }}/{{ slugify(e.name) }}/" class="text-indigo-600 hover:underline">{{ e.name }}</a>
-                        {% else %}
-                        <a href="{{ config.url_prefix }}/{{ e[config.slug_field] }}/" class="text-indigo-600 hover:underline">{{ e.get('name') or e.get(config.id_column) }}</a>
-                        {% endif %}
-                    </td>
-                    <td class="px-4 py-2 text-right font-mono">{{ e.composite_score }}/100</td>
-                    <td class="px-4 py-2 text-right">
-                        <span class="inline-block px-2 py-0.5 rounded text-xs font-medium border {{ tier_classes(e.quality_tier) }}">{{ e.quality_tier }}</span>
-                    </td>
-                </tr>
+        <!-- Most dangerous unpatched -->
+        {% if homepage_data.unpatched_dangerous %}
+        <div class="bg-white rounded-lg border border-red-200 p-4">
+            <h3 class="text-sm font-semibold text-red-800 mb-3">Most Dangerous Unpatched CVEs</h3>
+            <div class="space-y-2">
+                {% for cve in homepage_data.unpatched_dangerous[:7] %}
+                <div class="flex items-center justify-between text-sm">
+                    <a href="/cve/{{ cve.cve_id }}/" class="text-indigo-600 hover:underline font-mono">{{ cve.cve_id }}</a>
+                    <div class="flex items-center space-x-3 text-gray-500">
+                        <span class="font-mono text-red-600">{{ "%.1f"|format(cve.epss_score * 100) }}%</span>
+                        <span>CVSS {{ cve.cvss_base_score }}</span>
+                    </div>
+                </div>
                 {% endfor %}
-            </tbody>
-        </table>
+            </div>
+            <div class="text-xs text-gray-500 mt-3">Ranked by EPSS exploit probability. No confirmed fix available.</div>
+        </div>
+        {% endif %}
+
+        <!-- Recent KEV additions -->
+        {% if homepage_data.kev_recent %}
+        <div class="bg-white rounded-lg border border-orange-200 p-4">
+            <h3 class="text-sm font-semibold text-orange-800 mb-3">Known Exploited Vulnerabilities</h3>
+            <div class="space-y-2">
+                {% for cve in homepage_data.kev_recent[:7] %}
+                <div class="flex items-center justify-between text-sm">
+                    <a href="/cve/{{ cve.cve_id }}/" class="text-indigo-600 hover:underline font-mono">{{ cve.cve_id }}</a>
+                    <div class="flex items-center space-x-3 text-gray-500">
+                        {% if cve.epss_score %}<span class="font-mono">{{ "%.1f"|format(cve.epss_score * 100) }}%</span>{% endif %}
+                        <span>CVSS {{ cve.cvss_base_score }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="text-xs text-gray-500 mt-3">CISA-confirmed active exploitation. Federal agencies must patch.</div>
+        </div>
+        {% endif %}
     </div>
 </div>
 {% endif %}
-{% endfor %}
 
-<!-- Tier distribution -->
-{% if entity_summary %}
-<div class="mb-10">
-    <h2 class="text-xl font-semibold mb-4">Quality Tiers</h2>
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {% for tier in tier_order %}
-        <div class="bg-white rounded-lg border border-gray-200 p-4">
-            <span class="inline-block px-2 py-0.5 rounded text-xs font-medium border {{ tier_classes(tier) }}">{{ tier }}</span>
-            <div class="text-sm text-gray-500 mt-2">Score {{ {"critical-risk": "70-100", "high-risk": "50-69", "moderate-risk": "30-49", "low-risk": "0-29"}[tier] }}</div>
+<!-- TOP PRODUCTS AND CVES -->
+<div class="mb-12">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Most dangerous products -->
+        {% set products = top_entities.get('product', []) %}
+        {% if products %}
+        <div>
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-semibold">Most Dangerous Products</h2>
+                <a href="/product/" class="text-sm text-indigo-600 hover:underline">View all</a>
+            </div>
+            <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500">Product</th>
+                            <th class="px-3 py-2 text-right font-medium text-gray-500">Score</th>
+                            <th class="px-3 py-2 text-right font-medium text-gray-500">CVEs</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for e in products %}
+                        <tr class="border-b border-gray-100 hover:bg-gray-50">
+                            <td class="px-3 py-2">
+                                <a href="/product/{{ e.id }}/" class="text-indigo-600 hover:underline">{{ e.display_name }}</a>
+                                <span class="text-xs text-gray-400 ml-1">{{ e.vendor_name }}</span>
+                            </td>
+                            <td class="px-3 py-2 text-right">
+                                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium border {{ tier_classes(e.quality_tier) }}">{{ e.composite_score }}</span>
+                            </td>
+                            <td class="px-3 py-2 text-right font-mono text-gray-500">{{ human_number(e.cve_count) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
+        {% endif %}
+
+        <!-- Most dangerous CVEs -->
+        {% set cves = top_entities.get('cve', []) %}
+        {% if cves %}
+        <div>
+            <div class="flex items-center justify-between mb-3">
+                <h2 class="text-lg font-semibold">Highest Risk CVEs</h2>
+                <a href="/cve/" class="text-sm text-indigo-600 hover:underline">View all</a>
+            </div>
+            <div class="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                            <th class="px-3 py-2 text-left font-medium text-gray-500">CVE</th>
+                            <th class="px-3 py-2 text-right font-medium text-gray-500">CVSS</th>
+                            <th class="px-3 py-2 text-right font-medium text-gray-500">EPSS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for e in cves %}
+                        <tr class="border-b border-gray-100 hover:bg-gray-50">
+                            <td class="px-3 py-2">
+                                <a href="/cve/{{ e.cve_id }}/" class="text-indigo-600 hover:underline font-mono">{{ e.cve_id }}</a>
+                                {% if e.is_kev %}<span class="ml-1 text-xs text-red-600 font-medium">KEV</span>{% endif %}
+                            </td>
+                            <td class="px-3 py-2 text-right font-mono">{{ e.cvss_base_score }}</td>
+                            <td class="px-3 py-2 text-right font-mono {{ 'text-red-600' if e.epss_score and e.epss_score > 0.1 else '' }}">{% if e.epss_score %}{{ "%.1f"|format(e.epss_score * 100) }}%{% else %}—{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- EXPLORE -->
+<div class="mb-10">
+    <h2 class="text-xl font-semibold mb-4">Explore</h2>
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        {% for et, config in entity_config.items() %}
+        {% set summary = entity_summary.get(config.get('summary_key', et + 's'), {}) %}
+        <a href="{{ config.url_prefix }}/" class="bg-white rounded-lg border border-gray-200 p-4 text-center hover:border-indigo-300 transition">
+            <div class="text-2xl font-bold text-indigo-600">{{ human_number(summary.get('total', 0)) }}</div>
+            <div class="text-sm text-gray-500">{{ config.label_plural }}</div>
+        </a>
         {% endfor %}
     </div>
 </div>
-{% endif %}
 
 <!-- Kill chain explainer -->
 <div class="bg-white rounded-lg border border-gray-200 p-6 mb-10">
@@ -92,6 +159,31 @@
         <a href="/technique/" class="text-indigo-600 hover:underline">ATT&amp;CK</a>
     </div>
 </div>
+
+<!-- How scoring works -->
+<div class="bg-gray-50 rounded-lg p-6 mb-10">
+    <h2 class="text-lg font-semibold mb-3">How We Score</h2>
+    <p class="text-sm text-gray-600 mb-3">Products are scored by the <strong>proportion</strong> of dangerous CVEs, not by volume. A product with 6 CVEs that are all actively exploited scores higher than one with 10,000 mostly-benign CVEs.</p>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+        <div class="bg-white rounded p-3">
+            <div class="font-medium text-gray-700">Active Threat</div>
+            <div class="text-xs text-gray-500">% of CVEs with high exploit probability (EPSS)</div>
+        </div>
+        <div class="bg-white rounded p-3">
+            <div class="font-medium text-gray-700">Exploit Availability</div>
+            <div class="text-xs text-gray-500">% with public exploits or CISA KEV listing</div>
+        </div>
+        <div class="bg-white rounded p-3">
+            <div class="font-medium text-gray-700">Severity Profile</div>
+            <div class="text-xs text-gray-500">Average CVSS across linked CVEs</div>
+        </div>
+        <div class="bg-white rounded p-3">
+            <div class="font-medium text-gray-700">Recency</div>
+            <div class="text-xs text-gray-500">How recent are vulnerability disclosures</div>
+        </div>
+    </div>
+    <p class="text-xs text-gray-500 mt-3">Data from NVD, CISA KEV, EPSS, Exploit-DB, MITRE ATT&CK, CWE, and CAPEC. Updated daily.</p>
+</div>
 {% endblock %}
 
 {% block json_ld %}
@@ -101,7 +193,7 @@
     "@type": "WebSite",
     "name": "CyberEdge",
     "url": "{{ base_url }}",
-    "description": "Precomputed cybersecurity vulnerability intelligence platform."
+    "description": "Cybersecurity vulnerability intelligence platform. CVEs, products, vendors, weaknesses, and attack techniques scored by actual danger."
 }
 </script>
 {% endblock %}

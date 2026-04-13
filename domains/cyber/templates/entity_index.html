@@ -37,13 +37,9 @@
             {% for e in entities %}
             <tr class="border-b border-gray-100 hover:bg-gray-50">
                 <td class="px-4 py-2">
-                    {% if slug_field == "name" %}
-                    <a href="{{ config.url_prefix }}/{{ slugify(e.name) }}/" class="text-indigo-600 hover:underline">{{ e.name }}</a>
-                    {% else %}
                     <a href="{{ config.url_prefix }}/{{ e[slug_field] }}/" class="text-indigo-600 hover:underline">
-                        {{ e.get('name') or e.get(config.id_column) }}
+                        {{ e.get(config.name_column) or e.get('name') or e.get(config.id_column) }}
                     </a>
-                    {% endif %}
                 </td>
                 <td class="px-4 py-2 text-right font-mono">{{ e.composite_score }}/100</td>
                 <td class="px-4 py-2 text-right">

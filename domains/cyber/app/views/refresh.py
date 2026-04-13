@@ -20,6 +20,8 @@ VIEWS_IN_ORDER = [
     "mv_cve_exploit_flags",
     # Layer 3: CVE scoring (reads from layers 1+2, no inline aggregation)
     "mv_cve_scores",
+    # Layer 3b: Product scoring (reads from exploit flags + base tables)
+    "mv_product_scores",
     # Downstream: aggregate from mv_cve_scores
     "mv_software_scores",
     "mv_vendor_scores",
