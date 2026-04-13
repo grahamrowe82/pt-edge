@@ -31,6 +31,7 @@ from domains.cyber.app.db import engine
 
 PER_PAGE = 100
 BATCH_SIZE = 5000
+MIN_SCORE = 55  # Only generate detail pages for CVEs/entities scoring >= this
 
 ENTITY_CONFIG = {
     "cve": {
@@ -238,10 +239,13 @@ def slugify(name):
 def fetch_entities(config: dict) -> list[dict]:
     """Fetch scored entities from materialized view. MVs include all display fields."""
     view = config["view"]
+    min_score = config.get("min_score", MIN_SCORE)
     with engine.connect() as conn:
         rows = conn.execute(text(f"""
-            SELECT * FROM {view} ORDER BY composite_score DESC
-        """)).mappings().fetchall()
+            SELECT * FROM {view}
+            WHERE composite_score >= :min_score
+            ORDER BY composite_score DESC
+        """), {"min_score": min_score}).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -298,17 +302,20 @@ def fetch_trending() -> dict:
     return trending
 
 
-def fetch_cve_enrichment() -> dict:
-    """Fetch all CVE enrichment in 4 simple queries. Same pattern as OS AI's
-    fetch_hn_posts / fetch_releases — one query per data type, no batching."""
+def fetch_cve_enrichment(cve_ids: set[int]) -> dict:
+    """Fetch CVE enrichment for rendered CVEs only. Filters by cve_ids to avoid
+    loading millions of rows for CVEs that won't get detail pages."""
+    if not cve_ids:
+        return {}
     result = {}
     with engine.connect() as conn:
-        # Software links
+        # Software links (only for rendered CVEs)
         rows = conn.execute(text("""
             SELECT cs.cve_id, s.name, s.cpe_id
             FROM cve_software cs
             JOIN software s ON s.id = cs.software_id
-        """)).mappings().fetchall()
+            WHERE cs.cve_id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
+        """), {"min": MIN_SCORE}).mappings().fetchall()
         for r in rows:
             result.setdefault(r["cve_id"], {}).setdefault("software", []).append(
                 {"name": r["name"], "cpe_id": r["cpe_id"]})
@@ -319,7 +326,8 @@ def fetch_cve_enrichment() -> dict:
             SELECT cv.cve_id, v.name, v.slug
             FROM cve_vendors cv
             JOIN vendors v ON v.id = cv.vendor_id
-        """)).mappings().fetchall()
+            WHERE cv.cve_id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
+        """), {"min": MIN_SCORE}).mappings().fetchall()
         for r in rows:
             result.setdefault(r["cve_id"], {}).setdefault("vendors", []).append(
                 {"name": r["name"], "slug": r["slug"]})
@@ -330,7 +338,8 @@ def fetch_cve_enrichment() -> dict:
             SELECT cw.cve_id, w.cwe_id, w.name
             FROM cve_weaknesses cw
             JOIN weaknesses w ON w.id = cw.weakness_id
-        """)).mappings().fetchall()
+            WHERE cw.cve_id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
+        """), {"min": MIN_SCORE}).mappings().fetchall()
         for r in rows:
             result.setdefault(r["cve_id"], {}).setdefault("weaknesses", []).append(
                 {"cwe_id": r["cwe_id"], "name": r["name"]})
@@ -346,7 +355,8 @@ def fetch_cve_enrichment() -> dict:
             JOIN attack_patterns ap ON ap.id = wp.pattern_id
             JOIN pattern_techniques pt ON pt.pattern_id = ap.id
             JOIN techniques t ON t.id = pt.technique_id
-        """)).mappings().fetchall()
+            WHERE cw.cve_id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
+        """), {"min": MIN_SCORE}).mappings().fetchall()
         for r in rows:
             result.setdefault(r["cve_id"], {}).setdefault("kill_chain", []).append(
                 {"cwe_id": r["cwe_id"], "capec_id": r["capec_id"],
@@ -480,7 +490,8 @@ def main():
             lookups[entity_type] = {e.get(slug_field) for e in all_entities[entity_type]}
 
     # Fetch CVE enrichment: 4 simple queries, same pattern as OS AI
-    cve_enrichment = fetch_cve_enrichment()
+    cve_ids = {e["id"] for e in all_entities.get("cve", [])}
+    cve_enrichment = fetch_cve_enrichment(cve_ids)
 
     # -----------------------------------------------------------------------
     # Phase 2: Render pages
