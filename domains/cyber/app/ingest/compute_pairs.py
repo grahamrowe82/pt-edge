@@ -36,8 +36,23 @@ def _log_sync(started: datetime, records: int, status: str = "success", error: s
         session.close()
 
 
-def _cache_json(key: str, data: list):
-    """Upsert pre-computed data into structural_cache."""
+def _cache_json(key: str, data):
+    """Upsert pre-computed data into structural_cache.
+
+    Won't overwrite existing meaningful data with empty results — logs a
+    warning instead. This prevents a premature run (e.g. before core data
+    exists) from poisoning the cache for downstream consumers.
+    """
+    is_empty = not data or (isinstance(data, (list, dict)) and len(data) == 0)
+    if is_empty:
+        with engine.connect() as conn:
+            existing = conn.execute(text(
+                "SELECT length(value::text) FROM structural_cache WHERE key = :k"
+            ), {"k": key}).scalar()
+        if existing and existing > 2:  # existing has real data (not just "[]" or "{}")
+            logger.warning(f"Skipping cache write for '{key}': new data is empty but existing cache has content")
+            return
+
     with engine.connect() as conn:
         conn.execute(text("""
             INSERT INTO structural_cache (key, value, updated_at)

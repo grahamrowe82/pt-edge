@@ -19,9 +19,6 @@ VIEWS_IN_ORDER = [
     "mv_technique_scores",
     "mv_pattern_scores",
     "mv_entity_summary",
-    "mv_cve_weakness_landscape",
-    "mv_software_risk_landscape",
-    "mv_attack_chain_coverage",
 ]
 
 
