@@ -8,10 +8,13 @@ The worker maintains one active task per resource type. When a task
 completes, it immediately claims the next one for that resource slot.
 """
 import asyncio
+import gc
 import json
 import logging
 import os
+import resource as resource_mod
 import socket
+import sys
 
 from sqlalchemy import text
 
@@ -28,6 +31,25 @@ logger = logging.getLogger(__name__)
 WORKER_ID = f"worker-{os.getpid()}-{socket.gethostname()}"
 POLL_INTERVAL = 5       # seconds between claim attempts when idle
 HEARTBEAT_INTERVAL = 60  # seconds between heartbeats during execution
+DEFAULT_MAX_RSS_MB = 1500  # restart worker if RSS exceeds this
+
+
+def _get_rss_mb() -> float:
+    """Current process RSS in MB."""
+    usage = resource_mod.getrusage(resource_mod.RUSAGE_SELF).ru_maxrss
+    if sys.platform == "darwin":
+        return usage / (1024 * 1024)  # macOS reports bytes
+    return usage / 1024  # Linux reports KB
+
+
+def _post_task_cleanup(max_rss_mb: int) -> None:
+    """GC + memory check after task completion. Restarts if over threshold."""
+    gc.collect()
+    rss = _get_rss_mb()
+    logger.info(f"Post-task RSS: {rss:.0f}MB")
+    if rss > max_rss_mb:
+        logger.warning(f"RSS {rss:.0f}MB exceeds {max_rss_mb}MB — restarting worker")
+        os.execv(sys.executable, [sys.executable] + sys.argv)
 
 # SQL: claim the highest-priority pending task for a specific resource type.
 # Checks budget remaining (rolling or calendar reset) and backoff state.
@@ -195,6 +217,7 @@ async def _execute_task(task: dict, handlers: dict) -> None:
         logger.error(f"Unknown task type: {task_type}")
         return
 
+    logger.info(f"Starting task {task_id}: {task_type} {subject} [RSS={_get_rss_mb():.0f}MB]")
     hb_task = asyncio.create_task(_heartbeat_loop(task_id))
     try:
         result = await handler(task)
@@ -233,6 +256,7 @@ async def _execute_task(task: dict, handlers: dict) -> None:
 async def run_worker_loop(
     handlers: dict,
     concurrent_resources: list[str],
+    max_rss_mb: int = DEFAULT_MAX_RSS_MB,
 ) -> None:
     """Main worker loop with resource-aware concurrency.
 
@@ -243,6 +267,7 @@ async def run_worker_loop(
     Args:
         handlers: mapping of task_type -> async handler function
         concurrent_resources: list of resource type strings that can run concurrently
+        max_rss_mb: restart worker if RSS exceeds this (default 1500MB)
     """
     logger.info(f"Task queue worker starting: {WORKER_ID} "
                 f"({len(concurrent_resources)} resource slots)")
@@ -297,10 +322,14 @@ async def run_worker_loop(
                 timeout=POLL_INTERVAL,
                 return_when=asyncio.FIRST_COMPLETED,
             )
-            # Clean up completed slots
+            # Clean up completed slots + memory check
+            cleaned = False
             for resource in list(running):
                 if running[resource].done():
                     del running[resource]
+                    cleaned = True
+            if cleaned:
+                _post_task_cleanup(max_rss_mb)
         else:
             # Nothing running but we claimed something -- tasks are starting
             await asyncio.sleep(0.1)

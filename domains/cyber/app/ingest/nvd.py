@@ -473,6 +473,7 @@ async def _bootstrap(client: httpx.AsyncClient) -> dict:
             logger.info(f"NVD reports {total_results:,} total CVEs")
 
         page_counts = await _process_page(data)
+        del data  # release API response before next page
         totals["pages"] += 1
         for k in ("cves", "software", "vendors", "weaknesses"):
             totals[k] += page_counts[k]
@@ -524,6 +525,7 @@ async def _incremental(client: httpx.AsyncClient) -> dict:
                 return {"mode": "incremental", "skipped": True, **totals}
 
         page_counts = await _process_page(data)
+        del data  # release API response before next page
         totals["pages"] += 1
         for k in ("cves", "software", "vendors", "weaknesses"):
             totals[k] += page_counts[k]
