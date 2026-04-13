@@ -11,8 +11,16 @@ from domains.cyber.app.models import SyncLog
 logger = logging.getLogger(__name__)
 
 # Views in dependency order — entity scores first, aggregates last
+# Refresh in dependency order: pre-computed layers first, then scoring,
+# then downstream aggregates. Each refresh is a separate transaction so
+# the DB gets breathing room between queries.
 VIEWS_IN_ORDER = [
+    # Layer 1+2: pre-compute expensive aggregations (lightweight)
+    "mv_cve_software_counts",
+    "mv_cve_exploit_flags",
+    # Layer 3: CVE scoring (reads from layers 1+2, no inline aggregation)
     "mv_cve_scores",
+    # Downstream: aggregate from mv_cve_scores
     "mv_software_scores",
     "mv_vendor_scores",
     "mv_weakness_scores",
