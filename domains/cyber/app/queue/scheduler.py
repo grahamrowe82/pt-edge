@@ -17,6 +17,20 @@ logger = logging.getLogger(__name__)
 
 SCHEDULER_INTERVAL = 900  # 15 minutes
 
+# Minimum row count in cves table before supplementary sources should run.
+# Prevents enrichment tasks from running against an empty/bootstrapping DB
+# and caching empty results.
+_CVE_READINESS_THRESHOLD = 1000
+
+
+def _cves_ready() -> bool:
+    """Check whether the cves table has enough data for enrichment tasks."""
+    with engine.connect() as conn:
+        count = conn.execute(text(
+            "SELECT COUNT(*) FROM cves"
+        )).scalar()
+    return count >= _CVE_READINESS_THRESHOLD
+
 
 # ---------------------------------------------------------------------------
 # Coarse-grained schedulers (one task per ingest source)
@@ -103,7 +117,9 @@ def schedule_refresh_views() -> int:
 
 
 def schedule_ingest_kev() -> int:
-    """Create ingest_kev task if not run today."""
+    """Create ingest_kev task if not run today. Requires CVE data."""
+    if not _cves_ready():
+        return 0
     with engine.connect() as conn:
         ran_today = conn.execute(text("""
             SELECT 1 FROM sync_log
@@ -130,7 +146,9 @@ def schedule_ingest_kev() -> int:
 
 
 def schedule_ingest_epss() -> int:
-    """Create ingest_epss task if not run today."""
+    """Create ingest_epss task if not run today. Requires CVE data."""
+    if not _cves_ready():
+        return 0
     with engine.connect() as conn:
         ran_today = conn.execute(text("""
             SELECT 1 FROM sync_log
@@ -227,7 +245,9 @@ def schedule_compute_embeddings() -> int:
 
 
 def schedule_ingest_osv() -> int:
-    """Create ingest_osv task if not run today."""
+    """Create ingest_osv task if not run today. Requires CVE data."""
+    if not _cves_ready():
+        return 0
     with engine.connect() as conn:
         ran_today = conn.execute(text("""
             SELECT 1 FROM sync_log
@@ -254,7 +274,9 @@ def schedule_ingest_osv() -> int:
 
 
 def schedule_ingest_ghsa() -> int:
-    """Create ingest_ghsa task if not run today."""
+    """Create ingest_ghsa task if not run today. Requires CVE data."""
+    if not _cves_ready():
+        return 0
     with engine.connect() as conn:
         ran_today = conn.execute(text("""
             SELECT 1 FROM sync_log
@@ -281,7 +303,9 @@ def schedule_ingest_ghsa() -> int:
 
 
 def schedule_ingest_exploit_db() -> int:
-    """Create ingest_exploit_db task if not run today."""
+    """Create ingest_exploit_db task if not run today. Requires CVE data."""
+    if not _cves_ready():
+        return 0
     with engine.connect() as conn:
         ran_today = conn.execute(text("""
             SELECT 1 FROM sync_log
@@ -308,7 +332,9 @@ def schedule_ingest_exploit_db() -> int:
 
 
 def schedule_compute_pairs() -> int:
-    """Create compute_pairs task if not run in the last 7 days."""
+    """Create compute_pairs task if not run in the last 7 days. Requires CVE data."""
+    if not _cves_ready():
+        return 0
     with engine.connect() as conn:
         recent = conn.execute(text("""
             SELECT 1 FROM sync_log
@@ -335,7 +361,9 @@ def schedule_compute_pairs() -> int:
 
 
 def schedule_compute_hypotheses() -> int:
-    """Create compute_hypotheses task if not run in the last 7 days."""
+    """Create compute_hypotheses task if not run in the last 7 days. Requires CVE data."""
+    if not _cves_ready():
+        return 0
     with engine.connect() as conn:
         recent = conn.execute(text("""
             SELECT 1 FROM sync_log
