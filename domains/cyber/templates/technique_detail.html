@@ -19,7 +19,7 @@
         </div>
 
         {% if entity.description %}
-        <p class="text-gray-600 mb-4 leading-relaxed">{{ entity.description[:800] }}</p>
+        <p class="text-gray-600 mb-4 leading-relaxed">{{ entity.description }}</p>
         {% endif %}
 
         {% if entity.platforms %}
@@ -43,7 +43,7 @@
         {% if entity.detection %}
         <div class="bg-white rounded-lg border border-gray-200 p-4 mb-6">
             <h2 class="text-lg font-semibold mb-2">Detection</h2>
-            <p class="text-sm text-gray-600 leading-relaxed">{{ entity.detection[:800] }}</p>
+            <p class="text-sm text-gray-600 leading-relaxed">{{ entity.detection }}</p>
         </div>
         {% endif %}
 
@@ -82,10 +82,6 @@
         </div>
         {% endif %}
 
-        <div class="bg-gray-800 rounded-lg p-4 text-sm text-gray-300">
-            <div class="text-gray-400 mb-2">Get this data via API</div>
-            <code class="text-green-400">curl -H "Authorization: Bearer YOUR_KEY" \<br>&nbsp;&nbsp;{{ base_url }}/api/v1/techniques/{{ entity.technique_id }}</code>
-        </div>
     </div>
 
     <div>

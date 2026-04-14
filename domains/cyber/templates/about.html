@@ -46,26 +46,46 @@
 <!-- Scoring -->
 <div class="mb-10">
     <h2 class="text-xl font-semibold mb-4">Scoring Methodology</h2>
-    <p class="text-gray-600 mb-4">Four dimensions, 25 points each, 0-100 composite. Higher score = higher risk.</p>
+    <p class="text-gray-600 mb-4">CyberEdge uses two scoring models. CVEs are scored on intrinsic danger. Aggregated entities (products, vendors, weaknesses, attack patterns) are scored on the proportion of their CVEs that show real-world exploitation signals.</p>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {% for dim_name, dim_desc in [
-            ("Severity (0-25)", "CVSS base score, attack complexity, privileges required. Aggregated entities use max/top-5 of associated CVE severity scores."),
-            ("Exploitability (0-25)", "EPSS probability (log-scaled), CISA KEV listing, public exploit existence. The dimension security practitioners care most about."),
-            ("Exposure (0-25)", "Affected product count, vendor spread, internet-facing likelihood. All log-scaled to prevent ceiling effects."),
-            ("Patch Availability (0-25)", "Inverse scored: higher = worse. Fix exists, time-to-patch, vendor responsiveness."),
-        ] %}
+    <h3 class="text-lg font-semibold mt-6 mb-3">CVE Scoring (0-100)</h3>
+    <p class="text-sm text-gray-600 mb-3">Three dimensions, summed and capped at 100. Each dimension measures a different aspect of the vulnerability's danger.</p>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         <div class="bg-white rounded-lg border border-gray-200 p-4">
-            <h3 class="font-semibold text-sm mb-1">{{ dim_name }}</h3>
-            <p class="text-xs text-gray-600">{{ dim_desc }}</p>
+            <h4 class="font-semibold text-sm mb-1">Severity (0-33)</h4>
+            <p class="text-xs text-gray-600">CVSS base score (scaled), plus bonuses for low attack complexity and network attack vector. Measures how bad it is if exploited.</p>
         </div>
-        {% endfor %}
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <h4 class="font-semibold text-sm mb-1">Exploitability (0-34)</h4>
+            <p class="text-xs text-gray-600">Log-scaled EPSS probability, plus bonuses for CISA KEV listing (+7) and public exploits on Exploit-DB (+7). Measures how likely exploitation is.</p>
+        </div>
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <h4 class="font-semibold text-sm mb-1">Exposure (0-33)</h4>
+            <p class="text-xs text-gray-600">Log-scaled count of affected software products. A CVE affecting 500 products scores higher than one affecting 3. Measures blast radius.</p>
+        </div>
+    </div>
+
+    <h3 class="text-lg font-semibold mt-6 mb-3">Product, Vendor &amp; Weakness Scoring (0-100)</h3>
+    <p class="text-sm text-gray-600 mb-3">Two dimensions, summed and capped at 100. Scores are based on the <strong>proportion</strong> of an entity's CVEs that show exploitation signals &mdash; not raw counts. A product with 6 CVEs all actively exploited scores higher than one with 10,000 mostly-benign CVEs.</p>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <h4 class="font-semibold text-sm mb-1">Active Threat (0-50)</h4>
+            <p class="text-xs text-gray-600">Based on the proportion of CVEs with EPSS &gt; 10% (high probability of exploitation in the next 30 days), adjusted by Wilson score confidence interval.</p>
+        </div>
+        <div class="bg-white rounded-lg border border-gray-200 p-4">
+            <h4 class="font-semibold text-sm mb-1">Exploit Availability (0-50)</h4>
+            <p class="text-xs text-gray-600">Based on the proportion of CVEs with public exploit code (Exploit-DB) or CISA KEV confirmation of active exploitation, adjusted by Wilson score confidence interval.</p>
+        </div>
+    </div>
+
+    <div class="bg-gray-50 rounded-lg p-4 text-sm text-gray-600">
+        <strong>Why Wilson scores?</strong> Raw proportions give unearned certainty to small samples. A product with 2 CVEs both exploited would naively score 100% &mdash; the same as one with 600 out of 600. The Wilson score lower bound adjusts for sample size: 2/2 yields ~15% credible rate, while 600/600 yields ~99%. This is the same math Reddit uses for ranking.
     </div>
 </div>
 
 <!-- Quality tiers -->
 <div class="mb-10">
-    <h2 class="text-xl font-semibold mb-4">Quality Tiers</h2>
+    <h2 class="text-xl font-semibold mb-4">Risk Tiers</h2>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         {% for tier, desc in [
             ("critical-risk", "70-100. Severe vulnerability with active exploitation and wide exposure. Immediate action required."),
@@ -110,12 +130,14 @@
     </div>
 </div>
 
-<!-- API -->
+<!-- Limitations -->
 <div>
-    <h2 class="text-xl font-semibold mb-4">API Access</h2>
-    <div class="bg-gray-800 rounded-lg p-4 text-sm text-gray-300">
-        <code class="text-green-400">curl -H "Authorization: Bearer YOUR_KEY" \<br>&nbsp;&nbsp;{{ base_url }}/api/v1/cves/CVE-2021-44228</code>
-        <div class="text-gray-500 mt-2 text-xs">Free tier: 100 requests/day, no credit card required.</div>
-    </div>
+    <h2 class="text-xl font-semibold mb-4">Limitations</h2>
+    <ul class="text-sm text-gray-600 space-y-2 list-disc list-inside">
+        <li>Scores are based on publicly available data. Zero-day vulnerabilities and private exploitation are not captured.</li>
+        <li>EPSS probabilities are estimates, not certainties. A low EPSS score does not mean a CVE is safe.</li>
+        <li>Product matching relies on CPE identifiers, which can be inconsistent across vendors.</li>
+        <li>Wilson confidence adjustments penalise products with few CVEs. A product with 1 critical CVE may score lower than one with 100 moderate CVEs.</li>
+    </ul>
 </div>
 {% endblock %}
