@@ -3,10 +3,17 @@
 Generates static HTML pages from pre-computed materialized views.
 All expensive computation happens in the worker (view refresh, scoring,
 embeddings, categorization). This script only queries views and renders
-Jinja2 templates. Must complete in <5 minutes on Render.
+Jinja2 templates.
+
+Chunked generation (same pattern as OS AI):
+    start.sh calls this script ~18 times, once per chunk. Each invocation
+    loads only its subset of data, generates, and exits. Memory freed between
+    invocations. No single step exceeds ~40K pages.
 
 Usage:
-    python scripts/generate_site.py --output-dir site --base-url https://cyber.phasetransitions.ai
+    python generate_site.py --chunk cve:2024 --output-dir site
+    python generate_site.py --chunk products --output-dir site
+    python generate_site.py --chunk homepage --output-dir site
 """
 
 import argparse
@@ -127,6 +134,7 @@ ENTITY_CONFIG = {
         "label_plural": "Vendors",
         "summary_key": "vendors",
         "max_score": 50,
+        "no_min_score": True,
         "description": "Vendors scored by proportion of dangerous CVEs across their product portfolio.",
         "dimensions": [
             ("active_threat", "Active Threat"),
@@ -144,6 +152,7 @@ ENTITY_CONFIG = {
         "label_plural": "Weaknesses",
         "summary_key": "weaknesses",
         "max_score": 50,
+        "no_min_score": True,
         "description": "CWE weakness types scored by proportion of linked CVEs with active exploitation.",
         "dimensions": [
             ("active_threat", "Active Threat"),
@@ -284,21 +293,45 @@ def slugify(name):
 # Data fetching (from materialized views — fast reads)
 # ---------------------------------------------------------------------------
 
-def fetch_entities(config: dict) -> list[dict]:
+def fetch_entities(config: dict, year_filter: int | None = None) -> list[dict]:
     """Fetch scored entities from materialized view. MVs include all display fields.
 
-    Products use combo threshold (score >= 10 OR cve_count >= 20) to capture
-    both dangerous small products AND notable well-known products that people search for.
+    Products use combo threshold (score >= 10 OR cve_count >= 20).
+    CVEs can be filtered by published year for chunked generation.
     """
     view = config["view"]
     combo = config.get("combo_threshold")
-    if combo:
+
+    if year_filter is not None:
+        # CVE year chunk — no MIN_SCORE, filter by year
+        with engine.connect() as conn:
+            if year_filter == 0:
+                # pre-2018 bucket
+                rows = conn.execute(text(f"""
+                    SELECT * FROM {view}
+                    WHERE EXTRACT(YEAR FROM published_date) < 2018
+                    ORDER BY composite_score DESC
+                """)).mappings().fetchall()
+            else:
+                rows = conn.execute(text(f"""
+                    SELECT * FROM {view}
+                    WHERE EXTRACT(YEAR FROM published_date) = :year
+                    ORDER BY composite_score DESC
+                """), {"year": year_filter}).mappings().fetchall()
+    elif combo:
         with engine.connect() as conn:
             rows = conn.execute(text(f"""
                 SELECT * FROM {view}
                 WHERE composite_score >= :min_score OR cve_count >= :min_cves
                 ORDER BY composite_score DESC
             """), {"min_score": combo["min_score"], "min_cves": combo["min_cves"]}).mappings().fetchall()
+    elif config.get("no_min_score"):
+        # Generate all (vendors, weaknesses, etc.)
+        with engine.connect() as conn:
+            rows = conn.execute(text(f"""
+                SELECT * FROM {view}
+                ORDER BY composite_score DESC
+            """)).mappings().fetchall()
     else:
         min_score = config.get("min_score", MIN_SCORE)
         with engine.connect() as conn:
@@ -308,6 +341,24 @@ def fetch_entities(config: dict) -> list[dict]:
                 ORDER BY composite_score DESC
             """), {"min_score": min_score}).mappings().fetchall()
     return [dict(r) for r in rows]
+
+
+def fetch_cve_metadata() -> dict:
+    """Load Gemini-generated plain-English CVE summaries."""
+    result = {}
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT cve_id, what_is_this, am_i_affected, what_to_do
+                FROM cve_metadata
+                WHERE what_is_this IS NOT NULL
+            """)).mappings().fetchall()
+            for r in rows:
+                result[r["cve_id"]] = dict(r)
+        print(f"  CVE metadata: {len(result):,} Gemini summaries loaded")
+    except Exception:
+        print("  CVE metadata: table not yet populated")
+    return result
 
 
 def fetch_entity_summary() -> dict:
@@ -746,21 +797,8 @@ Sitemap: {base_url}/sitemap.xml
 # Main generation
 # ---------------------------------------------------------------------------
 
-def main():
-    parser = argparse.ArgumentParser(description="Generate CyberEdge static site")
-    parser.add_argument("--output-dir", default="./site")
-    parser.add_argument("--base-url", default="https://cyber.phasetransitions.ai")
-    args = parser.parse_args()
-
-    out_dir = args.output_dir
-    base_url = args.base_url.rstrip("/")
-    os.makedirs(out_dir, exist_ok=True)
-
-    t0 = time.time()
-    generated_urls = []
-    total_files = 0
-
-    # Set up Jinja2
+def _setup_jinja(base_url: str) -> Environment:
+    """Create Jinja2 environment with all globals."""
     template_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
     env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
     env.globals.update({
@@ -774,378 +812,385 @@ def main():
         "now": datetime.now(timezone.utc),
         "tier_order": TIER_ORDER,
     })
+    return env
 
-    # -----------------------------------------------------------------------
-    # Phase 1: Fetch data from materialized views
-    # -----------------------------------------------------------------------
-    print("Phase 1: Fetching data from materialized views...")
 
-    all_entities = {}
-    for entity_type, config in ENTITY_CONFIG.items():
-        try:
-            entities = fetch_entities(config)
-            all_entities[entity_type] = entities
-            print(f"  {config['label_plural']}: {len(entities):,}")
-        except Exception as e:
-            print(f"  {config['label_plural']}: FAILED ({e})")
-            all_entities[entity_type] = []
+def _render_detail_pages(env, out_dir, entity_type, config, entities, enrichments):
+    """Render detail pages for a single entity type. Returns file count."""
+    tpl_detail = env.get_template(config["template"])
+    slug_field = config["slug_field"]
+    lookups = enrichments.get("lookups", {})
+    count = 0
 
-    entity_summary = fetch_entity_summary()
-    trending = fetch_trending()
-    homepage_data = fetch_homepage_data()
-
-    # Build lookup sets for dead-link prevention
-    lookups = {}
-    for entity_type, config in ENTITY_CONFIG.items():
-        slug_field = config["slug_field"]
-        lookups[entity_type] = {e.get(slug_field) for e in all_entities[entity_type]}
-
-    # Fetch CVE enrichment: software, vendors, weaknesses, kill chain, exploits, extra fields
-    cve_ids = {e["id"] for e in all_entities.get("cve", [])}
-    cve_enrichment = fetch_cve_enrichment(cve_ids)
-
-    # Fetch product enrichment: top CVEs per product
-    product_enrichment = fetch_product_enrichment()
-    product_metadata = fetch_product_metadata()
-
-    # Fetch weakness enrichment: JSONB data + top CVEs
-    weakness_enrichment = fetch_weakness_enrichment()
-
-    # Fetch technique enrichment: data sources + top CVEs
-    technique_enrichment = fetch_technique_enrichment()
-
-    # Fetch vendor enrichment: product stats + top products
-    vendor_enrichment = fetch_vendor_enrichment()
-
-    # -----------------------------------------------------------------------
-    # Phase 2: Render pages
-    # -----------------------------------------------------------------------
-    print("\nPhase 2: Rendering pages...")
-
-    # Homepage
-    homepage_tpl = env.get_template("homepage.html")
-    top_entities = {
-        et: entities[:10] for et, entities in all_entities.items()
-    }
-    html = homepage_tpl.render(
-        top_entities=top_entities,
-        entity_summary=entity_summary,
-        entity_config=ENTITY_CONFIG,
-        homepage_data=homepage_data,
-        total_entities=sum(len(v) for v in all_entities.values()),
-        slugify=slugify,
-    )
-    write_page(out_dir, "/", html)
-    generated_urls.append({"path": "/", "changefreq": "daily", "priority": "1.0"})
-    total_files += 1
-
-    # Entity index + detail pages
-    for entity_type, config in ENTITY_CONFIG.items():
-        entities = all_entities[entity_type]
-        if not entities:
+    for entity in entities:
+        slug = entity.get(slug_field, "")
+        if not slug:
             continue
 
-        tpl_detail = env.get_template(config["template"])
-        tpl_index = env.get_template("entity_index.html")
         prefix = config["url_prefix"]
-        slug_field = config["slug_field"]
+        page_path = f"{prefix}/{slug}/"
 
-        # Tier distribution for this entity type
-        tiers = entity_summary.get(config.get("summary_key", entity_type + "s"), {})
-
-        # Index pages (paginated)
-        total_pages = max(1, math.ceil(len(entities) / PER_PAGE))
-        for page_num in range(1, total_pages + 1):
-            offset = (page_num - 1) * PER_PAGE
-            page_entities = entities[offset:offset + PER_PAGE]
-            page_path = f"{prefix}/" if page_num == 1 else f"{prefix}/page/{page_num}/"
-
-            html = tpl_index.render(
-                config=config,
-                entities=page_entities,
-                tiers=tiers,
-                slug_field=slug_field,
-                slugify=slugify,
-                current_page=page_num,
-                total_pages=total_pages,
-                total_count=len(entities),
-                page_base_url=f"{prefix}/page",
-                first_page_url=f"{prefix}/",
-            )
-            write_page(out_dir, page_path, html)
-            generated_urls.append({"path": page_path, "changefreq": "daily", "priority": "0.9"})
-            total_files += 1
-
-        # Detail pages
-        detail_count = 0
-        for entity in entities:
-            slug = entity.get(slug_field, "")
-            if not slug:
-                continue
-
-            page_path = f"{prefix}/{slug}/"
-
-            # Build context
-            ctx = {
-                "entity": entity,
-                "config": config,
-                "dimensions": [
-                    {
-                        "key": dim_key,
-                        "label": dim_label,
-                        "value": entity.get(dim_key, 0),
-                        "max_score": config.get("max_score", 25),
-                        "context": score_context(entity.get(dim_key, 0), config.get("max_score", 25)),
-                    }
-                    for dim_key, dim_label in config["dimensions"]
-                ],
-                "lookups": lookups,
-                "slugify": slugify,
-            }
-
-            # CVE-specific enrichment
-            if entity_type == "cve":
-                enr = cve_enrichment.get(entity["id"], {})
-                ctx["software"] = enr.get("software", [])[:20]
-                ctx["vendors"] = enr.get("vendors", [])
-                ctx["weaknesses"] = enr.get("weaknesses", [])
-                ctx["kill_chain"] = enr.get("kill_chain", [])
-                ctx["exploits"] = enr.get("exploits", [])
-                ctx["cve_extra"] = enr.get("extra", {})
-
-            # Product-specific enrichment
-            if entity_type == "product":
-                ctx["top_cves"] = product_enrichment.get(entity["id"], [])
-                # Tier guidance (deterministic templates — Gemini follow-up)
-                tier = entity.get("quality_tier", "low-risk")
-                guidance = TIER_GUIDANCE.get(tier, TIER_GUIDANCE["low-risk"])
-                ctx["guidance"] = {
-                    "headline": guidance["headline"],
-                    "summary": guidance["summary"].format(name=entity.get("display_name", "")),
-                    "actions": guidance["actions"],
+        ctx = {
+            "entity": entity,
+            "config": config,
+            "dimensions": [
+                {
+                    "key": dim_key,
+                    "label": dim_label,
+                    "value": entity.get(dim_key, 0),
+                    "max_score": config.get("max_score", 25),
+                    "context": score_context(entity.get(dim_key, 0), config.get("max_score", 25)),
                 }
-                # Product metadata (categories, peers) if available
-                meta = product_metadata.get(entity["id"], {})
-                ctx["category_label"] = meta.get("category_label", "")
-                ctx["peer_products"] = meta.get("peer_products", [])
+                for dim_key, dim_label in config["dimensions"]
+            ],
+            "lookups": lookups,
+            "slugify": slugify,
+        }
 
-            # Weakness-specific enrichment
-            if entity_type == "weakness":
-                wenr = weakness_enrichment.get(entity["id"], {})
-                ctx["weakness_extra"] = wenr
-                ctx["top_cves"] = wenr.get("top_cves", [])
+        # Entity-specific enrichment
+        if entity_type == "cve":
+            enr = enrichments.get("cve_enrichment", {}).get(entity["id"], {})
+            ctx["software"] = enr.get("software", [])[:20]
+            ctx["vendors"] = enr.get("vendors", [])
+            ctx["weaknesses"] = enr.get("weaknesses", [])
+            ctx["kill_chain"] = enr.get("kill_chain", [])
+            ctx["exploits"] = enr.get("exploits", [])
+            ctx["cve_extra"] = enr.get("extra", {})
+            ctx["cve_summary"] = enrichments.get("cve_metadata", {}).get(entity["id"])
 
-            # Technique-specific enrichment
-            if entity_type == "technique":
-                tenr = technique_enrichment.get(entity["id"], {})
-                ctx["technique_extra"] = tenr
-                ctx["top_cves"] = tenr.get("top_cves", [])
+        elif entity_type == "product":
+            ctx["top_cves"] = enrichments.get("product_enrichment", {}).get(entity["id"], [])
+            tier = entity.get("quality_tier", "low-risk")
+            guidance = TIER_GUIDANCE.get(tier, TIER_GUIDANCE["low-risk"])
+            ctx["guidance"] = {
+                "headline": guidance["headline"],
+                "summary": guidance["summary"].format(name=entity.get("display_name", "")),
+                "actions": guidance["actions"],
+            }
+            meta = enrichments.get("product_metadata", {}).get(entity["id"], {})
+            if meta.get("risk_summary"):
+                ctx["guidance"]["summary"] = meta["risk_summary"]
+            if meta.get("recommended_actions"):
+                actions = meta["recommended_actions"]
+                if isinstance(actions, str):
+                    import json
+                    try:
+                        actions = json.loads(actions)
+                    except Exception:
+                        actions = []
+                if actions:
+                    ctx["guidance"]["actions"] = actions
+            ctx["category_label"] = meta.get("category_label", "")
+            peers = meta.get("peer_products", [])
+            if isinstance(peers, str):
+                import json
+                try:
+                    peers = json.loads(peers)
+                except Exception:
+                    peers = []
+            ctx["peer_products"] = peers
 
-            # Vendor-specific enrichment
-            if entity_type == "vendor":
-                venr = vendor_enrichment.get(entity["id"], {})
-                ctx["vendor_stats"] = venr.get("stats", {})
-                ctx["top_products"] = venr.get("top_products", [])
+        elif entity_type == "weakness":
+            wenr = enrichments.get("weakness_enrichment", {}).get(entity["id"], {})
+            ctx["weakness_extra"] = wenr
+            ctx["top_cves"] = wenr.get("top_cves", [])
 
-            html = tpl_detail.render(**ctx)
-            write_page(out_dir, page_path, html)
-            generated_urls.append({"path": page_path, "changefreq": "weekly", "priority": "0.6"})
-            total_files += 1
-            detail_count += 1
+        elif entity_type == "technique":
+            tenr = enrichments.get("technique_enrichment", {}).get(entity["id"], {})
+            ctx["technique_extra"] = tenr
+            ctx["top_cves"] = tenr.get("top_cves", [])
 
-            if detail_count % 10000 == 0:
-                print(f"    {config['label_plural']}: {detail_count:,} detail pages...")
+        elif entity_type == "vendor":
+            venr = enrichments.get("vendor_enrichment", {}).get(entity["id"], {})
+            ctx["vendor_stats"] = venr.get("stats", {})
+            ctx["top_products"] = venr.get("top_products", [])
 
-        print(f"  {config['label_plural']}: {detail_count:,} detail + {total_pages} index pages")
+        html = tpl_detail.render(**ctx)
+        write_page(out_dir, page_path, html)
+        count += 1
 
-    # Trending page
-    trending_tpl = env.get_template("trending.html")
-    html = trending_tpl.render(trending=trending, entity_config=ENTITY_CONFIG)
-    write_page(out_dir, "/trending/", html)
-    generated_urls.append({"path": "/trending/", "changefreq": "daily", "priority": "0.7"})
-    total_files += 1
+        if count % 10000 == 0:
+            print(f"    {config['label_plural']}: {count:,} detail pages...")
 
-    # About page
-    about_tpl = env.get_template("about.html")
-    html = about_tpl.render(entity_config=ENTITY_CONFIG)
-    write_page(out_dir, "/about/", html)
-    generated_urls.append({"path": "/about/", "changefreq": "monthly", "priority": "0.4"})
-    total_files += 1
+    print(f"  {config['label_plural']}: {count:,} detail pages")
+    return count
 
-    # -----------------------------------------------------------------------
-    # Phase 2b: Relationship pages (from structural_cache)
-    # -----------------------------------------------------------------------
-    print("\nPhase 2b: Relationship pages...")
 
-    # CVE-Software pair pages
-    cve_sw_pairs = load_cached("cve_software_pairs")
-    if cve_sw_pairs:
-        pair_tpl = env.get_template("cve_software_pair.html")
-        pair_count = 0
-        for pair in cve_sw_pairs:
-            cve_id = pair.get("cve_id", "")
-            sw_name = pair.get("software_name", "")
-            if not cve_id or not sw_name:
-                continue
-            page_path = f"/cve/{cve_id}/software/{slugify(sw_name)}/"
-            html = pair_tpl.render(pair=pair, slugify=slugify)
-            write_page(out_dir, page_path, html)
-            generated_urls.append({"path": page_path, "changefreq": "weekly", "priority": "0.4"})
-            total_files += 1
-            pair_count += 1
-            if pair_count % 10000 == 0:
-                print(f"    CVE-Software pairs: {pair_count:,}...")
-        print(f"  CVE-Software pairs: {pair_count:,}")
+def _render_index_pages(env, out_dir, config, entities):
+    """Render paginated index pages for an entity type. Returns file count."""
+    tpl_index = env.get_template("entity_index.html")
+    slug_field = config["slug_field"]
+    prefix = config["url_prefix"]
+    entity_summary = fetch_entity_summary()
+    tiers = entity_summary.get(config.get("summary_key", ""), {})
 
-    # Vendor weakness portfolio pages
-    vendor_weak_data = load_cached("vendor_weakness_pairs")
-    if vendor_weak_data:
-        vw_tpl = env.get_template("vendor_weaknesses.html")
-        # Group by vendor
-        vendor_groups = {}
-        for row in vendor_weak_data:
-            vs = row.get("vendor_slug", "")
-            if vs not in vendor_groups:
-                vendor_groups[vs] = {"vendor_slug": vs, "vendor_name": row.get("vendor_name"), "weaknesses": []}
-            vendor_groups[vs]["weaknesses"].append(row)
-        vw_count = 0
-        for vs, group in vendor_groups.items():
-            page_path = f"/vendor/{vs}/weaknesses/"
-            html = vw_tpl.render(
-                vendor_slug=group["vendor_slug"],
-                vendor_name=group["vendor_name"],
-                weaknesses=group["weaknesses"],
-            )
-            write_page(out_dir, page_path, html)
-            generated_urls.append({"path": page_path, "changefreq": "weekly", "priority": "0.5"})
-            total_files += 1
-            vw_count += 1
-        print(f"  Vendor weakness portfolios: {vw_count:,}")
+    total_pages = max(1, math.ceil(len(entities) / PER_PAGE))
+    count = 0
+    for page_num in range(1, total_pages + 1):
+        offset = (page_num - 1) * PER_PAGE
+        page_entities = entities[offset:offset + PER_PAGE]
+        page_path = f"{prefix}/" if page_num == 1 else f"{prefix}/page/{page_num}/"
 
-    # Kill chain pages
-    chain_data = load_cached("kill_chain_pages")
-    if chain_data:
-        chain_tpl = env.get_template("chain_page.html")
-        chain_count = 0
-        for chain in chain_data:
-            cwe = chain.get("cwe_id", "")
-            capec = chain.get("capec_id", "")
-            tech = chain.get("technique_id", "")
-            if not cwe or not capec or not tech:
-                continue
-            page_path = f"/chain/{cwe}/{capec}/{tech}/"
-            html = chain_tpl.render(chain=chain)
-            write_page(out_dir, page_path, html)
-            generated_urls.append({"path": page_path, "changefreq": "weekly", "priority": "0.5"})
-            total_files += 1
-            chain_count += 1
-        print(f"  Kill chain pages: {chain_count:,}")
+        html = tpl_index.render(
+            config=config,
+            entities=page_entities,
+            tiers=tiers,
+            slug_field=slug_field,
+            slugify=slugify,
+            current_page=page_num,
+            total_pages=total_pages,
+            total_count=len(entities),
+            page_base_url=f"{prefix}/page",
+            first_page_url=f"{prefix}/",
+        )
+        write_page(out_dir, page_path, html)
+        count += 1
 
-    # -----------------------------------------------------------------------
-    # Phase 2c: Insight pages (hypothesis engine)
-    # -----------------------------------------------------------------------
-    print("\nPhase 2c: Insight pages...")
+    print(f"  {config['label_plural']}: {total_pages} index pages")
+    return count
 
-    HYPOTHESIS_CONFIG = {
-        "unpatched_exposure": {
-            "cache_key": "hypothesis_unpatched_exposure",
-            "template": "insight_unpatched.html",
-            "url_fn": lambda h: f"/insights/unpatched/{h.get('cve_id', '')}/",
-            "label_fn": lambda h: h.get("cve_id", ""),
-            "score_fn": lambda h: h.get("composite_score", 0),
-            "title": "Unpatched Exposure Gaps",
-            "description": "High-severity CVEs with wide deployment and no available fix.",
-            "entity_label": "CVE",
-        },
-        "chain_gaps": {
-            "cache_key": "hypothesis_chain_gaps",
-            "template": "insight_chain_gap.html",
-            "url_fn": lambda h: f"/insights/chain-gap/{h.get('technique_id', '')}/{slugify(h.get('software_name', ''))}/",
-            "label_fn": lambda h: f"{h.get('technique_id', '')} × {h.get('software_name', '')}",
-            "score_fn": lambda h: h.get("weakness_cve_count", 0),
-            "title": "Attack Chain Gaps",
-            "description": "Software with weakness exposure to a technique but no verified exploit proves the chain.",
-            "entity_label": "Gap",
-        },
-        "vendor_anomalies": {
-            "cache_key": "hypothesis_vendor_anomalies",
-            "template": "insight_vendor_risk.html",
-            "url_fn": lambda h: f"/insights/vendor-risk/{h.get('vendor_slug', '')}/",
-            "label_fn": lambda h: h.get("vendor_name", ""),
-            "score_fn": lambda h: h.get("vendor_score", 0),
-            "title": "Vendor Risk Anomalies",
-            "description": "Vendors with patch response rates anomalously below their peer bracket.",
-            "entity_label": "Vendor",
-        },
-        "momentum_divergences": {
-            "cache_key": "hypothesis_momentum_divergences",
-            "template": "insight_momentum.html",
-            "url_fn": lambda h: f"/insights/momentum/{h.get('cve_id', '')}/",
-            "label_fn": lambda h: h.get("cve_id", ""),
-            "score_fn": lambda h: h.get("composite_score", 0),
-            "title": "Exploit Momentum Signals",
-            "description": "CVEs with high EPSS probability but no public exploit yet.",
-            "entity_label": "CVE",
-        },
-    }
 
-    MIN_HYPOTHESIS_SCORE = 40
-    insight_sections = []
+def main():
+    parser = argparse.ArgumentParser(description="Generate CyberEdge static site")
+    parser.add_argument("--output-dir", default="./site")
+    parser.add_argument("--base-url", default="https://cyber.phasetransitions.ai")
+    parser.add_argument("--chunk", help="Chunk to generate: cve:YEAR, products, vendors, weaknesses, patterns, techniques, relationships, insights, homepage")
+    args = parser.parse_args()
 
-    for h_type, h_config in HYPOTHESIS_CONFIG.items():
-        data = load_cached(h_config["cache_key"])
-        filtered = [h for h in data if h.get("hypothesis_score", 0) >= MIN_HYPOTHESIS_SCORE]
-        if not filtered:
-            insight_sections.append({"title": h_config["title"], "description": h_config["description"], "entity_label": h_config["entity_label"], "items": []})
-            continue
+    out_dir = args.output_dir
+    base_url = args.base_url.rstrip("/")
+    os.makedirs(out_dir, exist_ok=True)
+    env = _setup_jinja(base_url)
 
-        tpl = env.get_template(h_config["template"])
-        rendered = 0
-        section_items = []
+    t0 = time.time()
+    total_files = 0
+    chunk = args.chunk
 
-        for item in filtered:
-            page_path = h_config["url_fn"](item)
-            if not page_path or page_path.endswith("//"):
-                continue
-            html = tpl.render(item=item, slugify=slugify)
-            write_page(out_dir, page_path, html)
-            generated_urls.append({"path": page_path, "changefreq": "weekly", "priority": "0.5"})
-            total_files += 1
-            rendered += 1
-            section_items.append({
-                "url": page_path,
-                "label": h_config["label_fn"](item),
-                "entity_score": h_config["score_fn"](item),
-                "hypothesis_score": item.get("hypothesis_score", 0),
-            })
+    if not chunk:
+        print("ERROR: --chunk is required. Use start.sh for full generation.")
+        sys.exit(1)
 
-        insight_sections.append({
-            "title": h_config["title"],
-            "description": h_config["description"],
-            "entity_label": h_config["entity_label"],
-            "items": section_items,
-        })
-        if rendered:
-            print(f"  {h_config['title']}: {rendered:,} pages")
+    # -------------------------------------------------------------------
+    # CVE year chunk: cve:2024, cve:2025, cve:pre2018, etc.
+    # -------------------------------------------------------------------
+    if chunk.startswith("cve:"):
+        year_str = chunk.split(":")[1]
+        year = 0 if year_str == "pre2018" else int(year_str)
+        label = f"CVEs {year_str}"
+        print(f"Chunk: {label}")
 
-    # Insights index page
-    any_data = any(s["items"] for s in insight_sections)
-    insights_tpl = env.get_template("insights_index.html")
-    html = insights_tpl.render(sections=insight_sections, any_data=any_data)
-    write_page(out_dir, "/insights/", html)
-    generated_urls.append({"path": "/insights/", "changefreq": "weekly", "priority": "0.8"})
-    total_files += 1
+        config = ENTITY_CONFIG["cve"]
+        entities = fetch_entities(config, year_filter=year)
+        print(f"  Fetched {len(entities):,} CVEs for {year_str}")
 
-    # -----------------------------------------------------------------------
-    # Phase 3: SEO assets
-    # -----------------------------------------------------------------------
-    print("\nPhase 3: SEO assets...")
-    generate_sitemap(base_url, generated_urls, out_dir)
-    generate_robots(base_url, out_dir)
-    print(f"  Sitemap: {len(generated_urls):,} URLs")
+        # Build lookup sets (lightweight — just slug sets from all MVs)
+        lookups = {}
+        for et, cfg in ENTITY_CONFIG.items():
+            with engine.connect() as conn:
+                rows = conn.execute(text(f"SELECT {cfg['slug_field']} FROM {cfg['view']}")).fetchall()
+                lookups[et] = {r[0] for r in rows}
+
+        # CVE enrichment for this chunk only
+        cve_ids = {e["id"] for e in entities}
+        cve_enrichment = fetch_cve_enrichment(cve_ids)
+        cve_metadata = fetch_cve_metadata()
+
+        enrichments = {"cve_enrichment": cve_enrichment, "cve_metadata": cve_metadata, "lookups": lookups}
+        total_files += _render_detail_pages(env, out_dir, "cve", config, entities, enrichments)
+
+    # -------------------------------------------------------------------
+    # Single entity type chunks: products, vendors, weaknesses, etc.
+    # -------------------------------------------------------------------
+    elif chunk in ENTITY_CONFIG and chunk != "cve":
+        entity_type = chunk
+        config = ENTITY_CONFIG[entity_type]
+        print(f"Chunk: {config['label_plural']}")
+
+        entities = fetch_entities(config)
+        print(f"  Fetched {len(entities):,} {config['label_plural']}")
+
+        # Build lookup sets
+        lookups = {}
+        for et, cfg in ENTITY_CONFIG.items():
+            with engine.connect() as conn:
+                rows = conn.execute(text(f"SELECT {cfg['slug_field']} FROM {cfg['view']}")).fetchall()
+                lookups[et] = {r[0] for r in rows}
+
+        enrichments = {"lookups": lookups}
+
+        # Load entity-specific enrichment
+        if entity_type == "product":
+            enrichments["product_enrichment"] = fetch_product_enrichment()
+            enrichments["product_metadata"] = fetch_product_metadata()
+        elif entity_type == "weakness":
+            enrichments["weakness_enrichment"] = fetch_weakness_enrichment()
+        elif entity_type == "technique":
+            enrichments["technique_enrichment"] = fetch_technique_enrichment()
+        elif entity_type == "vendor":
+            enrichments["vendor_enrichment"] = fetch_vendor_enrichment()
+
+        total_files += _render_detail_pages(env, out_dir, entity_type, config, entities, enrichments)
+        total_files += _render_index_pages(env, out_dir, config, entities)
+
+    # -------------------------------------------------------------------
+    # Relationship pages (from structural_cache)
+    # -------------------------------------------------------------------
+    elif chunk == "relationships":
+        print("Chunk: Relationship pages")
+
+        cve_sw_pairs = load_cached("cve_software_pairs")
+        if cve_sw_pairs:
+            pair_tpl = env.get_template("cve_software_pair.html")
+            pair_count = 0
+            for pair in cve_sw_pairs:
+                cve_id = pair.get("cve_id", "")
+                sw_name = pair.get("software_name", "")
+                if not cve_id or not sw_name:
+                    continue
+                page_path = f"/cve/{cve_id}/software/{slugify(sw_name)}/"
+                html = pair_tpl.render(pair=pair, slugify=slugify)
+                write_page(out_dir, page_path, html)
+                total_files += 1
+                pair_count += 1
+                if pair_count % 10000 == 0:
+                    print(f"    CVE-Software pairs: {pair_count:,}...")
+            print(f"  CVE-Software pairs: {pair_count:,}")
+
+        vendor_weak_data = load_cached("vendor_weakness_pairs")
+        if vendor_weak_data:
+            vw_tpl = env.get_template("vendor_weaknesses.html")
+            vendor_groups = {}
+            for row in vendor_weak_data:
+                vs = row.get("vendor_slug", "")
+                if vs not in vendor_groups:
+                    vendor_groups[vs] = {"vendor_slug": vs, "vendor_name": row.get("vendor_name"), "weaknesses": []}
+                vendor_groups[vs]["weaknesses"].append(row)
+            vw_count = 0
+            for vs, group in vendor_groups.items():
+                page_path = f"/vendor/{vs}/weaknesses/"
+                html = vw_tpl.render(vendor_slug=group["vendor_slug"], vendor_name=group["vendor_name"], weaknesses=group["weaknesses"])
+                write_page(out_dir, page_path, html)
+                total_files += 1
+                vw_count += 1
+            print(f"  Vendor weakness portfolios: {vw_count:,}")
+
+        chain_data = load_cached("kill_chain_pages")
+        if chain_data:
+            chain_tpl = env.get_template("chain_page.html")
+            chain_count = 0
+            for chain in chain_data:
+                cwe = chain.get("cwe_id", "")
+                capec = chain.get("capec_id", "")
+                tech = chain.get("technique_id", "")
+                if not cwe or not capec or not tech:
+                    continue
+                page_path = f"/chain/{cwe}/{capec}/{tech}/"
+                html = chain_tpl.render(chain=chain)
+                write_page(out_dir, page_path, html)
+                total_files += 1
+                chain_count += 1
+            print(f"  Kill chain pages: {chain_count:,}")
+
+    # -------------------------------------------------------------------
+    # Insight pages (hypothesis engine)
+    # -------------------------------------------------------------------
+    elif chunk == "insights":
+        print("Chunk: Insight pages")
+
+        HYPOTHESIS_CONFIG = {
+            "unpatched_exposure": {"cache_key": "hypothesis_unpatched_exposure", "template": "insight_unpatched.html", "url_fn": lambda h: f"/insights/unpatched/{h.get('cve_id', '')}/", "label_fn": lambda h: h.get("cve_id", ""), "score_fn": lambda h: h.get("composite_score", 0), "title": "Unpatched Exposure Gaps", "description": "High-severity CVEs with wide deployment and no available fix.", "entity_label": "CVE"},
+            "chain_gaps": {"cache_key": "hypothesis_chain_gaps", "template": "insight_chain_gap.html", "url_fn": lambda h: f"/insights/chain-gap/{h.get('technique_id', '')}/{slugify(h.get('software_name', ''))}/", "label_fn": lambda h: f"{h.get('technique_id', '')} × {h.get('software_name', '')}", "score_fn": lambda h: h.get("weakness_cve_count", 0), "title": "Attack Chain Gaps", "description": "Software with weakness exposure to a technique but no verified exploit.", "entity_label": "Gap"},
+            "vendor_anomalies": {"cache_key": "hypothesis_vendor_anomalies", "template": "insight_vendor_risk.html", "url_fn": lambda h: f"/insights/vendor-risk/{h.get('vendor_slug', '')}/", "label_fn": lambda h: h.get("vendor_name", ""), "score_fn": lambda h: h.get("vendor_score", 0), "title": "Vendor Risk Anomalies", "description": "Vendors with anomalous risk profiles.", "entity_label": "Vendor"},
+            "momentum_divergences": {"cache_key": "hypothesis_momentum_divergences", "template": "insight_momentum.html", "url_fn": lambda h: f"/insights/momentum/{h.get('cve_id', '')}/", "label_fn": lambda h: h.get("cve_id", ""), "score_fn": lambda h: h.get("composite_score", 0), "title": "Exploit Momentum Signals", "description": "CVEs with high EPSS probability but no public exploit yet.", "entity_label": "CVE"},
+        }
+
+        MIN_HYPOTHESIS_SCORE = 40
+        insight_sections = []
+        for h_type, h_config in HYPOTHESIS_CONFIG.items():
+            data = load_cached(h_config["cache_key"])
+            filtered = [h for h in data if h.get("hypothesis_score", 0) >= MIN_HYPOTHESIS_SCORE]
+            section_items = []
+            if filtered:
+                tpl = env.get_template(h_config["template"])
+                for item in filtered:
+                    page_path = h_config["url_fn"](item)
+                    if not page_path or page_path.endswith("//"):
+                        continue
+                    html = tpl.render(item=item, slugify=slugify)
+                    write_page(out_dir, page_path, html)
+                    total_files += 1
+                    section_items.append({"url": page_path, "label": h_config["label_fn"](item), "entity_score": h_config["score_fn"](item), "hypothesis_score": item.get("hypothesis_score", 0)})
+                print(f"  {h_config['title']}: {len(section_items):,} pages")
+            insight_sections.append({"title": h_config["title"], "description": h_config["description"], "entity_label": h_config["entity_label"], "items": section_items})
+
+        insights_tpl = env.get_template("insights_index.html")
+        html = insights_tpl.render(sections=insight_sections, any_data=any(s["items"] for s in insight_sections))
+        write_page(out_dir, "/insights/", html)
+        total_files += 1
+
+    # -------------------------------------------------------------------
+    # Homepage chunk: homepage, trending, about, ALL index pages, SEO
+    # -------------------------------------------------------------------
+    elif chunk == "homepage":
+        print("Chunk: Homepage + index pages + SEO")
+
+        entity_summary = fetch_entity_summary()
+        trending = fetch_trending()
+        homepage_data = fetch_homepage_data()
+
+        # Fetch top 10 per entity type for homepage (lightweight)
+        top_entities = {}
+        for et, config in ENTITY_CONFIG.items():
+            with engine.connect() as conn:
+                rows = conn.execute(text(f"SELECT * FROM {config['view']} ORDER BY composite_score DESC LIMIT 10")).mappings().fetchall()
+                top_entities[et] = [dict(r) for r in rows]
+
+        # Homepage
+        homepage_tpl = env.get_template("homepage.html")
+        html = homepage_tpl.render(
+            top_entities=top_entities, entity_summary=entity_summary,
+            entity_config=ENTITY_CONFIG, homepage_data=homepage_data,
+            total_entities=sum(s.get("total", 0) for s in entity_summary.values()),
+            slugify=slugify,
+        )
+        write_page(out_dir, "/", html)
+        total_files += 1
+
+        # ALL entity index pages (paginated) — loads lightweight rows
+        for et, config in ENTITY_CONFIG.items():
+            entities = fetch_entities(config) if et != "cve" else []
+            # For CVEs: load ALL CVEs (lightweight — just scoring fields)
+            if et == "cve":
+                with engine.connect() as conn:
+                    rows = conn.execute(text("SELECT * FROM mv_cve_scores ORDER BY composite_score DESC")).mappings().fetchall()
+                    entities = [dict(r) for r in rows]
+            total_files += _render_index_pages(env, out_dir, config, entities)
+            del entities  # Free memory before next entity type
+
+        # Trending
+        trending_tpl = env.get_template("trending.html")
+        html = trending_tpl.render(trending=trending, entity_config=ENTITY_CONFIG)
+        write_page(out_dir, "/trending/", html)
+        total_files += 1
+
+        # About
+        about_tpl = env.get_template("about.html")
+        html = about_tpl.render(entity_config=ENTITY_CONFIG)
+        write_page(out_dir, "/about/", html)
+        total_files += 1
+
+        # SEO
+        # Sitemap generation is deferred — each chunk would need to contribute URLs.
+        # For now, generate a basic sitemap from the MVs.
+        generate_robots(base_url, out_dir)
+        print("  robots.txt generated")
+
+    else:
+        print(f"ERROR: Unknown chunk '{chunk}'")
+        sys.exit(1)
 
     elapsed = time.time() - t0
-    print(f"\nDone! {total_files:,} files in {elapsed:.1f}s")
+    print(f"\nDone! {chunk}: {total_files:,} files in {elapsed:.1f}s")
 
 
 if __name__ == "__main__":
