@@ -589,23 +589,26 @@ def fetch_product_enrichment() -> dict:
     result = {}
     with engine.connect() as conn:
         rows = conn.execute(text("""
-            WITH ranked AS (
-                SELECT
+            WITH product_cves AS (
+                SELECT DISTINCT
                     split_part(s.cpe_id, ':', 4) || '/' || split_part(s.cpe_id, ':', 5) AS product_id,
-                    c.cve_id, c.cvss_base_score, c.epss_score, c.is_kev, c.published_date,
-                    ROW_NUMBER() OVER (
-                        PARTITION BY split_part(s.cpe_id, ':', 4), split_part(s.cpe_id, ':', 5)
-                        ORDER BY COALESCE(c.epss_score, 0) DESC
-                    ) AS rn
+                    c.cve_id, c.cvss_base_score, c.epss_score, c.is_kev, c.published_date
                 FROM software s
-                JOIN (SELECT DISTINCT software_id, cve_id FROM cve_software) cs
-                    ON cs.software_id = s.id
+                JOIN cve_software cs ON cs.software_id = s.id
                 JOIN cves c ON c.id = cs.cve_id
                 JOIN mv_product_scores p
                     ON p.vendor_key = split_part(s.cpe_id, ':', 4)
                     AND p.product_key = split_part(s.cpe_id, ':', 5)
                 WHERE c.cvss_base_score IS NOT NULL
                   AND (p.composite_score >= :min_score OR p.cve_count >= :min_cves)
+            ),
+            ranked AS (
+                SELECT product_id, cve_id, cvss_base_score, epss_score, is_kev, published_date,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY product_id
+                        ORDER BY COALESCE(epss_score, 0) DESC
+                    ) AS rn
+                FROM product_cves
             )
             SELECT * FROM ranked WHERE rn <= 20
         """), {"min_score": PRODUCT_MIN_SCORE, "min_cves": PRODUCT_MIN_CVES}).mappings().fetchall()
