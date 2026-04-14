@@ -45,8 +45,8 @@ async def about() -> str:
     for label, count in counts.items():
         lines.append(f"  {label}: {count:,}")
     lines.append("")
-    lines.append("Scoring: 4 dimensions x 25 points = 0-100 composite")
-    lines.append("Dimensions: severity, exploitability, exposure, patch_availability")
+    lines.append("Scoring: CVEs use severity + exploitability + exposure (0-100)")
+    lines.append("Products/vendors/weaknesses use active_threat + exploit_availability (0-100)")
     lines.append("Kill chain: CVE → CWE → CAPEC → ATT&CK")
     return "\n".join(lines)
 
@@ -60,7 +60,7 @@ async def cve_lookup(cve_id: str) -> str:
             SELECT c.cve_id, c.description, c.cvss_base_score, c.cvss_vector,
                    c.epss_score, c.is_kev, c.attack_vector, c.attack_complexity,
                    cs.composite_score, cs.quality_tier, cs.severity, cs.exploitability,
-                   cs.exposure, cs.patch_availability
+                   cs.exposure
             FROM cves c LEFT JOIN mv_cve_scores cs ON cs.id = c.id
             WHERE c.cve_id = :cid
         """), {"cid": cve_id}).mappings().fetchone()
@@ -72,8 +72,8 @@ async def cve_lookup(cve_id: str) -> str:
     if row["description"]:
         lines.append(row["description"][:300])
     lines.append(f"\nCVSS: {row['cvss_base_score']}  EPSS: {row['epss_score']}  KEV: {row['is_kev']}")
-    lines.append(f"Severity: {row['severity']}/25  Exploitability: {row['exploitability']}/25")
-    lines.append(f"Exposure: {row['exposure']}/25  Patch: {row['patch_availability']}/25")
+    lines.append(f"Severity: {row['severity']}/33  Exploitability: {row['exploitability']}/34")
+    lines.append(f"Exposure: {row['exposure']}/33")
 
     # Kill chain
     with readonly_engine.connect() as conn:
@@ -109,7 +109,7 @@ async def software_risk(name: str) -> str:
     with readonly_engine.connect() as conn:
         row = conn.execute(text("""
             SELECT s.name, s.cpe_id, ss.composite_score, ss.quality_tier,
-                   ss.severity, ss.exploitability, ss.exposure, ss.patch_availability
+                   ss.severity, ss.exploitability, ss.exposure
             FROM software s LEFT JOIN mv_software_scores ss ON ss.id = s.id
             WHERE s.name ILIKE :q
             ORDER BY ss.composite_score DESC NULLS LAST LIMIT 1
@@ -117,8 +117,8 @@ async def software_risk(name: str) -> str:
     if not row:
         return f"Software '{name}' not found."
     return (f"{row['name']} — {row['composite_score'] or 0}/100 ({row['quality_tier'] or 'unscored'})\n"
-            f"Severity: {row['severity']}/25  Exploitability: {row['exploitability']}/25\n"
-            f"Exposure: {row['exposure']}/25  Patch: {row['patch_availability']}/25")
+            f"Severity: {row['severity']}/33  Exploitability: {row['exploitability']}/34\n"
+            f"Exposure: {row['exposure']}/33")
 
 
 @mcp.tool()
@@ -128,7 +128,7 @@ async def vendor_profile(name: str) -> str:
     with readonly_engine.connect() as conn:
         row = conn.execute(text("""
             SELECT v.name, v.slug, vs.composite_score, vs.quality_tier,
-                   vs.severity, vs.exploitability, vs.exposure, vs.patch_availability
+                   vs.active_threat, vs.exploit_availability
             FROM vendors v LEFT JOIN mv_vendor_scores vs ON vs.id = v.id
             WHERE v.name ILIKE :q
             ORDER BY vs.composite_score DESC NULLS LAST LIMIT 1
@@ -136,8 +136,7 @@ async def vendor_profile(name: str) -> str:
     if not row:
         return f"Vendor '{name}' not found."
     return (f"{row['name']} — {row['composite_score'] or 0}/100 ({row['quality_tier'] or 'unscored'})\n"
-            f"Severity: {row['severity']}/25  Exploitability: {row['exploitability']}/25\n"
-            f"Exposure: {row['exposure']}/25  Patch: {row['patch_availability']}/25")
+            f"Active Threat: {row['active_threat']}/50  Exploit Availability: {row['exploit_availability']}/50")
 
 
 @mcp.tool()

@@ -28,7 +28,7 @@ async def vulnerability_triage(cve_id: str) -> str:
         f"1. Use cve_lookup('{cve_id}') to get the full profile\n"
         f"2. Check the kill chain — which ATT&CK techniques does this enable?\n"
         f"3. Use find_exploited(kev_only=True) to see if it's in the CISA KEV catalog\n"
-        f"4. Assess the 4 scoring dimensions and identify the biggest risk factor\n"
+        f"4. Assess the scoring dimensions (severity, exploitability, exposure) and identify the biggest risk factor\n"
         f"5. Recommend immediate actions based on the triage results"
     )
 
@@ -40,7 +40,7 @@ async def vendor_risk_assessment(vendor: str) -> str:
         f"1. Use vendor_profile('{vendor}') for the overall risk score\n"
         f"2. Use query() to find their top 10 CVEs by composite_score\n"
         f"3. Check which weakness types (CWEs) recur across their products\n"
-        f"4. Assess patch responsiveness from the patch_availability dimension\n"
+        f"4. Compare active threat proportion vs exploit availability across their products\n"
         f"5. Summarize the vendor's risk profile with specific recommendations"
     )
 

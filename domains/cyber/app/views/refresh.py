@@ -80,108 +80,107 @@ def refresh_all_views():
 
 
 def _snapshot_scores():
-    """Capture daily score snapshots from materialized views."""
+    """Capture daily score snapshots from materialized views.
+
+    Snapshot tables still have patch_availability columns (nullable) for
+    historical data, but we no longer populate them — that dimension was
+    removed in migration 013 because has_fix only covers 0.3% of CVEs.
+
+    For proportion-based entities (vendor, weakness, technique, pattern),
+    we map active_threat → severity column and exploit_availability →
+    exploitability column in the snapshot table.
+    """
     try:
         with engine.connect() as conn:
-            # CVE score snapshots
+            # CVE score snapshots (3 dimensions, no patch_availability)
             conn.execute(text("""
                 INSERT INTO cve_score_snapshots
                     (cve_id, snapshot_date, composite_score, severity,
-                     exploitability, exposure, patch_availability, quality_tier)
+                     exploitability, exposure, quality_tier)
                 SELECT id, CURRENT_DATE, composite_score, severity,
-                       exploitability, exposure, patch_availability, quality_tier
+                       exploitability, exposure, quality_tier
                 FROM mv_cve_scores
                 ON CONFLICT (cve_id, snapshot_date) DO UPDATE SET
                     composite_score = EXCLUDED.composite_score,
                     severity = EXCLUDED.severity,
                     exploitability = EXCLUDED.exploitability,
                     exposure = EXCLUDED.exposure,
-                    patch_availability = EXCLUDED.patch_availability,
                     quality_tier = EXCLUDED.quality_tier
             """))
 
-            # Software score snapshots
+            # Software score snapshots (3 dimensions, no patch_availability)
             conn.execute(text("""
                 INSERT INTO software_score_snapshots
                     (software_id, snapshot_date, composite_score, severity,
-                     exploitability, exposure, patch_availability, quality_tier)
+                     exploitability, exposure, quality_tier)
                 SELECT id, CURRENT_DATE, composite_score, severity,
-                       exploitability, exposure, patch_availability, quality_tier
+                       exploitability, exposure, quality_tier
                 FROM mv_software_scores
                 ON CONFLICT (software_id, snapshot_date) DO UPDATE SET
                     composite_score = EXCLUDED.composite_score,
                     severity = EXCLUDED.severity,
                     exploitability = EXCLUDED.exploitability,
                     exposure = EXCLUDED.exposure,
-                    patch_availability = EXCLUDED.patch_availability,
                     quality_tier = EXCLUDED.quality_tier
             """))
 
-            # Vendor score snapshots
+            # Vendor score snapshots (proportion-based: active_threat → severity, exploit_availability → exploitability)
             conn.execute(text("""
                 INSERT INTO vendor_score_snapshots
                     (vendor_id, snapshot_date, composite_score, severity,
-                     exploitability, exposure, patch_availability, quality_tier)
-                SELECT id, CURRENT_DATE, composite_score, severity,
-                       exploitability, exposure, patch_availability, quality_tier
+                     exploitability, quality_tier)
+                SELECT id, CURRENT_DATE, composite_score,
+                       active_threat, exploit_availability, quality_tier
                 FROM mv_vendor_scores
                 ON CONFLICT (vendor_id, snapshot_date) DO UPDATE SET
                     composite_score = EXCLUDED.composite_score,
                     severity = EXCLUDED.severity,
                     exploitability = EXCLUDED.exploitability,
-                    exposure = EXCLUDED.exposure,
-                    patch_availability = EXCLUDED.patch_availability,
                     quality_tier = EXCLUDED.quality_tier
             """))
 
-            # Weakness score snapshots
+            # Weakness score snapshots (proportion-based)
             conn.execute(text("""
                 INSERT INTO weakness_score_snapshots
                     (weakness_id, snapshot_date, composite_score, severity,
-                     exploitability, exposure, patch_availability, quality_tier)
-                SELECT id, CURRENT_DATE, composite_score, severity,
-                       exploitability, exposure, patch_availability, quality_tier
+                     exploitability, quality_tier)
+                SELECT id, CURRENT_DATE, composite_score,
+                       active_threat, exploit_availability, quality_tier
                 FROM mv_weakness_scores
                 ON CONFLICT (weakness_id, snapshot_date) DO UPDATE SET
                     composite_score = EXCLUDED.composite_score,
                     severity = EXCLUDED.severity,
                     exploitability = EXCLUDED.exploitability,
-                    exposure = EXCLUDED.exposure,
-                    patch_availability = EXCLUDED.patch_availability,
                     quality_tier = EXCLUDED.quality_tier
             """))
 
-            # Technique score snapshots
+            # Technique score snapshots (proportion-based)
             conn.execute(text("""
                 INSERT INTO technique_score_snapshots
                     (technique_id, snapshot_date, composite_score, severity,
-                     exploitability, exposure, patch_availability, quality_tier)
-                SELECT id, CURRENT_DATE, composite_score, severity,
-                       exploitability, exposure, patch_availability, quality_tier
+                     exploitability, quality_tier)
+                SELECT id, CURRENT_DATE, composite_score,
+                       active_threat, exploit_availability, quality_tier
                 FROM mv_technique_scores
                 ON CONFLICT (technique_id, snapshot_date) DO UPDATE SET
                     composite_score = EXCLUDED.composite_score,
                     severity = EXCLUDED.severity,
                     exploitability = EXCLUDED.exploitability,
-                    exposure = EXCLUDED.exposure,
-                    patch_availability = EXCLUDED.patch_availability,
                     quality_tier = EXCLUDED.quality_tier
             """))
 
-            # Pattern score snapshots
+            # Pattern score snapshots (proportion-based)
             conn.execute(text("""
                 INSERT INTO pattern_score_snapshots
                     (pattern_id, snapshot_date, composite_score, severity,
-                     exploitability, exposure, patch_availability, quality_tier)
-                SELECT id, CURRENT_DATE, composite_score, severity,
-                       exploitability, exposure, patch_availability, quality_tier
+                     exploitability, quality_tier)
+                SELECT id, CURRENT_DATE, composite_score,
+                       active_threat, exploit_availability, quality_tier
                 FROM mv_pattern_scores
                 ON CONFLICT (pattern_id, snapshot_date) DO UPDATE SET
                     composite_score = EXCLUDED.composite_score,
                     severity = EXCLUDED.severity,
                     exploitability = EXCLUDED.exploitability,
-                    exposure = EXCLUDED.exposure,
-                    patch_availability = EXCLUDED.patch_availability,
                     quality_tier = EXCLUDED.quality_tier
             """))
 

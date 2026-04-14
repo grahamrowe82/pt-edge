@@ -72,8 +72,8 @@ def _compute_unpatched_exposure() -> list[dict]:
             JOIN cves c ON c.id = cs.id
             LEFT JOIN (SELECT cve_id, COUNT(*) AS cnt FROM cve_software GROUP BY cve_id) sw
                 ON sw.cve_id = c.id
-            WHERE cs.severity >= 15
-              AND cs.exposure >= 5
+            WHERE cs.severity >= 20
+              AND cs.exposure >= 7
               AND (c.has_fix IS NULL OR c.has_fix = false)
             ORDER BY cs.composite_score DESC
             LIMIT 5000
@@ -150,6 +150,10 @@ def _compute_chain_gaps() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def _compute_vendor_anomalies() -> list[dict]:
+    """Retired — patch_availability dimension removed (has_fix only covers 0.3% of CVEs).
+    Returns empty list. Will be redesigned to use proportion-based signals."""
+    return []
+    # Original implementation below for reference (dead code):
     """Vendors with patch_availability above their score bracket mean."""
     with engine.connect() as conn:
         rows = conn.execute(text("""

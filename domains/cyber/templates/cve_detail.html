@@ -105,8 +105,8 @@
                 <div class="flex items-start space-x-3">
                     <span class="flex-shrink-0 mt-0.5 w-5 h-5 rounded-full bg-yellow-100 text-yellow-700 flex items-center justify-center text-xs">?</span>
                     <div>
-                        <div class="font-medium text-gray-700">No confirmed fix</div>
-                        <div class="text-sm text-gray-500">Check vendor advisories below for mitigation guidance</div>
+                        <div class="font-medium text-gray-700">Patch status unknown</div>
+                        <div class="text-sm text-gray-500">Check vendor advisories for fix availability and mitigation guidance</div>
                     </div>
                 </div>
                 {% endif %}
@@ -238,10 +238,10 @@
             <div class="mb-3">
                 <div class="flex justify-between text-xs text-gray-500 mb-1">
                     <span>{{ dim.label }}</span>
-                    <span>{{ dim.value }}/25 &middot; {{ dim.context }}</span>
+                    <span>{{ dim.value }}/{{ dim.max_score }} &middot; {{ dim.context }}</span>
                 </div>
                 <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div class="h-full rounded-full {{ score_bar_color(dim.value) }}" style="width: {{ (dim.value / 25 * 100)|int }}%"></div>
+                    <div class="h-full rounded-full {{ score_bar_color(dim.value, dim.max_score) }}" style="width: {{ (dim.value / dim.max_score * 100)|int }}%"></div>
                 </div>
             </div>
             {% endfor %}

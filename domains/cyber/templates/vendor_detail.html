@@ -116,10 +116,10 @@
             <div class="mb-3">
                 <div class="flex justify-between text-xs text-gray-500 mb-1">
                     <span>{{ dim.label }}</span>
-                    <span>{{ dim.value }}/25 &middot; {{ dim.context }}</span>
+                    <span>{{ dim.value }}/{{ dim.max_score }} &middot; {{ dim.context }}</span>
                 </div>
                 <div class="h-2 bg-gray-100 rounded-full overflow-hidden">
-                    <div class="h-full rounded-full {{ score_bar_color(dim.value) }}" style="width: {{ (dim.value / 25 * 100)|int }}%"></div>
+                    <div class="h-full rounded-full {{ score_bar_color(dim.value, dim.max_score) }}" style="width: {{ (dim.value / dim.max_score * 100)|int }}%"></div>
                 </div>
             </div>
             {% endfor %}
