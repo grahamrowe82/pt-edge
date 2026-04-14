@@ -481,6 +481,109 @@ def cleanup_old_tasks() -> int:
 
 
 # ---------------------------------------------------------------------------
+# Product embedding + guidance + CVE enrichment
+# ---------------------------------------------------------------------------
+
+
+def schedule_embed_products() -> int:
+    """Create embed_products task if not run in last 24h and products need embedding."""
+    with engine.connect() as conn:
+        recent = conn.execute(text("""
+            SELECT 1 FROM sync_log
+            WHERE sync_type = 'embed_products' AND status = 'success'
+              AND started_at > now() - interval '24 hours'
+            LIMIT 1
+        """)).fetchone()
+        if recent:
+            return 0
+        has_work = conn.execute(text("""
+            SELECT EXISTS(
+                SELECT 1 FROM mv_product_scores p
+                LEFT JOIN product_metadata pm ON pm.vendor_key = p.vendor_key AND pm.product_key = p.product_key
+                WHERE pm.embedding IS NULL AND (p.composite_score >= 1 OR p.cve_count >= 5)
+                LIMIT 1
+            )
+        """)).scalar()
+        if not has_work:
+            return 0
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, status, created_at)
+            SELECT 'embed_products', 'batch', 'pending', now()
+            WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE task_type = 'embed_products' AND status IN ('pending', 'claimed'))
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info("Scheduled embed_products")
+        return count
+
+
+def schedule_product_guidance() -> int:
+    """Create product_guidance task if products have embeddings but no categories."""
+    with engine.connect() as conn:
+        recent = conn.execute(text("""
+            SELECT 1 FROM sync_log
+            WHERE sync_type = 'product_guidance' AND status = 'success'
+              AND started_at > now() - interval '24 hours'
+            LIMIT 1
+        """)).fetchone()
+        if recent:
+            return 0
+        has_work = conn.execute(text("""
+            SELECT EXISTS(
+                SELECT 1 FROM product_metadata
+                WHERE embedding IS NOT NULL AND category IS NULL
+                LIMIT 1
+            )
+        """)).scalar()
+        if not has_work:
+            return 0
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, status, created_at)
+            SELECT 'product_guidance', 'batch', 'pending', now()
+            WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE task_type = 'product_guidance' AND status IN ('pending', 'claimed'))
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info("Scheduled product_guidance")
+        return count
+
+
+def schedule_enrich_cve_summaries() -> int:
+    """Create enrich_cve_summaries task if CVEs lack Gemini summaries."""
+    with engine.connect() as conn:
+        recent = conn.execute(text("""
+            SELECT 1 FROM sync_log
+            WHERE sync_type = 'enrich_cve_summaries' AND status = 'success'
+              AND started_at > now() - interval '24 hours'
+            LIMIT 1
+        """)).fetchone()
+        if recent:
+            return 0
+        has_work = conn.execute(text("""
+            SELECT EXISTS(
+                SELECT 1 FROM cves c
+                LEFT JOIN cve_metadata cm ON cm.cve_id = c.id
+                WHERE c.cvss_base_score IS NOT NULL AND cm.cve_id IS NULL
+                LIMIT 1
+            )
+        """)).scalar()
+        if not has_work:
+            return 0
+        result = conn.execute(text("""
+            INSERT INTO tasks (task_type, subject_id, status, created_at)
+            SELECT 'enrich_cve_summaries', 'batch', 'pending', now()
+            WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE task_type = 'enrich_cve_summaries' AND status IN ('pending', 'claimed'))
+        """))
+        conn.commit()
+        count = result.rowcount
+        if count > 0:
+            logger.info("Scheduled enrich_cve_summaries")
+        return count
+
+
+# ---------------------------------------------------------------------------
 # Main scheduler
 # ---------------------------------------------------------------------------
 
@@ -510,6 +613,11 @@ def schedule_all() -> dict:
     # counts["hypotheses"] = schedule_compute_hypotheses()
     counts["embeddings"] = schedule_compute_embeddings()
     counts["views"] = schedule_refresh_views()
+
+    # Product enrichment + Gemini CVE summaries (run after views refresh)
+    counts["embed_products"] = schedule_embed_products()
+    counts["product_guidance"] = schedule_product_guidance()
+    counts["enrich_cve_summaries"] = schedule_enrich_cve_summaries()
 
     return counts
 

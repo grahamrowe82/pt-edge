@@ -92,7 +92,9 @@ def _build_prompt(cve: dict, software_names: list[str]) -> str:
         f"Actively exploited: {kev}\n"
         f"Affected software: {sw}\n"
         f"Attack vector: {cve.get('attack_vector') or 'Not specified'}\n\n"
-        "Return JSON with exactly 3 fields:\n"
+        "Return JSON with exactly 4 fields:\n"
+        '- "common_name": The well-known name if this CVE has one (e.g., "Heartbleed", '
+        '"Log4Shell", "Shellshock", "EternalBlue"). null if no common name exists.\n'
         '- "what_is_this": One sentence. What is this vulnerability? Plain English.\n'
         '- "am_i_affected": One sentence. Who should worry about this?\n'
         '- "what_to_do": One sentence. What\'s the recommended action?'
@@ -102,17 +104,18 @@ def _build_prompt(cve: dict, software_names: list[str]) -> str:
 def _upsert_metadata(batch: list[tuple]):
     """Upsert CVE metadata rows."""
     with engine.connect() as conn:
-        for cve_id, what, who, action, gen_hash in batch:
+        for cve_id, common_name, what, who, action, gen_hash in batch:
             conn.execute(text("""
-                INSERT INTO cve_metadata (cve_id, what_is_this, am_i_affected, what_to_do, generation_hash)
-                VALUES (:id, :what, :who, :action, :hash)
+                INSERT INTO cve_metadata (cve_id, common_name, what_is_this, am_i_affected, what_to_do, generation_hash)
+                VALUES (:id, :name, :what, :who, :action, :hash)
                 ON CONFLICT (cve_id) DO UPDATE SET
+                    common_name = EXCLUDED.common_name,
                     what_is_this = EXCLUDED.what_is_this,
                     am_i_affected = EXCLUDED.am_i_affected,
                     what_to_do = EXCLUDED.what_to_do,
                     generation_hash = EXCLUDED.generation_hash,
                     updated_at = now()
-            """), {"id": cve_id, "what": what, "who": who, "action": action, "hash": gen_hash})
+            """), {"id": cve_id, "name": common_name, "what": what, "who": who, "action": action, "hash": gen_hash})
         conn.commit()
 
 
@@ -145,11 +148,12 @@ async def _enrich_cves():
         result = await call_llm(prompt, max_tokens=300)
 
         if result and isinstance(result, dict):
+            common_name = result.get("common_name") or None
             what = result.get("what_is_this", "")
             who = result.get("am_i_affected", "")
             action = result.get("what_to_do", "")
             if what:
-                to_upsert.append((cve["id"], what, who, action, gen_hash))
+                to_upsert.append((cve["id"], common_name, what, who, action, gen_hash))
                 total_enriched += 1
 
         # Flush in batches

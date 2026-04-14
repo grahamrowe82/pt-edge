@@ -11,6 +11,9 @@ from domains.cyber.app.queue.handlers.compute_pairs import handle_compute_pairs
 from domains.cyber.app.queue.handlers.compute_hypotheses import handle_compute_hypotheses
 from domains.cyber.app.queue.handlers.compute_embeddings import handle_compute_embeddings
 from domains.cyber.app.queue.handlers.refresh_views import handle_refresh_views
+from domains.cyber.app.queue.handlers.embed_products import handle_embed_products
+from domains.cyber.app.queue.handlers.product_guidance import handle_product_guidance
+from domains.cyber.app.queue.handlers.enrich_cve_summaries import handle_enrich_cve_summaries
 
 TASK_HANDLERS: dict = {
     "ingest_nvd": handle_ingest_nvd,
@@ -24,4 +27,7 @@ TASK_HANDLERS: dict = {
     "compute_hypotheses": handle_compute_hypotheses,
     "compute_embeddings": handle_compute_embeddings,
     "refresh_views": handle_refresh_views,
+    "embed_products": handle_embed_products,
+    "product_guidance": handle_product_guidance,
+    "enrich_cve_summaries": handle_enrich_cve_summaries,
 }

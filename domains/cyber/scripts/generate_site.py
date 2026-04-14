@@ -170,6 +170,7 @@ ENTITY_CONFIG = {
         "label_plural": "ATT&CK Techniques",
         "summary_key": "techniques",
         "max_score": 50,
+        "no_min_score": True,
         "description": "MITRE ATT&CK techniques scored by proportion of reachable CVEs with active exploitation.",
         "dimensions": [
             ("active_threat", "Active Threat"),
@@ -187,6 +188,7 @@ ENTITY_CONFIG = {
         "label_plural": "CAPEC Attack Patterns",
         "summary_key": "attack_patterns",
         "max_score": 50,
+        "no_min_score": True,
         "description": "CAPEC attack patterns scored by proportion of reachable CVEs with active exploitation.",
         "dimensions": [
             ("active_threat", "Active Threat"),
@@ -349,7 +351,7 @@ def fetch_cve_metadata() -> dict:
     try:
         with engine.connect() as conn:
             rows = conn.execute(text("""
-                SELECT cve_id, what_is_this, am_i_affected, what_to_do
+                SELECT cve_id, common_name, what_is_this, am_i_affected, what_to_do
                 FROM cve_metadata
                 WHERE what_is_this IS NOT NULL
             """)).mappings().fetchall()
@@ -442,22 +444,39 @@ def fetch_homepage_data() -> dict:
     return data
 
 
-def fetch_cve_enrichment(cve_ids: set[int]) -> dict:
-    """Fetch CVE enrichment for rendered CVEs only. Filters by cve_ids to avoid
-    loading millions of rows for CVEs that won't get detail pages."""
-    if not cve_ids:
-        return {}
+def fetch_cve_enrichment(year_filter: int | None = None) -> dict:
+    """Fetch CVE enrichment for rendered CVEs, filtered by year for chunked generation.
+
+    year_filter: specific year (2024) or 0 for pre-2018, or None for all CVEs.
+    """
+    # Build the year-based WHERE clause for all subqueries
+    if year_filter == 0:
+        year_clause = "EXTRACT(YEAR FROM c2.published_date) < 2018"
+        params = {}
+    elif year_filter is not None:
+        year_clause = "EXTRACT(YEAR FROM c2.published_date) = :year"
+        params = {"year": year_filter}
+    else:
+        year_clause = "TRUE"
+        params = {}
+
+    # Common subquery: IDs of CVEs in this chunk
+    cve_filter = f"""
+        SELECT c2.id FROM cves c2
+        WHERE c2.cvss_base_score IS NOT NULL AND {year_clause}
+    """
+
     result = {}
     with engine.connect() as conn:
-        # Software links (only for rendered CVEs)
-        rows = conn.execute(text("""
+        # Software links
+        rows = conn.execute(text(f"""
             SELECT cs.cve_id, s.name, s.cpe_id,
                    split_part(s.cpe_id, ':', 4) AS vendor_key,
                    split_part(s.cpe_id, ':', 5) AS product_key
             FROM cve_software cs
             JOIN software s ON s.id = cs.software_id
-            WHERE cs.cve_id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
-        """), {"min": MIN_SCORE}).mappings().fetchall()
+            WHERE cs.cve_id IN ({cve_filter})
+        """), params).mappings().fetchall()
         for r in rows:
             result.setdefault(r["cve_id"], {}).setdefault("software", []).append(
                 {"name": r["name"], "cpe_id": r["cpe_id"],
@@ -469,8 +488,8 @@ def fetch_cve_enrichment(cve_ids: set[int]) -> dict:
             SELECT cv.cve_id, v.name, v.slug
             FROM cve_vendors cv
             JOIN vendors v ON v.id = cv.vendor_id
-            WHERE cv.cve_id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
-        """), {"min": MIN_SCORE}).mappings().fetchall()
+            WHERE cv.cve_id IN ({cve_filter})
+        """), params).mappings().fetchall()
         for r in rows:
             result.setdefault(r["cve_id"], {}).setdefault("vendors", []).append(
                 {"name": r["name"], "slug": r["slug"]})
@@ -481,8 +500,8 @@ def fetch_cve_enrichment(cve_ids: set[int]) -> dict:
             SELECT cw.cve_id, w.cwe_id, w.name
             FROM cve_weaknesses cw
             JOIN weaknesses w ON w.id = cw.weakness_id
-            WHERE cw.cve_id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
-        """), {"min": MIN_SCORE}).mappings().fetchall()
+            WHERE cw.cve_id IN ({cve_filter})
+        """), params).mappings().fetchall()
         for r in rows:
             result.setdefault(r["cve_id"], {}).setdefault("weaknesses", []).append(
                 {"cwe_id": r["cwe_id"], "name": r["name"]})
@@ -498,8 +517,8 @@ def fetch_cve_enrichment(cve_ids: set[int]) -> dict:
             JOIN attack_patterns ap ON ap.id = wp.pattern_id
             JOIN pattern_techniques pt ON pt.pattern_id = ap.id
             JOIN techniques t ON t.id = pt.technique_id
-            WHERE cw.cve_id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
-        """), {"min": MIN_SCORE}).mappings().fetchall()
+            WHERE cw.cve_id IN ({cve_filter})
+        """), params).mappings().fetchall()
         for r in rows:
             result.setdefault(r["cve_id"], {}).setdefault("kill_chain", []).append(
                 {"cwe_id": r["cwe_id"], "capec_id": r["capec_id"],
@@ -510,8 +529,8 @@ def fetch_cve_enrichment(cve_ids: set[int]) -> dict:
         rows = conn.execute(text("""
             SELECT ce.cve_id, ce.exploit_db_id, ce.exploit_type, ce.verified, ce.source_url
             FROM cve_exploits ce
-            WHERE ce.cve_id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
-        """), {"min": MIN_SCORE}).mappings().fetchall()
+            WHERE ce.cve_id IN ({cve_filter})
+        """), params).mappings().fetchall()
         for r in rows:
             result.setdefault(r["cve_id"], {}).setdefault("exploits", []).append(dict(r))
         print(f"  CVE enrichment: {len(rows):,} exploit links")
@@ -520,8 +539,8 @@ def fetch_cve_enrichment(cve_ids: set[int]) -> dict:
         rows = conn.execute(text("""
             SELECT c.id, c.has_fix, c.fix_versions, c."references", c.attack_complexity
             FROM cves c
-            WHERE c.id IN (SELECT id FROM mv_cve_scores WHERE composite_score >= :min)
-        """), {"min": MIN_SCORE}).mappings().fetchall()
+            WHERE c.id IN ({cve_filter})
+        """), params).mappings().fetchall()
         for r in rows:
             refs = r["references"]
             if isinstance(refs, str):
@@ -606,8 +625,7 @@ def fetch_weakness_enrichment() -> dict:
             SELECT w.id, w.common_consequences, w.detection_methods
             FROM weaknesses w
             JOIN mv_weakness_scores ws ON ws.id = w.id
-            WHERE ws.composite_score >= :min_score
-        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        """)).mappings().fetchall()
         for r in rows:
             cons = r["common_consequences"] or []
             det = r["detection_methods"] or []
@@ -628,12 +646,10 @@ def fetch_weakness_enrichment() -> dict:
                 FROM cve_weaknesses cw
                 JOIN cves c ON c.id = cw.cve_id
                 WHERE c.cvss_base_score IS NOT NULL
-                  AND cw.weakness_id IN (
-                    SELECT id FROM mv_weakness_scores WHERE composite_score >= :min_score
-                  )
+                  AND cw.weakness_id IN (SELECT id FROM mv_weakness_scores)
             )
             SELECT * FROM ranked WHERE rn <= 10
-        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        """)).mappings().fetchall()
         for r in rows:
             result.setdefault(r["weakness_id"], {}).setdefault("top_cves", []).append(dict(r))
         print(f"  Weakness enrichment: {len(rows):,} top CVE links")
@@ -650,8 +666,7 @@ def fetch_technique_enrichment() -> dict:
             SELECT t.id, t.data_sources
             FROM techniques t
             JOIN mv_technique_scores ts ON ts.id = t.id
-            WHERE ts.composite_score >= :min_score
-        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        """)).mappings().fetchall()
         for r in rows:
             result[r["id"]] = {
                 "data_sources": r["data_sources"] or [],
@@ -671,12 +686,10 @@ def fetch_technique_enrichment() -> dict:
                 JOIN cve_weaknesses cw ON cw.weakness_id = wp.weakness_id
                 JOIN cves c ON c.id = cw.cve_id
                 WHERE c.cvss_base_score IS NOT NULL
-                  AND pt.technique_id IN (
-                    SELECT id FROM mv_technique_scores WHERE composite_score >= :min_score
-                  )
+                  AND pt.technique_id IN (SELECT id FROM mv_technique_scores)
             )
             SELECT * FROM ranked WHERE rn <= 10
-        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        """)).mappings().fetchall()
         for r in rows:
             result.setdefault(r["tech_id"], {}).setdefault("top_cves", []).append(dict(r))
         print(f"  Technique enrichment: {len(rows):,} top CVE links")
@@ -698,11 +711,8 @@ def fetch_vendor_enrichment() -> dict:
                 SUM(p.exploit_count) AS exploit_cves,
                 ROUND(AVG(p.composite_score)::numeric, 1) AS avg_product_score
             FROM mv_product_scores p
-            WHERE p.vendor_id IN (
-                SELECT id FROM mv_vendor_scores WHERE composite_score >= :min_score
-            )
             GROUP BY p.vendor_id
-        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        """)).mappings().fetchall()
         for r in rows:
             result[r["vendor_id"]] = {"stats": dict(r)}
         print(f"  Vendor enrichment: {len(rows):,} vendor stats")
@@ -717,12 +727,9 @@ def fetch_vendor_enrichment() -> dict:
                         ORDER BY p.composite_score DESC
                     ) AS rn
                 FROM mv_product_scores p
-                WHERE p.vendor_id IN (
-                    SELECT id FROM mv_vendor_scores WHERE composite_score >= :min_score
-                )
             )
             SELECT * FROM ranked WHERE rn <= 10
-        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        """)).mappings().fetchall()
         for r in rows:
             result.setdefault(r["vendor_id"], {}).setdefault("top_products", []).append(dict(r))
         print(f"  Vendor enrichment: {len(rows):,} top product links")
@@ -990,9 +997,8 @@ def main():
                 rows = conn.execute(text(f"SELECT {cfg['slug_field']} FROM {cfg['view']}")).fetchall()
                 lookups[et] = {r[0] for r in rows}
 
-        # CVE enrichment for this chunk only
-        cve_ids = {e["id"] for e in entities}
-        cve_enrichment = fetch_cve_enrichment(cve_ids)
+        # CVE enrichment for this chunk's year
+        cve_enrichment = fetch_cve_enrichment(year_filter=year)
         cve_metadata = fetch_cve_metadata()
 
         enrichments = {"cve_enrichment": cve_enrichment, "cve_metadata": cve_metadata, "lookups": lookups}
@@ -1138,11 +1144,26 @@ def main():
         trending = fetch_trending()
         homepage_data = fetch_homepage_data()
 
-        # Fetch top 10 per entity type for homepage (lightweight)
+        # Fetch top 10 per entity type for homepage
+        # Products use "big enough AND bad enough" ranking: score * ln(cve_count),
+        # capped at 2 per vendor so it's not all Microsoft
         top_entities = {}
         for et, config in ENTITY_CONFIG.items():
             with engine.connect() as conn:
-                rows = conn.execute(text(f"SELECT * FROM {config['view']} ORDER BY composite_score DESC LIMIT 10")).mappings().fetchall()
+                if et == "product":
+                    rows = conn.execute(text("""
+                        WITH ranked AS (
+                            SELECT *, composite_score * LN(cve_count + 1) AS homepage_rank,
+                                ROW_NUMBER() OVER (PARTITION BY vendor_name
+                                    ORDER BY composite_score * LN(cve_count + 1) DESC) AS vendor_rank
+                            FROM mv_product_scores
+                            WHERE composite_score > 0
+                        )
+                        SELECT * FROM ranked WHERE vendor_rank <= 2
+                        ORDER BY homepage_rank DESC LIMIT 10
+                    """)).mappings().fetchall()
+                else:
+                    rows = conn.execute(text(f"SELECT * FROM {config['view']} ORDER BY composite_score DESC LIMIT 10")).mappings().fetchall()
                 top_entities[et] = [dict(r) for r in rows]
 
         # Homepage
@@ -1179,11 +1200,33 @@ def main():
         write_page(out_dir, "/about/", html)
         total_files += 1
 
-        # SEO
-        # Sitemap generation is deferred — each chunk would need to contribute URLs.
-        # For now, generate a basic sitemap from the MVs.
+        # SEO: generate sitemap from DB (independent of which chunks rendered)
+        sitemap_urls = [
+            {"path": "/", "changefreq": "daily", "priority": "1.0"},
+            {"path": "/trending/", "changefreq": "daily", "priority": "0.7"},
+            {"path": "/about/", "changefreq": "monthly", "priority": "0.4"},
+            {"path": "/insights/", "changefreq": "weekly", "priority": "0.8"},
+        ]
+        with engine.connect() as conn:
+            for r in conn.execute(text("SELECT cve_id FROM mv_cve_scores")).fetchall():
+                sitemap_urls.append({"path": f"/cve/{r[0]}/", "changefreq": "weekly", "priority": "0.6"})
+            for r in conn.execute(text(f"""
+                SELECT id FROM mv_product_scores
+                WHERE composite_score >= {PRODUCT_MIN_SCORE} OR cve_count >= {PRODUCT_MIN_CVES}
+            """)).fetchall():
+                sitemap_urls.append({"path": f"/product/{r[0]}/", "changefreq": "weekly", "priority": "0.6"})
+            for view, prefix, col in [
+                ("mv_vendor_scores", "/vendor", "slug"),
+                ("mv_weakness_scores", "/weakness", "cwe_id"),
+                ("mv_pattern_scores", "/attack-pattern", "capec_id"),
+                ("mv_technique_scores", "/technique", "technique_id"),
+            ]:
+                for r in conn.execute(text(f"SELECT {col} FROM {view}")).fetchall():
+                    sitemap_urls.append({"path": f"{prefix}/{r[0]}/", "changefreq": "weekly", "priority": "0.5"})
+
+        generate_sitemap(base_url, sitemap_urls, out_dir)
         generate_robots(base_url, out_dir)
-        print("  robots.txt generated")
+        print(f"  Sitemap: {len(sitemap_urls):,} URLs | robots.txt generated")
 
     else:
         print(f"ERROR: Unknown chunk '{chunk}'")
