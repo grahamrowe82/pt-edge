@@ -1006,7 +1006,14 @@ def main():
         lookups = {}
         for et, cfg in ENTITY_CONFIG.items():
             with engine.connect() as conn:
-                rows = conn.execute(text(f"SELECT {cfg['slug_field']} FROM {cfg['view']}")).fetchall()
+                if et == "product":
+                    # Only include products that actually have pages (combo threshold)
+                    rows = conn.execute(text(f"""
+                        SELECT id FROM mv_product_scores
+                        WHERE composite_score >= {PRODUCT_MIN_SCORE} OR cve_count >= {PRODUCT_MIN_CVES}
+                    """)).fetchall()
+                else:
+                    rows = conn.execute(text(f"SELECT {cfg['slug_field']} FROM {cfg['view']}")).fetchall()
                 lookups[et] = {r[0] for r in rows}
 
         # CVE enrichment for this chunk's year
@@ -1031,7 +1038,14 @@ def main():
         lookups = {}
         for et, cfg in ENTITY_CONFIG.items():
             with engine.connect() as conn:
-                rows = conn.execute(text(f"SELECT {cfg['slug_field']} FROM {cfg['view']}")).fetchall()
+                if et == "product":
+                    # Only include products that actually have pages (combo threshold)
+                    rows = conn.execute(text(f"""
+                        SELECT id FROM mv_product_scores
+                        WHERE composite_score >= {PRODUCT_MIN_SCORE} OR cve_count >= {PRODUCT_MIN_CVES}
+                    """)).fetchall()
+                else:
+                    rows = conn.execute(text(f"SELECT {cfg['slug_field']} FROM {cfg['view']}")).fetchall()
                 lookups[et] = {r[0] for r in rows}
 
         enrichments = {"lookups": lookups}
