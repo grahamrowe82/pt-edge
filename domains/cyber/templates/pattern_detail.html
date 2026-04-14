@@ -15,7 +15,7 @@
     <div class="lg:col-span-2">
         <h1 class="text-2xl font-bold mb-2">{{ entity.capec_id }}: {{ entity.name }}</h1>
         {% if entity.description %}
-        <p class="text-gray-600 mb-4">{{ entity.description[:500] }}</p>
+        <p class="text-gray-600 mb-4">{{ entity.description }}</p>
         {% endif %}
 
         <div class="grid grid-cols-2 gap-3 mb-6">
@@ -33,10 +33,6 @@
             {% endif %}
         </div>
 
-        <div class="bg-gray-800 rounded-lg p-4 text-sm text-gray-300 mt-6">
-            <div class="text-gray-400 mb-2">Get this data via API</div>
-            <code class="text-green-400">curl -H "Authorization: Bearer YOUR_KEY" \<br>&nbsp;&nbsp;{{ base_url }}/api/v1/patterns/{{ entity.capec_id }}</code>
-        </div>
     </div>
 
     <div>

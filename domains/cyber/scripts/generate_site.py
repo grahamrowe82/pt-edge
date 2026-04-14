@@ -376,7 +376,12 @@ def fetch_entity_summary() -> dict:
 
 
 def fetch_trending() -> dict:
-    """Fetch score movers from snapshot tables for all entity types."""
+    """Fetch score movers from snapshot tables using a 7-day rolling window.
+
+    Requires at least 7 days of snapshot history to avoid showing noise from
+    scoring algorithm changes.  Compares each entity's latest score to its
+    score closest to 7 days ago.
+    """
     trending = {}
     snapshot_tables = {
         "cve": ("cve_score_snapshots", "cve_id", "cves", "cve_id"),
@@ -388,24 +393,36 @@ def fetch_trending() -> dict:
     for entity_type, (snap_table, fk_col, entity_table, name_col) in snapshot_tables.items():
         try:
             with engine.connect() as conn:
+                # Check we have at least 7 days of history
+                span = conn.execute(text(f"""
+                    SELECT MAX(snapshot_date) - MIN(snapshot_date) AS span_days
+                    FROM {snap_table}
+                """)).scalar()
+                if span is None or span.days < 7:
+                    trending[entity_type] = []
+                    continue
+
                 rows = conn.execute(text(f"""
                     WITH latest AS (
                         SELECT {fk_col}, composite_score, quality_tier,
                                ROW_NUMBER() OVER (PARTITION BY {fk_col} ORDER BY snapshot_date DESC) AS rn
                         FROM {snap_table}
                     ),
-                    earliest AS (
+                    prior AS (
                         SELECT {fk_col}, composite_score,
-                               ROW_NUMBER() OVER (PARTITION BY {fk_col} ORDER BY snapshot_date ASC) AS rn
+                               ROW_NUMBER() OVER (
+                                   PARTITION BY {fk_col}
+                                   ORDER BY ABS(EXTRACT(EPOCH FROM snapshot_date - (now() - interval '7 days')))
+                               ) AS rn
                         FROM {snap_table}
                     )
                     SELECT e.{name_col} AS name, l.composite_score AS current_score,
-                           l.quality_tier, l.composite_score - ea.composite_score AS score_delta
+                           l.quality_tier, l.composite_score - p.composite_score AS score_delta
                     FROM latest l
-                    JOIN earliest ea ON ea.{fk_col} = l.{fk_col} AND ea.rn = 1
+                    JOIN prior p ON p.{fk_col} = l.{fk_col} AND p.rn = 1
                     JOIN {entity_table} e ON e.id = l.{fk_col}
                     WHERE l.rn = 1
-                      AND l.composite_score - ea.composite_score > 0
+                      AND l.composite_score - p.composite_score > 0
                     ORDER BY score_delta DESC
                     LIMIT 20
                 """)).mappings().fetchall()
@@ -581,7 +598,8 @@ def fetch_product_enrichment() -> dict:
                         ORDER BY COALESCE(c.epss_score, 0) DESC
                     ) AS rn
                 FROM software s
-                JOIN cve_software cs ON cs.software_id = s.id
+                JOIN (SELECT DISTINCT software_id, cve_id FROM cve_software) cs
+                    ON cs.software_id = s.id
                 JOIN cves c ON c.id = cs.cve_id
                 JOIN mv_product_scores p
                     ON p.vendor_key = split_part(s.cpe_id, ':', 4)

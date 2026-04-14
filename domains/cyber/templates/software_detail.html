@@ -16,10 +16,6 @@
         <h1 class="text-2xl font-bold mb-2">{{ entity.name }}</h1>
         <p class="text-gray-600 mb-4">Vulnerability risk profile for {{ entity.name }}.</p>
 
-        <div class="bg-gray-800 rounded-lg p-4 text-sm text-gray-300 mt-6">
-            <div class="text-gray-400 mb-2">Get this data via API</div>
-            <code class="text-green-400">curl -H "Authorization: Bearer YOUR_KEY" \<br>&nbsp;&nbsp;{{ base_url }}/api/v1/software/{{ entity.cpe_id }}</code>
-        </div>
     </div>
 
     <div>
