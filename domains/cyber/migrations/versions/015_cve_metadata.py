@@ -21,6 +21,7 @@ def upgrade():
     op.execute("""
         CREATE TABLE IF NOT EXISTS cve_metadata (
             cve_id INTEGER PRIMARY KEY REFERENCES cves(id),
+            common_name TEXT,
             what_is_this TEXT,
             am_i_affected TEXT,
             what_to_do TEXT,

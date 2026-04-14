@@ -349,7 +349,7 @@ def fetch_cve_metadata() -> dict:
     try:
         with engine.connect() as conn:
             rows = conn.execute(text("""
-                SELECT cve_id, what_is_this, am_i_affected, what_to_do
+                SELECT cve_id, common_name, what_is_this, am_i_affected, what_to_do
                 FROM cve_metadata
                 WHERE what_is_this IS NOT NULL
             """)).mappings().fetchall()
@@ -1138,11 +1138,26 @@ def main():
         trending = fetch_trending()
         homepage_data = fetch_homepage_data()
 
-        # Fetch top 10 per entity type for homepage (lightweight)
+        # Fetch top 10 per entity type for homepage
+        # Products use "big enough AND bad enough" ranking: score * ln(cve_count),
+        # capped at 2 per vendor so it's not all Microsoft
         top_entities = {}
         for et, config in ENTITY_CONFIG.items():
             with engine.connect() as conn:
-                rows = conn.execute(text(f"SELECT * FROM {config['view']} ORDER BY composite_score DESC LIMIT 10")).mappings().fetchall()
+                if et == "product":
+                    rows = conn.execute(text("""
+                        WITH ranked AS (
+                            SELECT *, composite_score * LN(cve_count + 1) AS homepage_rank,
+                                ROW_NUMBER() OVER (PARTITION BY vendor_name
+                                    ORDER BY composite_score * LN(cve_count + 1) DESC) AS vendor_rank
+                            FROM mv_product_scores
+                            WHERE composite_score > 0
+                        )
+                        SELECT * FROM ranked WHERE vendor_rank <= 2
+                        ORDER BY homepage_rank DESC LIMIT 10
+                    """)).mappings().fetchall()
+                else:
+                    rows = conn.execute(text(f"SELECT * FROM {config['view']} ORDER BY composite_score DESC LIMIT 10")).mappings().fetchall()
                 top_entities[et] = [dict(r) for r in rows]
 
         # Homepage
