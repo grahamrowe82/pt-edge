@@ -484,7 +484,7 @@ def fetch_cve_enrichment(year_filter: int | None = None) -> dict:
         print(f"  CVE enrichment: {len(rows):,} software links")
 
         # Vendor links
-        rows = conn.execute(text("""
+        rows = conn.execute(text(f"""
             SELECT cv.cve_id, v.name, v.slug
             FROM cve_vendors cv
             JOIN vendors v ON v.id = cv.vendor_id
@@ -496,7 +496,7 @@ def fetch_cve_enrichment(year_filter: int | None = None) -> dict:
         print(f"  CVE enrichment: {len(rows):,} vendor links")
 
         # Weakness links
-        rows = conn.execute(text("""
+        rows = conn.execute(text(f"""
             SELECT cw.cve_id, w.cwe_id, w.name
             FROM cve_weaknesses cw
             JOIN weaknesses w ON w.id = cw.weakness_id
@@ -508,7 +508,7 @@ def fetch_cve_enrichment(year_filter: int | None = None) -> dict:
         print(f"  CVE enrichment: {len(rows):,} weakness links")
 
         # Kill chain: CWE → CAPEC → ATT&CK
-        rows = conn.execute(text("""
+        rows = conn.execute(text(f"""
             SELECT DISTINCT cw.cve_id, w.cwe_id, ap.capec_id,
                    t.technique_id, t.name AS technique_name
             FROM cve_weaknesses cw
@@ -526,7 +526,7 @@ def fetch_cve_enrichment(year_filter: int | None = None) -> dict:
         print(f"  CVE enrichment: {len(rows):,} kill chain paths")
 
         # Exploits for rendered CVEs
-        rows = conn.execute(text("""
+        rows = conn.execute(text(f"""
             SELECT ce.cve_id, ce.exploit_db_id, ce.exploit_type, ce.verified, ce.source_url
             FROM cve_exploits ce
             WHERE ce.cve_id IN ({cve_filter})
@@ -536,7 +536,7 @@ def fetch_cve_enrichment(year_filter: int | None = None) -> dict:
         print(f"  CVE enrichment: {len(rows):,} exploit links")
 
         # Extra CVE fields not in MV (has_fix, fix_versions, references, attack_complexity)
-        rows = conn.execute(text("""
+        rows = conn.execute(text(f"""
             SELECT c.id, c.has_fix, c.fix_versions, c."references", c.attack_complexity
             FROM cves c
             WHERE c.id IN ({cve_filter})
