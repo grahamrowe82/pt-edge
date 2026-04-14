@@ -27,6 +27,18 @@
         <p class="text-gray-700 mb-6 leading-relaxed">{{ entity.description }}</p>
         {% endif %}
 
+        <!-- What you need to know (Gemini-generated plain English) -->
+        {% if cve_summary %}
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-5 mb-6">
+            <h2 class="text-lg font-bold text-blue-900 mb-3">What you need to know</h2>
+            <div class="space-y-2 text-sm text-blue-800">
+                {% if cve_summary.what_is_this %}<p><strong>What is this?</strong> {{ cve_summary.what_is_this }}</p>{% endif %}
+                {% if cve_summary.am_i_affected %}<p><strong>Am I affected?</strong> {{ cve_summary.am_i_affected }}</p>{% endif %}
+                {% if cve_summary.what_to_do %}<p><strong>What to do:</strong> {{ cve_summary.what_to_do }}</p>{% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <!-- DO I NEED TO ACT? -->
         <div class="bg-white rounded-lg border-2 border-indigo-200 p-5 mb-6">
             <h2 class="text-lg font-bold text-indigo-900 mb-4">Do I need to act?</h2>
