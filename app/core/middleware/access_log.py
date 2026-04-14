@@ -1,3 +1,15 @@
+"""Shared HTTP access log middleware for all *-edge domains.
+
+Logs HTML page requests to http_access_log table for bot/crawler tracking
+and demand signal analysis. Buffers writes in memory, flushes every 5
+seconds or 100 rows (whichever comes first).
+
+Usage (any domain):
+    from app.core.middleware.access_log import AccessLogMiddleware
+    AccessLogMiddleware.ensure_table(engine)
+    app.add_middleware(AccessLogMiddleware, session_factory=SessionLocal)
+"""
+
 import asyncio
 import logging
 import time
@@ -5,8 +17,6 @@ import threading
 
 from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
-
-from app.db import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +38,9 @@ _buffer: list[dict] = []
 _buffer_lock = threading.Lock()
 _flush_task_started = False
 
+# Module-level session factory — set by the first middleware instance
+_session_factory = None
+
 
 class AccessLogMiddleware(BaseHTTPMiddleware):
     """Log HTTP requests to static directory pages (HTML only).
@@ -36,6 +49,42 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
     (every 100 rows or 5 seconds, whichever comes first). This reduces
     DB transactions by ~99% compared to per-request writes.
     """
+
+    def __init__(self, app, session_factory=None):
+        super().__init__(app)
+        global _session_factory
+        if session_factory is not None:
+            _session_factory = session_factory
+
+    @classmethod
+    def ensure_table(cls, engine):
+        """Create http_access_log table if it doesn't exist. Call once at startup.
+
+        Fails silently if DB is unavailable (e.g., in test environments without
+        a local Postgres). The middleware still works — it just drops log entries
+        until the table exists.
+        """
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS http_access_log (
+                        id SERIAL PRIMARY KEY,
+                        path VARCHAR(200) NOT NULL,
+                        method VARCHAR(10) NOT NULL DEFAULT 'GET',
+                        status_code SMALLINT,
+                        user_agent VARCHAR(300),
+                        client_ip VARCHAR(45),
+                        duration_ms INTEGER,
+                        created_at TIMESTAMPTZ DEFAULT now()
+                    )
+                """))
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS ix_http_access_log_created
+                    ON http_access_log (created_at)
+                """))
+                conn.commit()
+        except Exception:
+            logger.debug("Could not ensure http_access_log table (DB unavailable?)")
 
     async def dispatch(self, request, call_next):
         path = request.url.path
@@ -121,8 +170,12 @@ def _flush_buffer():
         entries = list(_buffer)
         _buffer.clear()
 
+    if _session_factory is None:
+        logger.debug(f"No session factory — dropping {len(entries)} access log entries")
+        return
+
     try:
-        session = SessionLocal()
+        session = _session_factory()
         session.execute(
             text("""
                 INSERT INTO http_access_log
