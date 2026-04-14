@@ -763,21 +763,33 @@ def write_page(out_dir: str, path: str, html: str):
         f.write(html)
 
 
-def generate_sitemap(base_url: str, urls: list[dict], out_dir: str):
-    """Write sitemap.xml from generated URL list."""
+def generate_sitemap(base_url: str, urls: list[dict], out_dir: str, filename: str = "sitemap.xml"):
+    """Write a single sitemap file (max 50K URLs per Google's limit)."""
     lines = ['<?xml version="1.0" encoding="UTF-8"?>']
     lines.append('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
     for u in urls:
         loc = xml_escape(f"{base_url}{u['path']}")
         lines.append(f"  <url><loc>{loc}</loc>")
-        if u.get("lastmod"):
-            lines.append(f"    <lastmod>{u['lastmod']}</lastmod>")
         if u.get("changefreq"):
             lines.append(f"    <changefreq>{u['changefreq']}</changefreq>")
         if u.get("priority"):
             lines.append(f"    <priority>{u['priority']}</priority>")
         lines.append("  </url>")
     lines.append("</urlset>")
+
+    path = os.path.join(out_dir, filename)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
+def generate_sitemap_index(base_url: str, sitemap_files: list[str], out_dir: str):
+    """Write sitemap index pointing to child sitemaps."""
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>']
+    lines.append('<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">')
+    for filename in sitemap_files:
+        loc = xml_escape(f"{base_url}/{filename}")
+        lines.append(f"  <sitemap><loc>{loc}</loc></sitemap>")
+    lines.append("</sitemapindex>")
 
     path = os.path.join(out_dir, "sitemap.xml")
     with open(path, "w", encoding="utf-8") as f:
@@ -1200,33 +1212,90 @@ def main():
         write_page(out_dir, "/about/", html)
         total_files += 1
 
-        # SEO: generate sitemap from DB (independent of which chunks rendered)
-        sitemap_urls = [
-            {"path": "/", "changefreq": "daily", "priority": "1.0"},
-            {"path": "/trending/", "changefreq": "daily", "priority": "0.7"},
-            {"path": "/about/", "changefreq": "monthly", "priority": "0.4"},
-            {"path": "/insights/", "changefreq": "weekly", "priority": "0.8"},
-        ]
+        # SEO: split sitemaps by entity type + CVE year (Google 50K limit)
+        sitemap_files = []
+        total_urls = 0
+
         with engine.connect() as conn:
-            for r in conn.execute(text("SELECT cve_id FROM mv_cve_scores")).fetchall():
-                sitemap_urls.append({"path": f"/cve/{r[0]}/", "changefreq": "weekly", "priority": "0.6"})
-            for r in conn.execute(text(f"""
+            # CVE sitemaps by year
+            cve_years = [r[0] for r in conn.execute(text("""
+                SELECT DISTINCT EXTRACT(YEAR FROM published_date)::int AS y
+                FROM cves WHERE cvss_base_score IS NOT NULL AND published_date IS NOT NULL
+                ORDER BY y DESC
+            """)).fetchall()]
+
+            for year in cve_years:
+                if year < 2018:
+                    continue  # bundled into "older" below
+                rows = conn.execute(text("""
+                    SELECT cve_id FROM mv_cve_scores
+                    WHERE EXTRACT(YEAR FROM published_date) = :y
+                """), {"y": year}).fetchall()
+                if rows:
+                    urls = [{"path": f"/cve/{r[0]}/", "changefreq": "weekly", "priority": "0.6"} for r in rows]
+                    fname = f"sitemap-cve-{year}.xml"
+                    generate_sitemap(base_url, urls, out_dir, fname)
+                    sitemap_files.append(fname)
+                    total_urls += len(urls)
+                    print(f"  {fname}: {len(urls):,} URLs")
+
+            # Pre-2018 CVEs bundled
+            rows = conn.execute(text("""
+                SELECT cve_id FROM mv_cve_scores
+                WHERE EXTRACT(YEAR FROM published_date) < 2018
+            """)).fetchall()
+            if rows:
+                urls = [{"path": f"/cve/{r[0]}/", "changefreq": "monthly", "priority": "0.4"} for r in rows]
+                fname = "sitemap-cve-older.xml"
+                generate_sitemap(base_url, urls, out_dir, fname)
+                sitemap_files.append(fname)
+                total_urls += len(urls)
+                print(f"  {fname}: {len(urls):,} URLs")
+
+            # Products sitemap
+            rows = conn.execute(text(f"""
                 SELECT id FROM mv_product_scores
                 WHERE composite_score >= {PRODUCT_MIN_SCORE} OR cve_count >= {PRODUCT_MIN_CVES}
-            """)).fetchall():
-                sitemap_urls.append({"path": f"/product/{r[0]}/", "changefreq": "weekly", "priority": "0.6"})
+            """)).fetchall()
+            if rows:
+                urls = [{"path": f"/product/{r[0]}/", "changefreq": "weekly", "priority": "0.6"} for r in rows]
+                generate_sitemap(base_url, urls, out_dir, "sitemap-products.xml")
+                sitemap_files.append("sitemap-products.xml")
+                total_urls += len(urls)
+                print(f"  sitemap-products.xml: {len(urls):,} URLs")
+
+            # Vendors sitemap
+            rows = conn.execute(text("SELECT slug FROM mv_vendor_scores")).fetchall()
+            if rows:
+                urls = [{"path": f"/vendor/{r[0]}/", "changefreq": "weekly", "priority": "0.5"} for r in rows]
+                generate_sitemap(base_url, urls, out_dir, "sitemap-vendors.xml")
+                sitemap_files.append("sitemap-vendors.xml")
+                total_urls += len(urls)
+                print(f"  sitemap-vendors.xml: {len(urls):,} URLs")
+
+            # Other entities + static pages
+            other_urls = [
+                {"path": "/", "changefreq": "daily", "priority": "1.0"},
+                {"path": "/trending/", "changefreq": "daily", "priority": "0.7"},
+                {"path": "/about/", "changefreq": "monthly", "priority": "0.4"},
+                {"path": "/insights/", "changefreq": "weekly", "priority": "0.8"},
+            ]
             for view, prefix, col in [
-                ("mv_vendor_scores", "/vendor", "slug"),
                 ("mv_weakness_scores", "/weakness", "cwe_id"),
                 ("mv_pattern_scores", "/attack-pattern", "capec_id"),
                 ("mv_technique_scores", "/technique", "technique_id"),
             ]:
                 for r in conn.execute(text(f"SELECT {col} FROM {view}")).fetchall():
-                    sitemap_urls.append({"path": f"{prefix}/{r[0]}/", "changefreq": "weekly", "priority": "0.5"})
+                    other_urls.append({"path": f"{prefix}/{r[0]}/", "changefreq": "weekly", "priority": "0.5"})
+            generate_sitemap(base_url, other_urls, out_dir, "sitemap-other.xml")
+            sitemap_files.append("sitemap-other.xml")
+            total_urls += len(other_urls)
+            print(f"  sitemap-other.xml: {len(other_urls):,} URLs")
 
-        generate_sitemap(base_url, sitemap_urls, out_dir)
+        # Sitemap index
+        generate_sitemap_index(base_url, sitemap_files, out_dir)
         generate_robots(base_url, out_dir)
-        print(f"  Sitemap: {len(sitemap_urls):,} URLs | robots.txt generated")
+        print(f"  Sitemap index: {len(sitemap_files)} sitemaps, {total_urls:,} total URLs")
 
     else:
         print(f"ERROR: Unknown chunk '{chunk}'")
