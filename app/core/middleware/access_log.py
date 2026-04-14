@@ -58,25 +58,33 @@ class AccessLogMiddleware(BaseHTTPMiddleware):
 
     @classmethod
     def ensure_table(cls, engine):
-        """Create http_access_log table if it doesn't exist. Call once at startup."""
-        with engine.connect() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS http_access_log (
-                    id SERIAL PRIMARY KEY,
-                    path VARCHAR(200) NOT NULL,
-                    method VARCHAR(10) NOT NULL DEFAULT 'GET',
-                    status_code SMALLINT,
-                    user_agent VARCHAR(300),
-                    client_ip VARCHAR(45),
-                    duration_ms INTEGER,
-                    created_at TIMESTAMPTZ DEFAULT now()
-                )
-            """))
-            conn.execute(text("""
-                CREATE INDEX IF NOT EXISTS ix_http_access_log_created
-                ON http_access_log (created_at)
-            """))
-            conn.commit()
+        """Create http_access_log table if it doesn't exist. Call once at startup.
+
+        Fails silently if DB is unavailable (e.g., in test environments without
+        a local Postgres). The middleware still works — it just drops log entries
+        until the table exists.
+        """
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS http_access_log (
+                        id SERIAL PRIMARY KEY,
+                        path VARCHAR(200) NOT NULL,
+                        method VARCHAR(10) NOT NULL DEFAULT 'GET',
+                        status_code SMALLINT,
+                        user_agent VARCHAR(300),
+                        client_ip VARCHAR(45),
+                        duration_ms INTEGER,
+                        created_at TIMESTAMPTZ DEFAULT now()
+                    )
+                """))
+                conn.execute(text("""
+                    CREATE INDEX IF NOT EXISTS ix_http_access_log_created
+                    ON http_access_log (created_at)
+                """))
+                conn.commit()
+        except Exception:
+            logger.debug("Could not ensure http_access_log table (DB unavailable?)")
 
     async def dispatch(self, request, call_next):
         path = request.url.path
