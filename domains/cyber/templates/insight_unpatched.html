@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block title %}Unpatched Exposure: {{ item.cve_id }} — CyberEdge Insights{% endblock %}
-{% block description %}{{ item.cve_id }} has severity {{ item.severity }}/25 and affects {{ item.affected_products }} products with no available fix.{% endblock %}
+{% block description %}{{ item.cve_id }} has severity {{ item.severity }}/33 and affects {{ item.affected_products }} products with patch status unknown.{% endblock %}
 {% block canonical_path %}/insights/unpatched/{{ item.cve_id }}/{% endblock %}
 
 {% block content %}
@@ -17,17 +17,17 @@
 </div>
 
 <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-    <p class="text-red-800 font-medium">This CVE has high severity ({{ item.severity }}/25), significant exposure ({{ item.affected_products }} products), and no available fix.</p>
+    <p class="text-red-800 font-medium">This CVE has high severity ({{ item.severity }}/33), significant exposure ({{ item.affected_products }} products), and patch status unknown.</p>
 </div>
 
 <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
     <div class="bg-white rounded border border-gray-200 p-3 text-center">
         <div class="text-xs text-gray-500">Severity</div>
-        <div class="text-xl font-bold">{{ item.severity }}/25</div>
+        <div class="text-xl font-bold">{{ item.severity }}/33</div>
     </div>
     <div class="bg-white rounded border border-gray-200 p-3 text-center">
         <div class="text-xs text-gray-500">Exploitability</div>
-        <div class="text-xl font-bold">{{ item.exploitability }}/25</div>
+        <div class="text-xl font-bold">{{ item.exploitability }}/33</div>
     </div>
     <div class="bg-white rounded border border-gray-200 p-3 text-center">
         <div class="text-xs text-gray-500">Products Affected</div>

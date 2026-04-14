@@ -44,12 +44,12 @@ ENTITY_CONFIG = {
         "label": "CVE",
         "label_plural": "CVEs",
         "summary_key": "cves",
-        "description": "Common Vulnerabilities and Exposures scored on severity, exploitability, exposure, and patch availability.",
+        "max_score": 34,
+        "description": "Common Vulnerabilities and Exposures scored on severity, exploitability, and exposure.",
         "dimensions": [
             ("severity", "Severity"),
             ("exploitability", "Exploitability"),
             ("exposure", "Exposure"),
-            ("patch_availability", "Patch Availability"),
         ],
     },
     "product": {
@@ -62,12 +62,11 @@ ENTITY_CONFIG = {
         "label": "Product",
         "label_plural": "Products",
         "summary_key": "products",
-        "description": "Software products scored by proportion of dangerous CVEs — active threats, exploit availability, severity, and recency.",
+        "max_score": 50,
+        "description": "Software products scored by proportion of dangerous CVEs — active threat signals and exploitation evidence.",
         "dimensions": [
             ("active_threat", "Active Threat"),
             ("exploit_availability", "Exploit Availability"),
-            ("severity_profile", "Severity Profile"),
-            ("recency", "Recency"),
         ],
     },
     "vendor": {
@@ -80,12 +79,11 @@ ENTITY_CONFIG = {
         "label": "Vendor",
         "label_plural": "Vendors",
         "summary_key": "vendors",
-        "description": "Vendors scored by aggregate vulnerability risk across their product portfolio.",
+        "max_score": 50,
+        "description": "Vendors scored by proportion of dangerous CVEs across their product portfolio.",
         "dimensions": [
-            ("severity", "Severity"),
-            ("exploitability", "Exploitability"),
-            ("exposure", "Exposure"),
-            ("patch_availability", "Patch Availability"),
+            ("active_threat", "Active Threat"),
+            ("exploit_availability", "Exploit Availability"),
         ],
     },
     "weakness": {
@@ -98,12 +96,11 @@ ENTITY_CONFIG = {
         "label": "Weakness",
         "label_plural": "Weaknesses",
         "summary_key": "weaknesses",
-        "description": "CWE weakness types scored by the severity and exploitability of associated CVEs.",
+        "max_score": 50,
+        "description": "CWE weakness types scored by proportion of linked CVEs with active exploitation.",
         "dimensions": [
-            ("severity", "Severity"),
-            ("exploitability", "Exploitability"),
-            ("exposure", "Exposure"),
-            ("patch_availability", "Patch Availability"),
+            ("active_threat", "Active Threat"),
+            ("exploit_availability", "Exploit Availability"),
         ],
     },
     "technique": {
@@ -116,12 +113,11 @@ ENTITY_CONFIG = {
         "label": "Technique",
         "label_plural": "ATT&CK Techniques",
         "summary_key": "techniques",
-        "description": "MITRE ATT&CK techniques scored by the CVEs reachable through the kill chain.",
+        "max_score": 50,
+        "description": "MITRE ATT&CK techniques scored by proportion of reachable CVEs with active exploitation.",
         "dimensions": [
-            ("severity", "Severity"),
-            ("exploitability", "Exploitability"),
-            ("exposure", "Exposure"),
-            ("patch_availability", "Patch Availability"),
+            ("active_threat", "Active Threat"),
+            ("exploit_availability", "Exploit Availability"),
         ],
     },
     "pattern": {
@@ -134,12 +130,11 @@ ENTITY_CONFIG = {
         "label": "Attack Pattern",
         "label_plural": "CAPEC Attack Patterns",
         "summary_key": "attack_patterns",
-        "description": "CAPEC attack patterns scored by the CVEs reachable through linked weaknesses.",
+        "max_score": 50,
+        "description": "CAPEC attack patterns scored by proportion of reachable CVEs with active exploitation.",
         "dimensions": [
-            ("severity", "Severity"),
-            ("exploitability", "Exploitability"),
-            ("exposure", "Exposure"),
-            ("patch_availability", "Patch Availability"),
+            ("active_threat", "Active Threat"),
+            ("exploit_availability", "Exploit Availability"),
         ],
     },
 }
@@ -311,16 +306,16 @@ def fetch_homepage_data() -> dict:
     """Fetch data for homepage 'What's Happening Now' sections."""
     data = {}
     with engine.connect() as conn:
-        # Most dangerous unpatched CVEs (high EPSS, no fix)
+        # Highest exploit probability CVEs
         rows = conn.execute(text("""
             SELECT cve_id, cvss_base_score, epss_score, is_kev
             FROM cves
-            WHERE NOT has_fix AND epss_score > 0.1
+            WHERE epss_score > 0.1
             ORDER BY epss_score DESC
             LIMIT 10
         """)).mappings().fetchall()
-        data["unpatched_dangerous"] = [dict(r) for r in rows]
-        print(f"  Homepage: {len(data['unpatched_dangerous'])} unpatched high-EPSS CVEs")
+        data["highest_epss"] = [dict(r) for r in rows]
+        print(f"  Homepage: {len(data['highest_epss'])} highest EPSS CVEs")
 
         # Recent KEV additions
         rows = conn.execute(text("""
@@ -819,7 +814,8 @@ def main():
                         "key": dim_key,
                         "label": dim_label,
                         "value": entity.get(dim_key, 0),
-                        "context": score_context(entity.get(dim_key, 0)),
+                        "max_score": config.get("max_score", 25),
+                        "context": score_context(entity.get(dim_key, 0), config.get("max_score", 25)),
                     }
                     for dim_key, dim_label in config["dimensions"]
                 ],
