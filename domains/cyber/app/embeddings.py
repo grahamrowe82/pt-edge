@@ -115,6 +115,31 @@ def build_technique_text(
     return ". ".join(parts) + "."
 
 
+def build_product_text(
+    display_name: str,
+    vendor_name: str | None = None,
+    part: str | None = None,
+    top_weaknesses: list[str] | None = None,
+    cve_count: int | None = None,
+) -> str:
+    """Build embedding text for a product (aggregated from CPE versions).
+
+    Richer than software text — includes weakness profile so the model
+    understands what TYPE of software this is (CMS, browser, firmware, etc).
+    """
+    parts = [display_name or ""]
+    if vendor_name:
+        parts.append(f"by {vendor_name}")
+    if part:
+        part_label = {"a": "Application", "o": "Operating System", "h": "Hardware"}.get(part, part)
+        parts.append(f"Type: {part_label}")
+    if top_weaknesses:
+        parts.append(f"Vulnerability types: {', '.join(top_weaknesses[:5])}")
+    if cve_count and cve_count > 0:
+        parts.append(f"{cve_count} known vulnerabilities")
+    return ". ".join(parts) + "."
+
+
 def build_pattern_text(
     capec_id: str,
     name: str | None = None,
