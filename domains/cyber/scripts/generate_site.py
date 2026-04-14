@@ -31,7 +31,53 @@ from domains.cyber.app.db import engine
 
 PER_PAGE = 100
 BATCH_SIZE = 5000
-MIN_SCORE = 55  # Only generate detail pages for CVEs/entities scoring >= this
+MIN_SCORE = 55  # Only generate detail pages for CVEs scoring >= this
+
+# Products/vendors/weaknesses use combo threshold: score >= 10 OR cve_count >= 20
+# This captures both dangerous small products AND notable well-known products
+PRODUCT_MIN_SCORE = 10
+PRODUCT_MIN_CVES = 20
+
+# Tier guidance for product pages (deterministic templates — Gemini-generated
+# category-specific guidance is a follow-up PR)
+TIER_GUIDANCE = {
+    "critical-risk": {
+        "headline": "Immediate action recommended",
+        "summary": "{name} has critical exploitation rates across its known vulnerabilities.",
+        "actions": [
+            "Check for patches and apply immediately",
+            "Review whether this software can be replaced with a safer alternative",
+            "Consult your IT provider about mitigation options",
+        ],
+    },
+    "high-risk": {
+        "headline": "Take action — actively targeted",
+        "summary": "{name} is actively targeted by attackers. A significant proportion of its known vulnerabilities are being exploited.",
+        "actions": [
+            "Apply all available updates immediately",
+            "Review your exposure — is this internet-facing?",
+            "Monitor vendor advisories for this product",
+        ],
+    },
+    "moderate-risk": {
+        "headline": "Review your setup",
+        "summary": "{name} has some exploitation signals but is generally manageable with regular updates.",
+        "actions": [
+            "Keep this software updated",
+            "Review your configuration for unnecessary exposure",
+            "Check for known-vulnerable components or plugins",
+        ],
+    },
+    "low-risk": {
+        "headline": "Standard maintenance is sufficient",
+        "summary": "{name} has low exploitation rates. Attackers rarely target this software's known vulnerabilities.",
+        "actions": [
+            "Keep automatic updates enabled",
+            "No urgent action needed",
+            "Review periodically as part of normal maintenance",
+        ],
+    },
+}
 
 ENTITY_CONFIG = {
     "cve": {
@@ -63,6 +109,7 @@ ENTITY_CONFIG = {
         "label_plural": "Products",
         "summary_key": "products",
         "max_score": 50,
+        "combo_threshold": {"min_score": PRODUCT_MIN_SCORE, "min_cves": PRODUCT_MIN_CVES},
         "description": "Software products scored by proportion of dangerous CVEs — active threat signals and exploitation evidence.",
         "dimensions": [
             ("active_threat", "Active Threat"),
@@ -238,15 +285,28 @@ def slugify(name):
 # ---------------------------------------------------------------------------
 
 def fetch_entities(config: dict) -> list[dict]:
-    """Fetch scored entities from materialized view. MVs include all display fields."""
+    """Fetch scored entities from materialized view. MVs include all display fields.
+
+    Products use combo threshold (score >= 10 OR cve_count >= 20) to capture
+    both dangerous small products AND notable well-known products that people search for.
+    """
     view = config["view"]
-    min_score = config.get("min_score", MIN_SCORE)
-    with engine.connect() as conn:
-        rows = conn.execute(text(f"""
-            SELECT * FROM {view}
-            WHERE composite_score >= :min_score
-            ORDER BY composite_score DESC
-        """), {"min_score": min_score}).mappings().fetchall()
+    combo = config.get("combo_threshold")
+    if combo:
+        with engine.connect() as conn:
+            rows = conn.execute(text(f"""
+                SELECT * FROM {view}
+                WHERE composite_score >= :min_score OR cve_count >= :min_cves
+                ORDER BY composite_score DESC
+            """), {"min_score": combo["min_score"], "min_cves": combo["min_cves"]}).mappings().fetchall()
+    else:
+        min_score = config.get("min_score", MIN_SCORE)
+        with engine.connect() as conn:
+            rows = conn.execute(text(f"""
+                SELECT * FROM {view}
+                WHERE composite_score >= :min_score
+                ORDER BY composite_score DESC
+            """), {"min_score": min_score}).mappings().fetchall()
     return [dict(r) for r in rows]
 
 
@@ -457,13 +517,32 @@ def fetch_product_enrichment() -> dict:
                     ON p.vendor_key = split_part(s.cpe_id, ':', 4)
                     AND p.product_key = split_part(s.cpe_id, ':', 5)
                 WHERE c.cvss_base_score IS NOT NULL
-                  AND p.composite_score >= :min_score
+                  AND (p.composite_score >= :min_score OR p.cve_count >= :min_cves)
             )
             SELECT * FROM ranked WHERE rn <= 20
-        """), {"min_score": MIN_SCORE}).mappings().fetchall()
+        """), {"min_score": PRODUCT_MIN_SCORE, "min_cves": PRODUCT_MIN_CVES}).mappings().fetchall()
         for r in rows:
             result.setdefault(r["product_id"], []).append(dict(r))
     print(f"  Product enrichment: {len(rows):,} top CVE links across {len(result):,} products")
+    return result
+
+
+def fetch_product_metadata() -> dict:
+    """Load precomputed product metadata (categories, guidance, peers)."""
+    result = {}
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(text("""
+                SELECT vendor_key || '/' || product_key AS id,
+                       category, category_label, risk_summary,
+                       recommended_actions, peer_products
+                FROM product_metadata
+            """)).mappings().fetchall()
+            for r in rows:
+                result[r["id"]] = dict(r)
+        print(f"  Product metadata: {len(result):,} products with enrichment")
+    except Exception:
+        print("  Product metadata: table not yet populated")
     return result
 
 
@@ -727,6 +806,7 @@ def main():
 
     # Fetch product enrichment: top CVEs per product
     product_enrichment = fetch_product_enrichment()
+    product_metadata = fetch_product_metadata()
 
     # Fetch weakness enrichment: JSONB data + top CVEs
     weakness_enrichment = fetch_weakness_enrichment()
@@ -836,6 +916,18 @@ def main():
             # Product-specific enrichment
             if entity_type == "product":
                 ctx["top_cves"] = product_enrichment.get(entity["id"], [])
+                # Tier guidance (deterministic templates — Gemini follow-up)
+                tier = entity.get("quality_tier", "low-risk")
+                guidance = TIER_GUIDANCE.get(tier, TIER_GUIDANCE["low-risk"])
+                ctx["guidance"] = {
+                    "headline": guidance["headline"],
+                    "summary": guidance["summary"].format(name=entity.get("display_name", "")),
+                    "actions": guidance["actions"],
+                }
+                # Product metadata (categories, peers) if available
+                meta = product_metadata.get(entity["id"], {})
+                ctx["category_label"] = meta.get("category_label", "")
+                ctx["peer_products"] = meta.get("peer_products", [])
 
             # Weakness-specific enrichment
             if entity_type == "weakness":
