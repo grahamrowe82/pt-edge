@@ -507,9 +507,11 @@ def schedule_embed_products() -> int:
         if not has_work:
             return 0
         result = conn.execute(text("""
-            INSERT INTO tasks (task_type, subject_id, status, created_at)
-            SELECT 'embed_products', 'batch', 'pending', now()
-            WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE task_type = 'embed_products' AND status IN ('pending', 'claimed'))
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type)
+            VALUES ('embed_products', 'batch', 6, 'openai')
+            ON CONFLICT (task_type, COALESCE(subject_id, ''))
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
         """))
         conn.commit()
         count = result.rowcount
@@ -539,9 +541,11 @@ def schedule_product_guidance() -> int:
         if not has_work:
             return 0
         result = conn.execute(text("""
-            INSERT INTO tasks (task_type, subject_id, status, created_at)
-            SELECT 'product_guidance', 'batch', 'pending', now()
-            WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE task_type = 'product_guidance' AND status IN ('pending', 'claimed'))
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type)
+            VALUES ('product_guidance', 'batch', 6, 'openai')
+            ON CONFLICT (task_type, COALESCE(subject_id, ''))
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
         """))
         conn.commit()
         count = result.rowcount
@@ -572,9 +576,11 @@ def schedule_enrich_cve_summaries() -> int:
         if not has_work:
             return 0
         result = conn.execute(text("""
-            INSERT INTO tasks (task_type, subject_id, status, created_at)
-            SELECT 'enrich_cve_summaries', 'batch', 'pending', now()
-            WHERE NOT EXISTS (SELECT 1 FROM tasks WHERE task_type = 'enrich_cve_summaries' AND status IN ('pending', 'claimed'))
+            INSERT INTO tasks (task_type, subject_id, priority, resource_type)
+            VALUES ('enrich_cve_summaries', 'batch', 6, 'openai')
+            ON CONFLICT (task_type, COALESCE(subject_id, ''))
+                WHERE state IN ('pending', 'claimed')
+            DO NOTHING
         """))
         conn.commit()
         count = result.rowcount
