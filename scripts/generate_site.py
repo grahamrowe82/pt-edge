@@ -924,6 +924,31 @@ def generate_robots(base_url, base_path, out_dir):
     write_file(os.path.join(out_dir, "robots.txt"), content)
 
 
+def generate_favicon(out_dir):
+    """Write favicon.svg and favicon-48.png so Google can fetch them."""
+    svg = (
+        "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
+        "<rect width='32' height='32' rx='6' fill='#2563eb'/>"
+        "<text x='16' y='22' font-family='system-ui' font-size='18' "
+        "font-weight='bold' fill='white' text-anchor='middle'>PT</text>"
+        "</svg>"
+    )
+    write_file(os.path.join(out_dir, "favicon.svg"), svg)
+    import base64
+    png_b64 = (
+        "iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAABg0lEQVR42u2av0tCURTHP08fSmWC"
+        "hQ4NYX9AQTW0BNFSa0FQUFs0uQRu/QOu0RgShQ0tLUFLlM1FU9CQNjUoVChB+Ctvr0GCh+bD"
+        "lnhXz1nP4/D93O89917evQZO8bIWsHBBRE4+jHY5w83COwExdBDuBOLRTXyzVg+ah0e30W92QX"
+        "sHDB1Hv2UKCYAACIAACEDPApidfugNjzK099A2b1VLqNwjlfQR5asDsBr7YzCWxD+7+idRhfg0"
+        "Kpf5XwcMfz/m2CSBzV2CsaT7jhJ2B143QqDqtqSJNzSCf26dgZUdAN4Ty9TuL3+t5Z9ZIridQu"
+        "WyFOJTLugBVUe9PVM6TVC9OwfAN7WoZxOr/FOj8OCwngBmdAKAr2LeXauQcxUf3kiUvoUtfOPz"
+        "AFRvz9wLED4uOuYr6UM+MzcaOQBYtTIqn6VynaJ8se++jcweLcuoHCUEQAAEoGcB5MeWAAiAAA"
+        "iAAOgN4HSJjAbXrd0xhXR04Udz9zSxTi7YtXbXYw8dn9t8Azq+fjz3Q1CeAAAAAElFTkSuQmCC"
+    )
+    with open(os.path.join(out_dir, "favicon-48.png"), "wb") as f:
+        f.write(base64.b64decode(png_b64))
+
+
 def generate_ads_txt(out_dir):
     write_file(os.path.join(out_dir, "ads.txt"),
                "google.com, pub-1637070870818032, DIRECT, f08c47fec0942fa0\n")
@@ -1337,6 +1362,7 @@ def main():
     generate_sitemap(base_url, generated_urls, out_dir)
     generate_robots(base_url, base_path, out_dir)
     generate_ads_txt(out_dir)
+    generate_favicon(out_dir)
 
     # Verify sitemap/page alignment
     mismatches = verify_sitemap(sitemap_path, out_dir, base_url, base_path)
