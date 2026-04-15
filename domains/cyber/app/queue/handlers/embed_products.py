@@ -134,6 +134,6 @@ async def _embed_products():
     return {"embedded": total_embedded}
 
 
-def handle_embed_products(task_row: dict) -> dict:
+async def handle_embed_products(task_row: dict) -> dict:
     """Task handler entry point."""
-    return asyncio.run(_embed_products())
+    return await _embed_products()

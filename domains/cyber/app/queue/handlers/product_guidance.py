@@ -406,6 +406,6 @@ async def _run_guidance_pipeline():
     }
 
 
-def handle_product_guidance(task_row: dict) -> dict:
+async def handle_product_guidance(task_row: dict) -> dict:
     """Task handler: categorize → label → peers → guidance."""
-    return asyncio.run(_run_guidance_pipeline())
+    return await _run_guidance_pipeline()
