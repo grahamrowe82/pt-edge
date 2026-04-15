@@ -170,6 +170,6 @@ async def _enrich_cves():
     return {"enriched": total_enriched, "total_candidates": len(cves)}
 
 
-def handle_enrich_cve_summaries(task_row: dict) -> dict:
+async def handle_enrich_cve_summaries(task_row: dict) -> dict:
     """Task handler entry point."""
-    return asyncio.run(_enrich_cves())
+    return await _enrich_cves()
