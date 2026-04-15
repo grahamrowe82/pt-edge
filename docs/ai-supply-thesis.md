@@ -221,6 +221,14 @@ These were deliberately excluded after iterating on the prototype:
 - **No "best for" column** in the table. This would require per-row editorial judgement. The `use_this_if` data exists but belongs on the detail card, not compressed into a table cell.
 - **No quality-score ranking.** The existing category page already does this. Landscape pages rank by citation depth because that's the proprietary signal.
 
+### Measurement risk: cannibalisation
+
+Landscape pages could undermine the citation signal they're built from. If an AI agent can get everything it needs from one landscape page fetch instead of hitting 14 individual server pages, those server pages lose their citation counts and eventually fall out of the favorites set — even though the underlying demand is stronger than ever.
+
+This is a measurement problem, not a demand problem. The demand doesn't disappear; it gets satisfied at a different URL.
+
+The eventual fix: citations at the landscape page should count as citations for all projects featured on it. The unit of measurement shifts from "this URL was fetched" to "this project was served as part of an answer." But this isn't urgent — the problem only emerges after landscape pages have been live long enough to shift citation patterns. Worth watching for when interpreting favorites set changes after landscape pages launch.
+
 ### Backlinks from server pages
 
 Each server page that appears in a landscape should get a backlink: "This project is one of N actively cited {subcategory} projects." This creates the cross-linking network and signals to both humans and AI agents that the project has been validated by citation data, not just scored by an algorithm.
