@@ -116,16 +116,9 @@ The citation data creates a proprietary feedback loop:
 
 4. **Repeat** — the new page generates new citation patterns that reveal the next layer of questions.
 
-### What a landscape page looks like
+### How this differs from editorial content
 
-For AI consumption, the ideal page:
-- **Opens with the answer** — specific recommendations with numbers, not "there are many options."
-- **Includes a structured decision matrix** — parseable table with quality scores, freshness dates, language, and "best for" column.
-- **Provides decision paths** — "if you need X, use Y" structured so the AI can match the user's context.
-- **Embeds structured data (JSON-LD)** — machine-readable recommendations the AI can parse without interpreting HTML.
-- **Cross-links to every server and compare page in the cluster** — turns isolated favorites into a navigable network.
-
-This is fundamentally different from a blog post. Human-oriented content uses narrative, opinion, and hedging ("it depends"). AI-oriented content uses structure, numbers, and direct answers. Nobody writing "Top 10 Algo Trading Frameworks" is building for AI retrieval. That's the gap.
+A human-oriented "Top 10" blog post uses narrative, opinion, and hedging ("it depends on your use case"). A landscape page uses none of that. The signal *is* the content: these N projects, out of M tracked, are the ones AI agents keep coming back to. The data speaks for itself. No editorial voice required, no LLM enrichment needed, fully deterministic from existing DB fields.
 
 ## Landscape pages: acting on the signal
 
@@ -182,7 +175,55 @@ Landscape pages should be generated as part of the site build:
 5. Cross-link: each server page in a landscape gets a backlink ("one of N actively cited projects in this landscape")
 6. Regenerate daily — the set evolves as citation patterns change
 
-A prototype for algorithmic trading bots is at `site/landscapes/algorithmic-trading-bots/index.html`.
+A prototype for algorithmic trading bots was built locally at `site/landscapes/algorithmic-trading-bots/` (gitignored since `site/` is generated output). The design decisions from that prototype are documented below.
+
+### Page structure (from the prototype)
+
+The page has four sections, in order:
+
+**1. Header and framing.** Title: "{Subcategory}: {N} Projects AI Agents Actually Cite". Subtitle explains what the page is: of M total tracked, these N are the ones AI assistants consistently cite. States the data source (live citation tracking across ChatGPT, Claude, Perplexity). States the date. This framing is critical — it tells both humans and AI agents that this is a demand-derived selection, not an editorial one.
+
+**2. Favorites table.** All N favorites, sorted by `days_cited` descending (trust depth). Columns:
+- Project (full_name, linked to server page)
+- Days cited (bold — this is the primary ranking)
+- Quality score + tier badge
+- Stars (hidden on mobile)
+- Language (hidden on mobile)
+- Last commit date (hidden on mobile)
+
+No "best for" column. No editorial labels. The table is pure data. The AI consuming this page can read `use_this_if` on the linked server page if it needs to match against a user's context.
+
+**3. Project detail cards.** One card per favorite, containing:
+- Name linked to server page, quality score, tier badge, and "cited X of Y days"
+- `ai_summary` or `description` — whichever exists (already in DB)
+- `use_this_if` / `not_ideal_if` in green/amber boxes (already LLM-enriched, only shown if present)
+- Metadata line: stars, forks, language, last commit, commits/30d
+- GitHub link
+
+For projects with 0 or near-0 stars that are still in the favorites set, add a "high hidden demand" badge. This is the most differentiated signal we have — it highlights projects that practitioners are asking about through AI assistants but that have no visibility on GitHub. The badge is deterministic: show it when `stars < 10 AND days_cited >= 3`.
+
+**4. Cross-links.** Links to:
+- The full subcategory page ("All M projects in this category")
+- Related subcategories (e.g., algorithmic-trading-bots links to portfolio-optimization-ml, time-series-forecasting)
+- Methodology page
+
+### Structured data (JSON-LD)
+
+The page embeds a `CollectionPage` with an `ItemList` of the top favorites. The `itemListOrder` is explicitly `ItemListOrderDescending` (by citation depth). Each item is a `SoftwareApplication` with a PT-Edge `Review` and `Rating`. This allows AI systems to parse the recommendations without interpreting HTML.
+
+### What the page does NOT contain
+
+These were deliberately excluded after iterating on the prototype:
+
+- **No projects outside the favorites set.** The page is about the N that matter, not the M that exist. The full category page already covers the M.
+- **No editorial decision paths** ("if you want X, use Y"). These require human judgement or LLM generation and can't be deterministically produced. The `use_this_if` field on each project card serves the same function without editorial synthesis.
+- **No synthesised lead paragraph** picking winners. The table sorted by days_cited is the ranking. An AI agent reading this page doesn't need a prose summary telling it which project is best — it can read the structured data.
+- **No "best for" column** in the table. This would require per-row editorial judgement. The `use_this_if` data exists but belongs on the detail card, not compressed into a table cell.
+- **No quality-score ranking.** The existing category page already does this. Landscape pages rank by citation depth because that's the proprietary signal.
+
+### Backlinks from server pages
+
+Each server page that appears in a landscape should get a backlink: "This project is one of N actively cited {subcategory} projects." This creates the cross-linking network and signals to both humans and AI agents that the project has been validated by citation data, not just scored by an algorithm.
 
 ## Cyber as proof of replayability
 
