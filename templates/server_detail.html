@@ -3,7 +3,7 @@
 {% block title %}{{ server.name }} ({{ server.quality_score | int }}/100) &mdash; {{ server.stars | human_stars }} Stars, {{ server.quality_tier | capitalize }} | PT-Edge{% endblock %}
 
 {% block meta %}
-<meta name="description" content="Quality assessment of {{ server.name }}: scored {{ server.quality_score | int }}/100 ({{ server.quality_tier }}). {{ server.stars | human_stars }} stars{% if server.language %}, {{ server.language }}{% endif %}{% if server.commits_30d %}, {{ server.commits_30d }} commits last month{% endif %}. {% if server.ai_summary %}{{ server.ai_summary | truncate(80) }}{% else %}{{ server.description | truncate(80) }}{% endif %}">
+<meta name="description" content="{% if server.ai_summary %}{{ server.ai_summary | truncate(130) }}{% else %}{{ server.description | truncate(130) }}{% endif %} Scored {{ server.quality_score | int }}/100 ({{ server.quality_tier }}) with {{ server.stars | human_stars }} stars.">
 <meta property="og:title" content="{{ server.name }} ({{ server.quality_score | int }}/100) &mdash; {{ server.stars | human_stars }} Stars | PT-Edge">
 <meta property="og:description" content="{{ server.description | truncate(200) }}">
 <meta property="og:type" content="article">
