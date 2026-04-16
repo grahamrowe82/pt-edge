@@ -36,6 +36,8 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: CANONICAL_HOST
+        value: mcp.phasetransitions.ai
 
   - type: web
     name: pt-edge-umami

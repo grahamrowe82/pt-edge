@@ -24,6 +24,7 @@ class Settings(EdgeBaseSettings):
     UMAMI_DATABASE_URL: str = ""  # Umami analytics DB (external); empty = Umami signals skipped
     UMAMI_WEBSITE_ID: str = ""  # Umami website ID to filter events
     LLM_BUDGET_MULTIPLIER: float = 5.0  # scales content pipeline LLM spend; 5.0 = 20K summaries/day on Gemini
+    CANONICAL_HOST: str = ""  # set in production; empty = host redirect disabled
 
     model_config = {"env_file": "domains/ai/.env", "case_sensitive": True, "extra": "ignore"}
 

@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from app.mcp.server import mount_mcp
 from app.api.routes import router as api_router, APIUsageMiddleware
 from app.core.middleware.access_log import AccessLogMiddleware
+from app.core.middleware.canonical_host import CanonicalHostMiddleware
 from app.db import engine as _engine, SessionLocal as _SessionLocal
 from app.api.docs_page import router as docs_router
 from app.api.keys import router as keys_router
@@ -43,6 +44,9 @@ app.include_router(keys_router)
 app.add_middleware(APIUsageMiddleware)
 AccessLogMiddleware.ensure_table(_engine)
 app.add_middleware(AccessLogMiddleware, session_factory=_SessionLocal)
+
+from app.settings import settings as _settings
+app.add_middleware(CanonicalHostMiddleware, canonical_host=_settings.CANONICAL_HOST)
 
 
 @app.get("/api/signup", response_class=HTMLResponse)
