@@ -21,7 +21,7 @@ from domains.cyber.app.settings import settings
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 100  # CVEs per Gemini batch (sequential calls within)
-MAX_PER_RUN = 5000  # Max CVEs to process per task invocation
+MAX_PER_RUN = 2000  # Max CVEs to process per task invocation
 
 
 def _compute_hash(row: dict) -> str:

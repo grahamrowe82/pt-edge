@@ -12,7 +12,6 @@ import asyncio
 import logging
 import json
 
-import numpy as np
 from sqlalchemy import text
 
 from domains.cyber.app.db import engine
@@ -81,6 +80,8 @@ def _categorize_products() -> tuple[int, dict]:
         names.append(r[3])
         vec_str = r[2].strip("[]")
         vectors.append([float(x) for x in vec_str.split(",")])
+
+    import numpy as np
 
     X = np.array(vectors, dtype=np.float32)
     norms = np.linalg.norm(X, axis=1, keepdims=True)
