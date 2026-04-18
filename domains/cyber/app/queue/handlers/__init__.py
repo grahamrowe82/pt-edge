@@ -31,21 +31,21 @@ async def handle_compute_embeddings(task: dict) -> dict:
 async def handle_embed_products(task: dict) -> dict:
     return await run_in_subprocess(
         "domains.cyber.app.queue.handlers.embed_products",
-        "_embed_products", task,
+        "handle_embed_products", task,
     )
 
 
 async def handle_product_guidance(task: dict) -> dict:
     return await run_in_subprocess(
         "domains.cyber.app.queue.handlers.product_guidance",
-        "_run_guidance_pipeline", task,
+        "handle_product_guidance", task,
     )
 
 
 async def handle_enrich_cve_summaries(task: dict) -> dict:
     return await run_in_subprocess(
         "domains.cyber.app.queue.handlers.enrich_cve_summaries",
-        "_enrich_cves", task,
+        "handle_enrich_cve_summaries", task,
     )
 
 

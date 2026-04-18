@@ -320,7 +320,7 @@ async def categorize_entities() -> dict:
     started = datetime.now(timezone.utc)
     results = {}
 
-    for entity_type in ["cve", "software", "vendor", "weakness", "technique", "pattern"]:
+    for entity_type in ["vendor", "weakness", "technique", "pattern"]:
         try:
             results[entity_type] = await categorize_entity_type(entity_type)
         except Exception as e:
